@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "source_file": "aozora_parse/book_ops_tui.py",
+  "interpretation_hint": {
+    "canonical_identifier": "Use the `path` field as the canonical concept identifier when discussing the TUI.",
+    "code_refs": "Use `code_refs` as the primary implementation anchors in the codebase.",
+    "related_paths": "Use `related_paths` to pull in nearby concepts that affect behavior.",
+    "path_resolution": "When a concept path is referenced, load that concept, its parents, and its immediate children for context."
+  },
+  "root": {
+    "title": "Book Ops TUI",
+    "kind": "module",
+    "summary": "Terminal application for browsing works, selecting book operations, annotating merge ranges, and curating character entities.",
+    "why_it_exists": "Provides an interactive front end for parser output review and manual annotation tasks that would be cumbersome in raw JSON or parquet files.",
+    "code_refs": [
+      "aozora_parse/book_ops_tui.py:819",
+      "aozora_parse/book_ops_tui.py:901"
+    ],
+    "related_paths": [
+      "root.data_model",
+      "root.transitions",
+      "root.controls"
+    ],
+    "aliases": [
+      "book ops tui",
+      "books ops tui",
+      "annotation tui"
+    ],
+    "children": {
+      "layout": {
+        "title": "Overall Layout",
+        "kind": "layout",
+        "summary": "Persistent three-region layout with a left sidebar, right main pane, bottom status bar, and footer.",
+        "code_refs": [
+          "aozora_parse/book_ops_tui.py:820",
+          "aozora_parse/book_ops_tui.py:901"
+        ],
+        "related_paths": [
+          "root.views"
+        ],
+        "children": {
+          "sidebar": {
+            "title": "Sidebar",
+            "kind": "region",
+            "summary": "Left column containing the scrollable list pane and the compact detail panel.",
+            "code_refs": [
+              "aozora_parse/book_ops_tui.py:827",
+              "aozora_parse/book_ops_tui.py:904"
+            ],
+            "aliases": [
+              "left sidebar",
+              "left column"
+            ]
+          },
+          "list_pane": {
+            "title": "List Pane",
+            "kind": "region",
+            "summary": "Scrollable pane at the top left that holds the main selectable list for the current view.",
+            "code_refs": [
+              "aozora_parse/book_ops_tui.py:832",
+              "aozora_parse/book_ops_tui.py:905",
+              "aozora_parse/book_ops_tui.py:1699"
+            ],
+            "aliases": [
+              "left list",
+              "segment list pane"
+            ]
+          },
+          "detail_panel": {
+            "title": "Detail Panel",
+            "kind": "region",
+            "summary": "Fixed-height panel under the list that summarizes metadata for the highlighted item.",
+            "code_refs": [
+              "aozora_parse/book_ops_tui.py:797",
+              "aozora_parse/book_ops_tui.py:907",
+              "aozora_parse/book_ops_tui.py:1748"
+            ],
+            "aliases": [
+              "left detail panel",
+              "metadata panel"
+            ]
+          }
+        }
+      },
+      "views": {
+        "title": "Views",
+        "kind": "view_group",
+        "summary": "The main user-visible modes of the application.",
+        "children": {
+          "merge_view": {
+            "title": "Merge View",
+            "kind": "view",
+            "summary": "Review interface for top-level text segments and manual block-range merge annotations.",
+            "children": {
+              "pending_selection": {
+                "title": "Pending Selection",
+                "kind": "concept",
+                "summary": "The merge range implied by the current cursor and visual anchor that would be toggled by pressing space.",
+                "code_refs": [
+                  "aozora_parse/book_ops_tui.py:1529",
+                  "aozora_parse/book_ops_tui.py:1791"
+                ],
+                "aliases": [
+                  "pending range",
+                  "current merge candidate"
+                ]
+              }
+            }
+          },
+          "characters_view": {
+            "title": "Characters View",
+            "kind": "view",
+            "summary": "Entity curation view for marking characters and merging aliases among person-like entities."
+          }
+        }
+      },
+      "llm_usage": {
+        "title": "LLM Usage Convention",
+        "kind": "guidance",
+        "summary": "How to refer to these concepts when discussing the TUI with an LLM or OpenCode.",
+        "children": {
+          "path_reference": {
+            "title": "Path Reference",
+            "kind": "guidance",
+            "summary": "Refer to a concept by its dot path under `root`, for example `root.views.merge_view.pending_selection`."
+          }
+        }
+      }
+    }
+  }
+}

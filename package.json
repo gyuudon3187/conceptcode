@@ -1,0 +1,19 @@
+{
+  "name": "setsumei-opentui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "example": "bun run src/index.ts --concepts-path examples/book_ops_tui_concepts.json",
+    "browse": "bun run src/index.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "check": "bun run typecheck",
+    "start": "bun run example"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.96"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.6.3"
+  }
+}
