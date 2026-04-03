@@ -1,3 +1,5 @@
+import type { TextareaRenderable } from "@opentui/core"
+
 export type JsonPrimitive = null | boolean | number | string
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 
@@ -41,6 +43,23 @@ export type ListLine = {
   buffered: boolean
 }
 
+export type BufferModalTarget = {
+  kind: "prompt" | "concept"
+  path?: string
+}
+
+export type EditorModalState = {
+  target: BufferModalTarget
+  renderable: TextareaRenderable
+}
+
+export type CopyMode = "full" | "compact"
+
+export type PendingCopyChoiceState = {
+  previousMessage: string
+  previousTone: StatusTone
+}
+
 export type AppState = {
   jsonPath: string
   graphPayload: GraphPayload
@@ -53,6 +72,11 @@ export type AppState = {
   mainScrollTop: number
   mainViewportHeight: number
   showBufferModal: boolean
+  bufferModalCursor: number
+  promptText: string
+  conceptNotes: Record<string, string>
+  editorModal: EditorModalState | null
+  pendingCopyChoice: PendingCopyChoiceState | null
   statusTimeout: ReturnType<typeof setTimeout> | null
   statusVersion: number
 }

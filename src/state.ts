@@ -1,4 +1,4 @@
-import type { AppState, BufferSummary, ConceptNode, LayoutMode, StatusTone } from "./types"
+import type { AppState, BufferModalTarget, BufferSummary, ConceptNode, LayoutMode, StatusTone } from "./types"
 
 export function visiblePaths(state: AppState): string[] {
   return state.nodes.get(state.currentParentPath)?.childPaths ?? []
@@ -59,4 +59,25 @@ export function bufferSummary(state: AppState, maxVisible = 4): BufferSummary {
     visiblePaths,
     hiddenCount: Math.max(0, state.bufferedPaths.length - visiblePaths.length),
   }
+}
+
+export function bufferModalTargets(state: AppState): BufferModalTarget[] {
+  return [{ kind: "prompt" }, ...state.bufferedPaths.map((path) => ({ kind: "concept" as const, path }))]
+}
+
+export function clampBufferModalCursor(state: AppState): void {
+  const targets = bufferModalTargets(state)
+  state.bufferModalCursor = Math.max(0, Math.min(state.bufferModalCursor, Math.max(0, targets.length - 1)))
+}
+
+export function selectedBufferModalTarget(state: AppState): BufferModalTarget {
+  const targets = bufferModalTargets(state)
+  return targets[Math.max(0, Math.min(state.bufferModalCursor, Math.max(0, targets.length - 1)))] ?? { kind: "prompt" }
+}
+
+export function moveBufferModalCursor(state: AppState, delta: number): boolean {
+  const previous = state.bufferModalCursor
+  state.bufferModalCursor += delta
+  clampBufferModalCursor(state)
+  return state.bufferModalCursor !== previous
 }

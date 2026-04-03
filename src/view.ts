@@ -1,7 +1,7 @@
 import { type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes } from "@opentui/core"
 
 import { bulletList } from "./model"
-import { bufferSummary, currentNode, visiblePaths } from "./state"
+import { bufferModalTargets, currentNode, selectedBufferModalTarget, visiblePaths } from "./state"
 import type { AppState, ListLine, MainLine, StatusTone } from "./types"
 
 export const COLORS = {
@@ -89,6 +89,41 @@ export function toneColor(tone: StatusTone): string {
   if (tone === "warning") return COLORS.warning
   if (tone === "error") return COLORS.error
   return COLORS.accent
+}
+
+function truncateSingleLine(text: string, width: number): string {
+  const compact = text.replace(/\s+/g, " ").trim()
+  if (compact.length <= width) {
+    return compact
+  }
+  return `${compact.slice(0, Math.max(0, width - 3))}...`
+}
+
+function truncatePreviewLines(text: string, maxLines: number, width: number): string[] {
+  const normalized = text.replace(/\r\n/g, "\n").split("\n")
+  const flattened: string[] = []
+  for (const line of normalized) {
+    const source = line || ""
+    if (source.length === 0) {
+      flattened.push("")
+      continue
+    }
+    let remaining = source
+    while (remaining.length > width) {
+      flattened.push(remaining.slice(0, width))
+      remaining = remaining.slice(width)
+    }
+    flattened.push(remaining)
+  }
+  if (flattened.length <= maxLines) {
+    return [...flattened, ...Array.from({ length: Math.max(0, maxLines - flattened.length) }, () => "")].slice(0, maxLines)
+  }
+  const visible = flattened.slice(0, maxLines)
+  visible[maxLines - 1] = truncateSingleLine(visible[maxLines - 1], width)
+  if (visible[maxLines - 1].length >= 3) {
+    visible[maxLines - 1] = `${visible[maxLines - 1].slice(0, Math.max(0, width - 3))}...`
+  }
+  return visible
 }
 
 export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, root: { getChildren: () => Renderable[]; add: (child: Renderable | VNode<any, any[]>, index?: number) => number }): void {
@@ -208,15 +243,115 @@ export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainSc
                 width: state.layoutMode === "wide" ? 72 : "90%",
                 padding: 1,
                 backgroundColor: COLORS.panelSoft,
+                borderStyle: "rounded",
+                borderColor: COLORS.borderActive,
                 flexDirection: "column",
                 gap: 1,
               },
+              Text({ content: "Prompt Editor", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
+              (() => {
+                const promptSelected = selectedBufferModalTarget(state).kind === "prompt"
+                const promptLines = state.promptText.trim()
+                  ? truncatePreviewLines(state.promptText, 4, state.layoutMode === "wide" ? 64 : 48)
+                  : ["", "", "", ""]
+                return Box(
+                  {
+                    width: "100%",
+                    paddingX: 1,
+                    paddingY: 0,
+                    backgroundColor: promptSelected ? COLORS.selectedBg : COLORS.panel,
+                    flexDirection: "column",
+                  },
+                  ...promptLines.map((line) =>
+                    Text({
+                      content: line,
+                      fg: promptSelected ? COLORS.selectedFg : state.promptText.trim() ? COLORS.text : COLORS.muted,
+                      attributes: promptSelected ? TextAttributes.BOLD : 0,
+                    }),
+                  ),
+                )
+              })(),
               Text({ content: "Buffered Concepts", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
               ...(state.bufferedPaths.length === 0
                 ? [Text({ content: "(buffer is empty)", fg: COLORS.muted })]
-                : state.bufferedPaths.map((path) => Text({ content: `- ${path}`, fg: COLORS.text }))),
-              Text({ content: "Press any key to close", fg: COLORS.muted }),
+                : bufferModalTargets(state)
+                    .filter((target) => target.kind === "concept" && target.path)
+                    .flatMap((target) => {
+                      const activeTarget = selectedBufferModalTarget(state)
+                      const selected = activeTarget.kind === "concept" && activeTarget.path === target.path
+                      const note = state.conceptNotes[target.path!]?.trim()
+                      return [
+                        Box(
+                          {
+                            width: "100%",
+                            paddingX: 1,
+                            backgroundColor: selected ? COLORS.selectedBg : COLORS.panel,
+                          },
+                          Text({
+                            content: target.path!,
+                            fg: selected ? COLORS.selectedFg : COLORS.text,
+                            attributes: selected ? TextAttributes.BOLD : 0,
+                          }),
+                        ),
+                        ...(note
+                          ? [
+                              Box(
+                                {
+                                  width: state.layoutMode === "wide" ? 64 : "92%",
+                                  marginLeft: 3,
+                                  paddingX: 1,
+                                  backgroundColor: selected ? COLORS.panelSoft : "#171d22",
+                                },
+                                Box(
+                                  { width: "100%", flexDirection: "row", gap: 1 },
+                                  Text({ content: selected ? "|" : ":", fg: selected ? COLORS.accent : COLORS.border }),
+                                  Text({
+                                    content: truncateSingleLine(note, state.layoutMode === "wide" ? 56 : 38),
+                                    fg: selected ? COLORS.accentSoft : COLORS.muted,
+                                    attributes: selected ? TextAttributes.BOLD : 0,
+                                  }),
+                                ),
+                              ),
+                            ]
+                          : []),
+                      ]
+                    })),
+              Text({ content: "Esc/q closes, j/k move, Enter edits", fg: COLORS.muted }),
             ),
+            ...(state.editorModal
+              ? [
+                  Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000066" }),
+                  Box(
+                    {
+                      position: "absolute",
+                      top: 7,
+                      left: state.layoutMode === "wide" ? 12 : 2,
+                      width: state.layoutMode === "wide" ? 84 : "94%",
+                      padding: 1,
+                      backgroundColor: COLORS.panel,
+                      borderStyle: "rounded",
+                      borderColor: COLORS.borderActive,
+                      flexDirection: "column",
+                      gap: 1,
+                    },
+                    Text({
+                      content: state.editorModal.target.kind === "prompt" ? "Edit Prompt" : `Edit Context: ${state.editorModal.target.path}`,
+                      fg: COLORS.accent,
+                      attributes: TextAttributes.BOLD,
+                    }),
+                    Box(
+                      {
+                        width: "100%",
+                        minHeight: 8,
+                        backgroundColor: COLORS.panelSoft,
+                        flexDirection: "column",
+                      },
+                      state.editorModal.renderable,
+                    ),
+                    Text({ content: "Esc/Ctrl+Q cancels, Ctrl+Enter saves, Ctrl+G opens $EDITOR", fg: COLORS.muted }),
+                  ),
+                ]
+              : []),
           ]
         : []),
       Box(
