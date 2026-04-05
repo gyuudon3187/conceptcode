@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
+import { dirname, isAbsolute, resolve } from "node:path"
 
-import type { ConceptNode, GraphPayload, JsonValue, KindDefinition } from "./types"
+import type { ConceptNode, GraphPayload, JsonValue, KindDefinition, SourceLoc } from "./types"
 
 function asObject(value: JsonValue | undefined): Record<string, JsonValue> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -24,6 +25,21 @@ function normalizeChildren(children: JsonValue | undefined): Record<string, Reco
   return out
 }
 
+function asNumber(value: JsonValue | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function normalizeLoc(value: JsonValue | undefined): SourceLoc | null {
+  const loc = asObject(value)
+  const file = asString(loc.file)
+  const startLine = asNumber(loc.start_line)
+  const endLine = asNumber(loc.end_line)
+  if (!file || startLine === null || endLine === null || startLine < 1 || endLine < startLine) {
+    return null
+  }
+  return { file, startLine, endLine }
+}
+
 function buildNodes(
   nodePayload: Record<string, JsonValue>,
   path: string,
@@ -40,6 +56,7 @@ function buildNodes(
     summary: asString(nodePayload.summary),
     parentPath,
     metadata,
+    loc: normalizeLoc(nodePayload.loc),
     childPaths,
   })
   for (const [key, child] of Object.entries(childPayloads)) {
@@ -49,6 +66,33 @@ function buildNodes(
     }
   }
   return nodes
+}
+
+export function sourcePathForNode(jsonPath: string, node: ConceptNode): string | null {
+  if (!node.loc?.file) {
+    return null
+  }
+  const candidates = isAbsolute(node.loc.file)
+    ? [node.loc.file]
+    : [resolve(dirname(jsonPath), node.loc.file), resolve(node.loc.file)]
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0] ?? null
+}
+
+export function sourceLinesForNode(sourceFileCache: Map<string, string[]>, jsonPath: string, node: ConceptNode): string[] | null {
+  if (!node.loc) {
+    return null
+  }
+  const sourcePath = sourcePathForNode(jsonPath, node)
+  if (!sourcePath) {
+    return null
+  }
+  let lines = sourceFileCache.get(sourcePath)
+  if (!lines) {
+    const text = readFileSync(sourcePath, "utf8")
+    lines = text.replace(/\r\n/g, "\n").split("\n")
+    sourceFileCache.set(sourcePath, lines)
+  }
+  return lines.slice(node.loc.startLine - 1, node.loc.endLine)
 }
 
 function kindDefinitionsFromPayload(payload: GraphPayload, nodes: Map<string, ConceptNode>): KindDefinition[] {

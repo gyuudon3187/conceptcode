@@ -1,8 +1,8 @@
-import { type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes } from "@opentui/core"
+import { type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, Code, type TextChunk } from "@opentui/core"
 
-import { bulletList } from "./model"
+import { getSnippetSyntaxStyle, buildSnippetPreview } from "./snippet"
 import { bufferModalCategories, bufferModalItems, bufferedConceptForPath, currentNode, selectedBufferModalTarget, visiblePaths } from "./state"
-import type { AppState, BufferModalCategory, CreateConceptModalState, ListLine, MainLine, StatusTone } from "./types"
+import type { AppState, BufferModalCategory, CreateConceptModalState, ListLine, StatusTone } from "./types"
 
 export const COLORS = {
   bg: "#111417",
@@ -86,36 +86,6 @@ function conceptRowColors(item: ListLine): { background: string; title: string; 
     kind: COLORS.muted,
     badge: item.tone === "delete" ? COLORS.error : item.tone === "draft" ? COLORS.warning : item.buffered ? COLORS.accentSoft : COLORS.border,
   }
-}
-
-export function mainLines(state: AppState): MainLine[] {
-  const node = currentNode(state)
-  const lines: MainLine[] = [
-    { content: node.title, role: "title" },
-    { content: "", role: "body" },
-  ]
-  if (node.isDraft) {
-    lines.push({ content: "draft", role: "section" }, { content: "This concept was created in the TUI and is not yet part of the source concept graph.", role: "body" }, { content: "", role: "body" })
-  }
-  if (node.summary) {
-    lines.push({ content: "summary", role: "section" }, { content: node.summary, role: "body" }, { content: "", role: "body" })
-  }
-  for (const key of ["why_it_exists", "state_predicate"] as const) {
-    const value = node.metadata[key]
-    if (typeof value === "string" && value) {
-      lines.push({ content: key, role: "section" }, { content: value, role: "body" }, { content: "", role: "body" })
-    }
-  }
-  for (const [label, values] of [["aliases", bulletList(node.metadata.aliases)]] as const) {
-    if (values.length > 0) {
-      lines.push({ content: label, role: "section" })
-      for (const item of values) {
-        lines.push({ content: `- ${item}`, role: "body" })
-      }
-      lines.push({ content: "", role: "body" })
-    }
-  }
-  return lines
 }
 
 export function scrollListForCursor(state: AppState, listScroll: ScrollBoxRenderable): void {
@@ -522,7 +492,7 @@ function fuzzyKindScore(candidate: string, query: string): number {
 
 export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, root: { getChildren: () => Renderable[]; add: (child: Renderable | VNode<any, any[]>, index?: number) => number }): void {
   const listItems = listLines(state)
-  const mainItems = mainLines(state)
+  const selectedNode = currentNode(state)
 
   replaceChildren(
     listScroll,
@@ -551,19 +521,39 @@ export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainSc
     ),
   )
 
-  replaceChildren(
-    mainScroll,
-    Box(
-      { width: "100%", flexDirection: "column", gap: 0 },
-      ...mainItems.map((line) =>
-        Text({
-          content: line.content,
-          fg: line.role === "title" ? COLORS.accent : line.role === "section" ? COLORS.accentSoft : line.role === "muted" ? COLORS.muted : COLORS.text,
-          attributes: line.role === "title" || line.role === "section" ? TextAttributes.BOLD : 0,
+  void buildSnippetPreview(state, selectedNode).then(async (preview) => {
+    const syntaxStyle = await getSnippetSyntaxStyle()
+    const content = preview.lines.map((line) => line.chunks.map((chunk) => chunk.text).join("")).join("\n")
+    replaceChildren(
+      mainScroll,
+      Box(
+        { width: "100%", flexDirection: "column", gap: 0 },
+        ...(selectedNode.summary
+          ? [
+              Text({ content: "Summary", fg: COLORS.accentSoft, attributes: TextAttributes.BOLD }),
+              Text({ content: selectedNode.summary, fg: COLORS.text }),
+              Text({ content: "", fg: COLORS.text }),
+            ]
+          : []),
+        Code({
+          width: "100%",
+          flexGrow: 1,
+          content,
+          filetype: "text",
+          syntaxStyle,
+          wrapMode: "none",
+          drawUnstyledText: true,
+          onChunks: (_chunks) => {
+            const flattened = preview.lines.flatMap((line, index) => {
+              const withNewline = index === preview.lines.length - 1 ? line.chunks : [...line.chunks, { __isChunk: true, text: "\n" } satisfies TextChunk]
+              return withNewline
+            })
+            return flattened
+          },
         }),
       ),
-    ),
-  )
+    )
+  })
 
   const sidebar = Box(
     {
@@ -589,7 +579,7 @@ export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainSc
       flexGrow: 1,
       borderStyle: "rounded",
       borderColor: COLORS.border,
-      title: "Context",
+      title: selectedNode.loc ? `Context ${selectedNode.loc.file}:${selectedNode.loc.startLine}-${selectedNode.loc.endLine}` : "Context",
       padding: 1,
       backgroundColor: COLORS.panel,
     },

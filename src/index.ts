@@ -81,6 +81,7 @@ function insertDraftConcept(state: AppState, draft: CreateConceptDraft, kindDefi
     summary: draft.summary.trim(),
     parentPath: state.currentParentPath,
     metadata,
+    loc: null,
     childPaths: [],
     isDraft: true,
   }
@@ -122,6 +123,7 @@ async function main(): Promise<void> {
     jsonPath: conceptsPath,
     graphPayload,
     nodes,
+    sourceFileCache: new Map(),
     currentParentPath: "root",
     cursor: 0,
     bufferedConcepts: [],
@@ -679,7 +681,7 @@ async function main(): Promise<void> {
         return
       }
       if (key.name === "?" || (key.shift && key.name === "/")) {
-        setTimedStatus("Keys: j/k move, pgup/pgdn jump, g/G home/end, l open, h back, n new concept, space buffer/remove draft, d delete-buffer/remove draft, Enter open modal, y copy, p path, c clear, q quit", "info")
+        setTimedStatus("Keys: j/k move, pgup/pgdn jump, Ctrl+pgup/pgdn scroll context preview, g/G home/end, l open, h back, n new concept, space buffer/remove draft, d delete-buffer/remove draft, Enter open modal, y copy, p path, c clear, q quit", "info")
       }
     })
   }

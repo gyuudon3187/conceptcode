@@ -10,7 +10,8 @@
     "start": "bun run example"
   },
   "dependencies": {
-    "@opentui/core": "^0.1.96"
+    "@opentui/core": "^0.1.96",
+    "shiki": "^3.2.1"
   },
   "devDependencies": {
     "bun-types": "latest",

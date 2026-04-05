@@ -10,8 +10,15 @@ export type ConceptNode = {
   summary: string
   parentPath: string | null
   metadata: Record<string, JsonValue>
+  loc: SourceLoc | null
   childPaths: string[]
   isDraft?: boolean
+}
+
+export type SourceLoc = {
+  file: string
+  startLine: number
+  endLine: number
 }
 
 export type GraphPayload = {
@@ -115,6 +122,7 @@ export type AppState = {
   jsonPath: string
   graphPayload: GraphPayload
   nodes: Map<string, ConceptNode>
+  sourceFileCache: Map<string, string[]>
   currentParentPath: string
   cursor: number
   bufferedConcepts: BufferedConcept[]
