@@ -1,5 +1,6 @@
 node_modules/
 .direnv/
+examples/
 
 *.log
 debug.log

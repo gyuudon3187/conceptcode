@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import type { ConceptNode, GraphPayload, JsonValue } from "./types"
+import type { ConceptNode, GraphPayload, JsonValue, KindDefinition } from "./types"
 
 function asObject(value: JsonValue | undefined): Record<string, JsonValue> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -51,6 +51,19 @@ function buildNodes(
   return nodes
 }
 
+function kindDefinitionsFromPayload(payload: GraphPayload, nodes: Map<string, ConceptNode>): KindDefinition[] {
+  const interpretationHint = asObject(payload.interpretation_hint)
+  const kindDefinitions = asObject(interpretationHint.kind_definitions)
+  const fromGraph = Object.entries(kindDefinitions)
+    .filter(([, value]) => typeof value === "string")
+    .map(([kind, description]) => ({ kind, description: String(description), source: "graph" as const }))
+  if (fromGraph.length > 0) {
+    return fromGraph.sort((left, right) => left.kind.localeCompare(right.kind))
+  }
+  const inferredKinds = [...new Set([...nodes.values()].map((node) => node.kind))].sort((left, right) => left.localeCompare(right))
+  return inferredKinds.map((kind) => ({ kind, description: "", source: "graph" as const }))
+}
+
 export function asMetadataObject(value: JsonValue | undefined): Record<string, JsonValue> {
   return asObject(value)
 }
@@ -62,11 +75,12 @@ export function bulletList(value: JsonValue | undefined): string[] {
   return value.filter((item): item is string | number => typeof item === "string" || typeof item === "number").map(String)
 }
 
-export function loadConceptGraph(jsonPath: string): { graphPayload: GraphPayload; nodes: Map<string, ConceptNode> } {
+export function loadConceptGraph(jsonPath: string): { graphPayload: GraphPayload; nodes: Map<string, ConceptNode>; kindDefinitions: KindDefinition[] } {
   const payload = JSON.parse(readFileSync(jsonPath, "utf8")) as GraphPayload
   const rootPayload = asObject(payload.root as JsonValue | undefined)
   if (Object.keys(rootPayload).length === 0) {
     throw new Error(`Concept graph at ${jsonPath} is missing a root object`)
   }
-  return { graphPayload: payload, nodes: buildNodes(rootPayload, "root", null) }
+  const nodes = buildNodes(rootPayload, "root", null)
+  return { graphPayload: payload, nodes, kindDefinitions: kindDefinitionsFromPayload(payload, nodes) }
 }

@@ -1,13 +1,13 @@
 # setsumei
 
-`setsumei` is an OpenTUI application for browsing hierarchical concept graphs.
+`setsumei` is a tool for browsing hierarchical concept graphs.
 
-It reads a JSON concept graph, lets you navigate by stable concept path, and copies compact or full LLM-ready references to your clipboard.
+The current application is an OpenTUI browser that reads a JSON concept graph, lets you navigate by stable concept path, and copies compact or full LLM-ready references to your clipboard.
 
 ## Current goals
 
 - browse concepts by hierarchy rather than raw files
-- give each concept a stable path identifier
+- give each concept a stable derived path identifier
 - make it easy to refer to specific parts of a program in LLM prompts
 - support code, UI, workflows, data models, and other conceptual structures
 
@@ -65,7 +65,12 @@ bun run browse -- --concepts-path examples/book_ops_tui_concepts.json
 - `src/model.ts` loads and normalizes concept graphs
 - `src/state.ts` manages navigation, status, layout mode, and scroll state
 - `src/view.ts` renders the interface and pane layouts
-- `src/clipboard.ts` builds export payloads and integrates with `wl-copy`
+- `src/clipboard.ts` builds export payloads, including buffered concept actions, and integrates with `wl-copy`
+
+## Prompt workflows
+
+- `prompts/generate_concept_graph.md` is the main prompt for generating a concept graph from code.
+- `prompts/enrich_concept_graph_anchors.md` is a follow-up prompt for refining `loc` and `code_refs` without changing stable child keys or derived concept paths.
 
 ## Main controls
 
@@ -76,7 +81,9 @@ bun run browse -- --concepts-path examples/book_ops_tui_concepts.json
 - `G` / `end`: jump to bottom
 - `l` / right: drill down
 - `h` / left: go back
-- `space`: add or remove the highlighted concept from the buffer
+- `n`: create a new draft concept under the highlighted parent context
+- `space`: add or remove the highlighted persisted concept from the buffer; confirm removal for draft concepts
+- `d`: mark the highlighted persisted concept for deletion in the buffer; confirm removal for draft concepts
 - `enter`: copy compact context
 - `y`: copy full context
 - `p`: copy path only

@@ -1,17 +1,33 @@
 import { spawn } from "node:child_process"
 
 import { asMetadataObject, bulletList } from "./model"
-import type { AppState, ConceptNode, JsonValue } from "./types"
+import type { AppState, BufferedConcept, ConceptAction, ConceptNode, JsonValue } from "./types"
 
-function withConceptNote(lines: string[], note: string | undefined): string[] {
+function noteLabel(action: ConceptAction | undefined): string {
+  return action === "delete" ? "instructions" : "context"
+}
+
+function withConceptNote(lines: string[], note: string | undefined, action: ConceptAction | undefined): string[] {
   if (!note?.trim()) {
     return lines
   }
-  return [...lines, "- context:", ...note.trim().split("\n").map((line) => `  ${line}`)]
+  return [...lines, `- ${noteLabel(action)}:`, ...note.trim().split("\n").map((line) => `  ${line}`)]
 }
 
-export function renderClipboardBlock(node: ConceptNode, compact: boolean): string {
+function actionInstruction(action: ConceptAction): string {
+  if (action === "delete") {
+    return "Remove the code, behavior, UI, state, and references that correspond to this concept. Preserve surrounding code by updating call sites, imports, transitions, and related logic as needed."
+  }
+  return ""
+}
+
+export function renderClipboardBlock(node: ConceptNode, compact: boolean, action: ConceptAction | undefined): string {
   const lines = ["## Concept", `- path: \`${node.path}\``, `- title: ${node.title}`, `- kind: ${node.kind}`]
+  if (node.isDraft) {
+    lines.push("- action: create")
+  } else if (action) {
+    lines.push(`- action: ${action}`)
+  }
   if (node.summary) {
     lines.push(`- summary: ${node.summary}`)
   }
@@ -44,12 +60,43 @@ export function renderClipboardBlock(node: ConceptNode, compact: boolean): strin
   if (node.childPaths.length > 0) {
     lines.push("- child_paths:", ...node.childPaths.map((item) => `  - ${item}`))
   }
+  if (node.isDraft) {
+    lines.push("- draft_status: newly created in the TUI and not yet present in the source concept graph")
+  }
   return `${lines.join("\n")}\n`
 }
 
-export function renderClipboardBlockWithContext(node: ConceptNode, compact: boolean, note: string | undefined): string {
-  const base = renderClipboardBlock(node, compact).trimEnd().split("\n")
-  return `${withConceptNote(base, note).join("\n")}\n`
+export function renderClipboardBlockWithContext(node: ConceptNode, compact: boolean, note: string | undefined, action: ConceptAction | undefined): string {
+  const effectiveAction = node.isDraft ? undefined : action
+  const base = renderClipboardBlock(node, compact, effectiveAction).trimEnd().split("\n")
+  return `${withConceptNote(base, note, node.isDraft ? undefined : effectiveAction).join("\n")}\n`
+}
+
+function renderActionMetadata(nodes: ConceptNode[], bufferedConcepts: BufferedConcept[]): string[] {
+  const actions = new Set<ConceptAction | "create">()
+  for (const node of nodes) {
+    if (node.isDraft) {
+      actions.add("create")
+    }
+  }
+  for (const item of bufferedConcepts) {
+    if (item.action) {
+      actions.add(item.action)
+    }
+  }
+  if (actions.size === 0) {
+    return []
+  }
+  const lines = ["# Actions"]
+  for (const action of [...actions]) {
+    if (action === "create") {
+      lines.push("- create: Add code, behavior, UI, state, and references needed to implement this newly drafted concept and integrate it into the surrounding system.")
+    } else {
+      lines.push(`- ${action}: ${actionInstruction(action)}`)
+    }
+  }
+  lines.push("")
+  return lines
 }
 
 function flattenInterpretationHints(value: JsonValue, prefix = ""): string[] {
@@ -72,8 +119,11 @@ function flattenInterpretationHints(value: JsonValue, prefix = ""): string[] {
 }
 
 export function buildClipboardPayload(state: AppState, compact: boolean, currentPath: string): string {
-  const paths = state.bufferedPaths.length > 0 ? state.bufferedPaths : [currentPath]
-  const concepts = paths.map((path) => renderClipboardBlockWithContext(state.nodes.get(path)!, compact, state.conceptNotes[path])).join("\n")
+  const bufferedConcepts = state.bufferedConcepts.length > 0 ? state.bufferedConcepts : [{ path: currentPath }]
+  const selectedNodes = bufferedConcepts.map((item) => state.nodes.get(item.path)!).filter(Boolean)
+  const concepts = bufferedConcepts
+    .map((item) => renderClipboardBlockWithContext(state.nodes.get(item.path)!, compact, state.conceptNotes[item.path], item.action))
+    .join("\n")
   const promptText = state.promptText.trim()
   if (compact) {
     return [promptText, concepts.trimEnd()].filter(Boolean).join("\n\n") + "\n"
@@ -81,17 +131,17 @@ export function buildClipboardPayload(state: AppState, compact: boolean, current
   const interpretationHint = asMetadataObject(state.graphPayload.interpretation_hint)
   const hintLines = flattenInterpretationHints(interpretationHint)
   const conceptsHeader = promptText || "# Concepts"
+  const actionLines = renderActionMetadata(selectedNodes, bufferedConcepts)
   if (hintLines.length === 0) {
-    return [conceptsHeader, "", concepts.trimEnd(), ""].join("\n")
+    return [conceptsHeader, "", concepts.trimEnd(), "", ...actionLines].join("\n")
   }
-  return [conceptsHeader, "", concepts.trimEnd(), "", "# Shared Interpretation Hints", ...hintLines, ""].join("\n")
+  return [conceptsHeader, "", concepts.trimEnd(), "", ...actionLines, "# Shared Interpretation Hints", ...hintLines, ""].join("\n")
 }
 
 export function clipboardSelection(state: AppState, currentPath: string): { paths: string[]; count: number } {
-  const paths = state.bufferedPaths.length > 0 ? [...state.bufferedPaths] : [currentPath]
+  const paths = state.bufferedConcepts.length > 0 ? state.bufferedConcepts.map((item) => item.path) : [currentPath]
   return { paths, count: paths.length }
 }
-
 
 export function copyToClipboard(text: string): Promise<{ ok: boolean; message: string }> {
   return new Promise((resolvePromise) => {

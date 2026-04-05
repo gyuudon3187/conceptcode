@@ -1,10 +1,14 @@
 # AGENTS.md
 
+## Scope
+
+These instructions apply repo-wide unless a deeper `AGENTS.md` overrides them.
+
 ## Project purpose
 
-`setsumei` is a standalone tool for representing programs as hierarchical concept graphs and browsing those graphs in a TUI.
+`setsumei` is a tool for representing software and related systems as hierarchical concept graphs and browsing those graphs in a TUI.
 
-The project is not limited to TUIs. It should be usable for:
+The project is not limited to TUIs or to source code modules. It should work well for:
 
 - applications
 - libraries
@@ -15,66 +19,44 @@ The project is not limited to TUIs. It should be usable for:
 - state machines
 - data models
 
-The central idea is that a human or LLM can refer to a concept by a stable path like `root.views.merge_view.pending_selection` instead of relying on vague natural-language descriptions.
+The core idea is that a human or LLM can refer to a concept by a stable derived path like `root.views.merge_view.pending_selection` instead of relying on vague natural-language descriptions.
 
-## Key product ideas
+## Product invariants
 
 - The JSON concept graph is the source of truth.
-- Each concept has a stable `path`.
+- Stable concept paths come from object keys under `children`, so those keys are user-facing and should stay stable when possible.
+- Treat the JSON schema as user-facing and long-lived; avoid breaking changes unless clearly necessary.
 - Concepts may describe views, workflows, controls, regions, data models, behaviors, transitions, or any other useful abstraction.
-- The browser should optimize for quick inspection and easy clipboard export for LLM prompts.
-- Default clipboard export should stay concise.
-- Richer context should remain available on demand.
+- Default clipboard export should stay concise, with richer context available on demand.
+- Shared interpretation hints such as `kind_definitions` should stay compact and reusable across the graph.
 
 ## Guidance for agents working here
 
-- Prefer changes that make the tool more generic rather than more tied to one codebase.
-- Preserve stable paths in concept graphs whenever possible.
-- Treat the JSON schema as user-facing and long-lived; avoid breaking changes unless clearly necessary.
-- Keep clipboard payloads compact by default.
-- Keep the browser responsive; avoid blocking subprocess behavior.
+- Preserve stable child keys and therefore stable derived paths whenever possible.
+- Prefer a good concept graph over uncertain source anchors.
+- Use `loc` for one best primary span and `code_refs` for supplementary anchors.
 - Favor plain text formats that paste cleanly into LLM chats.
+- Apply more specific local `AGENTS.md` guidance when working inside subdirectories such as `src/` or `prompts/`.
 
 ## Repository conventions
 
-- Package code lives in `setsumei/`.
+- Package code lives in `src/`.
 - Example concept graphs live in `examples/`.
 - User and developer documentation lives in `docs/`.
-- Reusable prompt/command material for concept-graph creation lives in `prompts/`.
+- Reusable prompt material for concept-graph creation lives in `prompts/`.
+- Command wrappers and reusable invocation text live in `commands/`.
 
-## Development environment
+## Schema reference
 
-- This repo provides `bun` through the Nix flake in `flake.nix`.
-- When `bun` is not available directly on `PATH`, run Bun commands through the dev shell, for example `nix develop -c bun run typecheck`.
-- `.envrc` uses `use flake`, so `direnv` may also make `bun` available automatically in some shells.
+- Canonical schema guidance lives in `docs/json_schema.md`.
+- Keep the top-level graph shape consistent with the canonical schema and schema version.
+- `source_file` is graph-level context, while `loc.file` is concept-level truth for a specific anchor.
+- Use optional fields such as `why_it_exists`, `loc`, `code_refs`, `related_paths`, `aliases`, `state_predicate`, and `interpretation_hint.kind_definitions` only when they add real value.
 
-## Concept graph expectations
+## Concept-graph workflow
 
-Expected top-level shape:
-
-```json
-{
-  "schema_version": 1,
-  "source_file": "path/to/source.py",
-  "interpretation_hint": {},
-  "root": {
-    "title": "...",
-    "kind": "module",
-    "summary": "...",
-    "children": {}
-  }
-}
-```
-
-Useful optional concept fields include:
-
-- `summary`
-- `why_it_exists`
-- `code_refs`
-- `related_paths`
-- `aliases`
-- `state_predicate`
-- `children`
+- It is acceptable to create the main concept graph and enrich source anchors in separate passes.
+- When enriching anchors later, preserve the existing hierarchy and stable concept paths unless the original graph is clearly wrong.
 
 ## Prompt-generation goal
 
