@@ -72,6 +72,11 @@ function aliasSuggestions(state: AppState, query: string): string[] {
   return [...prefixMatches, ...substringMatches]
 }
 
+function maxVisibleAliasSuggestions(): number {
+  const viewportHeight = process.stdout.rows || 24
+  return viewportHeight <= 32 ? 3 : 4
+}
+
 function editorCursorOffset(editor: EditorModalState): number {
   const cursorOffset = (editor.renderable as TextareaRenderable & { cursorOffset?: number }).cursorOffset
   return typeof cursorOffset === "number" ? cursorOffset : editor.renderable.plainText.length
@@ -101,6 +106,7 @@ function activeAliasSuggestion(state: AppState, editor: EditorModalState): { que
 
 function refreshAliasSuggestion(state: AppState): void {
   const editor = state.editorModal
+  const maxVisibleSuggestions = maxVisibleAliasSuggestions()
   if (!editor) {
     return
   }
@@ -115,7 +121,13 @@ function refreshAliasSuggestion(state: AppState): void {
     start: next.start,
     end: next.end,
     selectedIndex: Math.max(0, Math.min(previousIndex, next.suggestions.length - 1)),
+    visibleStartIndex: 0,
   }
+  const maxStart = Math.max(0, next.suggestions.length - maxVisibleSuggestions)
+  editor.aliasSuggestion.visibleStartIndex = Math.max(
+    0,
+    Math.min(editor.aliasSuggestion.selectedIndex - Math.floor(maxVisibleSuggestions / 2), maxStart),
+  )
 }
 
 function refreshAliasSuggestionSoon(state: AppState, redraw: () => void): void {
@@ -136,6 +148,7 @@ function refreshAliasSuggestionSoon(state: AppState, redraw: () => void): void {
 
 function moveAliasSuggestionSelection(state: AppState, delta: number): boolean {
   const editor = state.editorModal
+  const maxVisibleSuggestions = maxVisibleAliasSuggestions()
   if (!editor?.aliasSuggestion) {
     return false
   }
@@ -146,6 +159,11 @@ function moveAliasSuggestionSelection(state: AppState, delta: number): boolean {
   }
   const previous = editor.aliasSuggestion.selectedIndex
   editor.aliasSuggestion.selectedIndex = Math.max(0, Math.min(previous + delta, suggestions.length - 1))
+  if (editor.aliasSuggestion.selectedIndex < editor.aliasSuggestion.visibleStartIndex) {
+    editor.aliasSuggestion.visibleStartIndex = editor.aliasSuggestion.selectedIndex
+  } else if (editor.aliasSuggestion.selectedIndex >= editor.aliasSuggestion.visibleStartIndex + maxVisibleSuggestions) {
+    editor.aliasSuggestion.visibleStartIndex = editor.aliasSuggestion.selectedIndex - maxVisibleSuggestions + 1
+  }
   return editor.aliasSuggestion.selectedIndex !== previous
 }
 

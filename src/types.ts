@@ -82,6 +82,7 @@ export type AliasSuggestionState = {
   start: number
   end: number
   selectedIndex: number
+  visibleStartIndex: number
 }
 
 export type EditorModalState = {

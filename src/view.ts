@@ -21,6 +21,11 @@ export const COLORS = {
   selectedBg: "#f2cc8f",
 } as const
 
+function maxVisibleAliasSuggestions(): number {
+  const viewportHeight = process.stdout.rows || 24
+  return viewportHeight <= 32 ? 3 : 4
+}
+
 let contextRenderVersion = 0
 let contextPreviewKey: string | null = null
 
@@ -154,6 +159,7 @@ export function renderFrame(
 
   if (state.editorModal) {
     const aliasSuggestion = state.editorModal.aliasSuggestion
+    const maxVisibleSuggestions = maxVisibleAliasSuggestions()
     const aliasMatches = aliasSuggestion
       ? Object.keys(state.aliasPaths)
           .sort((left, right) => left.localeCompare(right))
@@ -194,16 +200,19 @@ export function renderFrame(
               Box(
                 {
                   width: "100%",
-                  maxHeight: 6,
+                  padding: 1,
                   paddingX: 1,
-                  paddingY: 0,
                   backgroundColor: "#171d22",
                   borderStyle: "rounded",
                   borderColor: COLORS.warning,
                   flexDirection: "column",
                 },
-                ...aliasMatches.slice(0, 6).map((alias, index) => {
-                  const selected = index === aliasSuggestion.selectedIndex
+                ...aliasMatches.slice(
+                  aliasSuggestion.visibleStartIndex,
+                  aliasSuggestion.visibleStartIndex + maxVisibleSuggestions,
+                ).map((alias, index) => {
+                  const absoluteIndex = aliasSuggestion.visibleStartIndex + index
+                  const selected = absoluteIndex === aliasSuggestion.selectedIndex
                   return Box(
                     {
                       width: "100%",
@@ -658,56 +667,13 @@ function renderBufferCategoryPane(state: AppState, category: BufferModalCategory
 }
 
 function renderBufferCategorySwitcher(state: AppState, visibleCategories: BufferModalCategory[]): Renderable | VNode<any, any[]> {
-  if (state.bufferModal.mode === "retyping") {
-    const displayCategories = bufferModalCategories().filter((category) => bufferModalItems(state, category).length > 0)
-    const current = visibleCategories.includes(state.bufferModal.activeCategory) ? state.bufferModal.activeCategory : visibleCategories[0] ?? null
-    const activeIndex = visibleCategories.indexOf(current ?? visibleCategories[0] ?? "buffered")
-    const leftCandidate = activeIndex > 0 ? visibleCategories[activeIndex - 1] : null
-    const rightCandidate = activeIndex >= 0 && activeIndex < visibleCategories.length - 1 ? visibleCategories[activeIndex + 1] : null
-    const left = leftCandidate && displayCategories.includes(leftCandidate) ? leftCandidate : null
-    const right = rightCandidate && displayCategories.includes(rightCandidate) ? rightCandidate : null
-    const width = state.layoutMode === "wide" ? 92 : 56
-    const thirdWidth = Math.floor(width / 3)
-
-    return Box(
-      {
-        width,
-        flexDirection: "row",
-        justifyContent: "center",
-        alignItems: "center",
-        alignSelf: "center",
-      },
-      Box(
-        { width: thirdWidth, justifyContent: "center", alignItems: "center" },
-        Text({ content: left ? `${left}  <` : "", fg: COLORS.muted }),
-      ),
-      Box(
-        { width: thirdWidth, justifyContent: "center", alignItems: "center" },
-        Text({ content: current ?? "", fg: current ? bufferCategoryLabelColor(current) : COLORS.accent, attributes: TextAttributes.BOLD }),
-      ),
-      Box(
-        { width: width - thirdWidth * 2, justifyContent: "center", alignItems: "center" },
-        Text({ content: right ? `>  ${right}` : "", fg: COLORS.muted }),
-      ),
-    )
-  }
-  if (visibleCategories.length <= 1) {
-    return Box(
-      {
-        width: "100%",
-        justifyContent: "center",
-        alignItems: "center",
-        paddingX: 1,
-      },
-      Text({ content: visibleCategories[0] ?? "", fg: visibleCategories[0] ? bufferCategoryLabelColor(visibleCategories[0]) : COLORS.accent, attributes: TextAttributes.BOLD }),
-    )
-  }
   const activeIndex = visibleCategories.indexOf(state.bufferModal.activeCategory)
   const left = activeIndex > 0 ? visibleCategories[activeIndex - 1] : null
   const current = activeIndex >= 0 ? visibleCategories[activeIndex] : null
   const right = activeIndex >= 0 && activeIndex < visibleCategories.length - 1 ? visibleCategories[activeIndex + 1] : null
   const width = state.layoutMode === "wide" ? 92 : 56
   const thirdWidth = Math.floor(width / 3)
+  const showNeighbors = visibleCategories.length > 1
 
   return Box(
     {
@@ -719,7 +685,7 @@ function renderBufferCategorySwitcher(state: AppState, visibleCategories: Buffer
     },
     Box(
       { width: thirdWidth, justifyContent: "center", alignItems: "center" },
-      Text({ content: left ? `${left}  <` : "", fg: COLORS.muted }),
+      Text({ content: showNeighbors && left ? `${left}  <` : "", fg: COLORS.muted }),
     ),
     Box(
       { width: thirdWidth, justifyContent: "center", alignItems: "center" },
@@ -727,7 +693,7 @@ function renderBufferCategorySwitcher(state: AppState, visibleCategories: Buffer
     ),
     Box(
       { width: width - thirdWidth * 2, justifyContent: "center", alignItems: "center" },
-      Text({ content: right ? `>  ${right}` : "", fg: COLORS.muted }),
+      Text({ content: showNeighbors && right ? `>  ${right}` : "", fg: COLORS.muted }),
     ),
   )
 }
