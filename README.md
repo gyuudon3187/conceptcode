@@ -51,11 +51,28 @@ Run against a specific concept graph:
 bun run browse -- --concepts-path examples/book_ops_tui_concepts.json
 ```
 
+Provide extra kind choices from a TUI options JSON file:
+
+```bash
+bun run browse -- --concepts-path examples/book_ops_tui_concepts.json --options-path kinds.json
+```
+
+Example options file:
+
+```json
+{
+  "kind_definitions": {
+    "workflow": "A multi-step behavior with meaningful transitions.",
+    "control": "A user-facing input or command surface."
+  }
+}
+```
+
 ## Useful scripts
 
 - `bun run example` - launch the bundled example browser
 - `bun run start` - alias for `example`
-- `bun run browse -- --concepts-path <file>` - browse a specific graph
+- `bun run browse -- --concepts-path <file> [--options-path <file>]` - browse a specific graph
 - `bun run typecheck` - run TypeScript checks
 - `bun run check` - run the project validation command set
 
@@ -70,7 +87,14 @@ bun run browse -- --concepts-path examples/book_ops_tui_concepts.json
 ## Prompt workflows
 
 - `prompts/generate_concept_graph.md` is the main prompt for generating a concept graph from code.
-- `prompts/enrich_concept_graph_anchors.md` is a follow-up prompt for refining `loc` and `code_refs` without changing stable child keys or derived concept paths.
+- `prompts/enrich_concept_graph_anchors.md` is a follow-up prompt for refining `loc` without changing stable child keys or derived concept paths.
+- `prompts/enrich_kind_definitions.md` is a separate follow-up prompt for generating a TUI options file with semantic descriptions for the kinds already present in a graph.
+
+## Command workflow
+
+- `/concept-graph <target>` generates a new concept graph.
+- `/concept-graph <target> anchors <existing-graph>` enriches `loc` in an existing graph.
+- `/concept-graph <target> kinds <existing-graph>` generates a JSON options file with `kind_definitions` for the kinds already used in that graph.
 
 ## Main controls
 
@@ -81,9 +105,7 @@ bun run browse -- --concepts-path examples/book_ops_tui_concepts.json
 - `G` / `end`: jump to bottom
 - `l` / right: drill down
 - `h` / left: go back
-- `n`: create a new draft concept under the highlighted parent context
-- `space`: add or remove the highlighted persisted concept from the buffer; confirm removal for draft concepts
-- `d`: mark the highlighted persisted concept for deletion in the buffer; confirm removal for draft concepts
+- `space`: open actions for the highlighted concept, or confirm removal for draft concepts
 - `enter`: copy compact context
 - `y`: copy full context
 - `p`: copy path only

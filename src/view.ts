@@ -1,7 +1,7 @@
 import { type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, Code, type TextChunk } from "@opentui/core"
 
 import { getSnippetSyntaxStyle, buildSnippetPreview } from "./snippet"
-import { bufferModalCategories, bufferModalItems, bufferedConceptForPath, currentNode, selectedBufferModalTarget, visiblePaths } from "./state"
+import { bufferModalCategories, bufferModalItems, bufferedConceptForPath, currentNode, selectedBufferModalTarget, visibleBufferModalCategories, visiblePaths } from "./state"
 import type { AppState, BufferModalCategory, CreateConceptModalState, ListLine, StatusTone } from "./types"
 
 export const COLORS = {
@@ -20,6 +20,254 @@ export const COLORS = {
   selectedFg: "#101418",
   selectedBg: "#f2cc8f",
 } as const
+
+let contextRenderVersion = 0
+let contextPreviewKey: string | null = null
+
+function contextKeyForNode(path: string, loc: { file: string; startLine: number; endLine: number } | null, summary: string): string {
+  if (!loc) {
+    return `${path}::no-loc::${summary}`
+  }
+  return `${path}::${loc.file}:${loc.startLine}-${loc.endLine}::${summary}`
+}
+
+export function renderStatusPane(state: AppState): Renderable | VNode<any, any[]> {
+  return Box(
+    {
+      width: "100%",
+      borderStyle: "rounded",
+      borderColor: statusPaneColor(state),
+      paddingX: 1,
+      paddingY: 1,
+      backgroundColor: COLORS.panel,
+    },
+    Text({ content: state.status.message, fg: statusPaneColor(state) }),
+  )
+}
+
+export function renderFrame(
+  state: AppState,
+  listScroll: ScrollBoxRenderable,
+  mainScroll: ScrollBoxRenderable,
+  statusPane: Renderable | VNode<any, any[]>,
+): Renderable | VNode<any, any[]> {
+  const selectedNode = currentNode(state)
+  const sidebar = Box(
+    {
+      width: state.layoutMode === "wide" ? 44 : "100%",
+      flexShrink: 0,
+      flexDirection: "column",
+    },
+    Box(
+      {
+        flexGrow: 1,
+        borderStyle: "rounded",
+        borderColor: COLORS.borderActive,
+        title: `Concepts                         nav: ${conceptMovementIndicator(state)}`,
+        padding: 1,
+        backgroundColor: COLORS.panel,
+      },
+      listScroll,
+    ),
+  )
+
+  const context = Box(
+    {
+      flexGrow: 1,
+      borderStyle: "rounded",
+      borderColor: COLORS.border,
+      title: selectedNode.loc ? `Context ${selectedNode.loc.file}:${selectedNode.loc.startLine}-${selectedNode.loc.endLine}` : "Context",
+      padding: 1,
+      backgroundColor: COLORS.panel,
+    },
+    mainScroll,
+  )
+
+  const overlays: Array<Renderable | VNode<any, any[]>> = []
+
+  if (state.showBufferModal) {
+    const visibleCategories = visibleBufferModalCategories(state)
+    const layout = bufferModalLayout(state, visibleCategories)
+    const promptSelected = selectedBufferModalTarget(state).kind === "prompt"
+    const hasCategory = Boolean(layout.selectedCategory)
+    overlays.push(
+      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
+      Box(
+        {
+          position: "absolute",
+          top: layout.top,
+          left: state.layoutMode === "wide" ? "50%" : 2,
+          width: state.layoutMode === "wide" ? 108 : "94%",
+          height: layout.height,
+          padding: 1,
+          backgroundColor: COLORS.panelSoft,
+          borderStyle: "rounded",
+          borderColor: COLORS.borderActive,
+          marginLeft: state.layoutMode === "wide" ? -54 : undefined,
+          flexDirection: "column",
+          gap: 1,
+        },
+        Text({ content: "Prompt Editor", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
+        (() => {
+          const promptLines = state.promptText.trim()
+            ? truncatePreviewLines(state.promptText, layout.promptPreviewLines, state.layoutMode === "wide" ? 64 : 48)
+            : Array.from({ length: layout.promptPreviewLines }, () => "")
+          return Box(
+            {
+              width: "100%",
+              paddingX: 1,
+              paddingY: 0,
+              backgroundColor: promptSelected ? COLORS.selectedBg : COLORS.panel,
+              flexDirection: "column",
+            },
+            ...promptLines.map((line) =>
+              Text({
+                content: line,
+                fg: promptSelected ? COLORS.selectedFg : state.promptText.trim() ? COLORS.text : COLORS.muted,
+                attributes: promptSelected ? TextAttributes.BOLD : 0,
+              }),
+            ),
+          )
+        })(),
+        ...(layout.selectedCategory
+          ? [
+              renderBufferCategorySwitcher(state, visibleCategories),
+              Box(
+                {
+                  width: "100%",
+                  flexDirection: "column",
+                },
+                renderBufferCategoryPane(state, layout.selectedCategory, layout.paneVisibleRows, layout.paneHeight, layout.showRange),
+              ),
+            ]
+          : []),
+        Box(
+          {
+            width: "100%",
+            paddingX: 1,
+          },
+          Text({ content: bufferModalHelpText(state, hasCategory, promptSelected), fg: COLORS.muted }),
+        ),
+      ),
+    )
+  }
+
+  if (state.editorModal) {
+    const aliasSuggestion = state.editorModal.aliasSuggestion
+    const aliasMatches = aliasSuggestion
+      ? Object.keys(state.aliasPaths)
+          .sort((left, right) => left.localeCompare(right))
+          .filter((alias) => aliasSuggestion.query.length === 0 || alias.slice(1).toLowerCase().includes(aliasSuggestion.query.toLowerCase()))
+      : []
+    overlays.push(
+      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000066" }),
+      Box(
+        {
+          position: "absolute",
+          top: state.layoutMode === "wide" ? 7 : 5,
+          left: state.layoutMode === "wide" ? "50%" : 2,
+          width: state.layoutMode === "wide" ? 84 : "94%",
+          padding: 1,
+          backgroundColor: COLORS.panel,
+          borderStyle: "rounded",
+          borderColor: COLORS.borderActive,
+          marginLeft: state.layoutMode === "wide" ? -42 : undefined,
+          flexDirection: "column",
+          gap: 1,
+        },
+        Text({
+          content: state.editorModal.target.kind === "prompt" ? "Edit Prompt" : `Edit Context: ${state.editorModal.target.path}`,
+          fg: COLORS.accent,
+          attributes: TextAttributes.BOLD,
+        }),
+        Box(
+          {
+            width: "100%",
+            minHeight: 8,
+            backgroundColor: COLORS.panelSoft,
+            flexDirection: "column",
+          },
+          state.editorModal.renderable,
+        ),
+        ...(aliasSuggestion && aliasMatches.length > 0
+          ? [
+              Box(
+                {
+                  width: "100%",
+                  maxHeight: 6,
+                  paddingX: 1,
+                  paddingY: 0,
+                  backgroundColor: "#171d22",
+                  borderStyle: "rounded",
+                  borderColor: COLORS.warning,
+                  flexDirection: "column",
+                },
+                ...aliasMatches.slice(0, 6).map((alias, index) => {
+                  const selected = index === aliasSuggestion.selectedIndex
+                  return Box(
+                    {
+                      width: "100%",
+                      paddingX: 1,
+                      backgroundColor: selected ? COLORS.selectedBg : "#171d22",
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                    },
+                    Text({ content: alias, fg: selected ? COLORS.selectedFg : COLORS.warning, attributes: TextAttributes.BOLD }),
+                    Text({ content: state.aliasPaths[alias] ?? "", fg: selected ? COLORS.selectedFg : COLORS.muted }),
+                  )
+                }),
+              ),
+            ]
+          : []),
+        Text({ content: "Esc/Ctrl+Q cancels, Enter saves, Shift+Enter adds newline, Ctrl+G opens $EDITOR, Ctrl+H/Ctrl+L retypes existing concepts", fg: COLORS.muted }),
+      ),
+    )
+  }
+
+  if (state.createConceptModal) {
+    overlays.push(...renderCreateConceptModal(state, state.createConceptModal))
+  }
+
+  overlays.push(...renderConfirmModal(state))
+
+  return Box(
+    {
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+      backgroundColor: COLORS.bg,
+      padding: 1,
+      gap: 1,
+    },
+    Box(
+      {
+        width: "100%",
+        borderStyle: "rounded",
+        borderColor: COLORS.borderActive,
+        paddingX: 2,
+        paddingY: 1,
+        backgroundColor: COLORS.panel,
+      },
+      Box(
+        { width: "100%", flexDirection: state.layoutMode === "wide" ? "row" : "column", justifyContent: "space-between" },
+        Text({ content: "⚓", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
+        Text({ content: currentNode(state).path, fg: COLORS.muted }),
+      ),
+    ),
+    Box(
+      {
+        width: "100%",
+        flexGrow: 1,
+        flexDirection: state.layoutMode === "wide" ? "row" : "column",
+        gap: 1,
+      },
+      sidebar,
+      context,
+    ),
+    ...overlays,
+    statusPane,
+  )
+}
 
 export function replaceChildren(
   renderable: { getChildren: () => Renderable[]; add: (child: Renderable | VNode<any, any[]>, index?: number) => number },
@@ -44,7 +292,7 @@ export function listLines(state: AppState): ListLine[] {
     const stateLabel = node.isDraft ? "new" : bufferedConcept?.action === "delete" ? "del" : buffered ? "buf" : undefined
     return {
       title: node.title,
-      kindLabel: node.kind,
+      kindLabel: node.kind ?? "(no kind)",
       stateLabel,
       selected,
       buffered,
@@ -153,7 +401,7 @@ function clampVisibleWindow(cursor: number, total: number, maxVisible: number): 
   return { start, end: Math.min(total, start + maxVisible) }
 }
 
-function createFormField(label: string, value: string, selected: boolean, placeholder: string): Renderable | VNode<any, any[]> {
+function createFormField(label: string, value: string, selected: boolean, placeholder: string, detail?: string): Renderable | VNode<any, any[]> {
   return Box(
     {
       width: "100%",
@@ -169,102 +417,88 @@ function createFormField(label: string, value: string, selected: boolean, placeh
       },
       Text({ content: value || placeholder, fg: selected ? COLORS.selectedFg : value ? COLORS.text : COLORS.muted, attributes: selected ? TextAttributes.BOLD : 0 }),
     ),
+    ...(detail ? [Text({ content: detail, fg: COLORS.muted })] : []),
   )
 }
 
 function renderCreateConceptModal(state: AppState, modal: CreateConceptModalState): Array<Renderable | VNode<any, any[]>> {
-  if (modal.step === "details") {
-    return [
-      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
-      Box(
-        {
-          position: "absolute",
-          top: state.layoutMode === "wide" ? 5 : 4,
-          left: state.layoutMode === "wide" ? "50%" : 2,
-          width: state.layoutMode === "wide" ? 72 : "92%",
-          padding: 1,
-          backgroundColor: COLORS.panelSoft,
-          borderStyle: "rounded",
-          borderColor: COLORS.borderActive,
-          marginLeft: state.layoutMode === "wide" ? -36 : undefined,
-          flexDirection: "column",
-          gap: 1,
-        },
-        Text({ content: "New Concept", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
-        createFormField("Name", modal.draft.title, modal.fieldIndex === 0, "Type the display name"),
-        createFormField("Summary", modal.draft.summary, modal.fieldIndex === 1, "Type a short summary"),
-        Text({ content: "Type to edit. Tab/Ctrl+J/Ctrl+K changes field. Enter continues. Esc/Ctrl+Q cancels.", fg: COLORS.muted }),
-      ),
-    ]
-  }
-
-  if (modal.step === "pick-kind") {
-    const query = modal.kindQuery.trim().toLowerCase()
-    const rankedOptions = state.kindDefinitions
-      .map((item) => ({ item, score: fuzzyKindScore(item.kind, query) }))
-      .filter((entry) => query.length === 0 || entry.score > 0)
-      .sort((left, right) => right.score - left.score || left.item.kind.localeCompare(right.item.kind))
-      .map((entry) => entry.item)
-    const options = [{ kind: "<new kind>", description: "Create a new kind with its own semantic description.", source: "session" as const }, ...rankedOptions]
-    const maxVisibleOptions = state.layoutMode === "wide" ? 4 : 2
-    const { start, end } = clampVisibleWindow(modal.kindCursor, options.length, maxVisibleOptions)
-    const visibleOptions = options.slice(start, end)
-    return [
-      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
-      Box(
-        {
-          position: "absolute",
-          top: state.layoutMode === "wide" ? 2 : 2,
-          left: state.layoutMode === "wide" ? "50%" : 2,
-          width: state.layoutMode === "wide" ? 84 : "94%",
-          padding: 1,
-          backgroundColor: COLORS.panelSoft,
-          borderStyle: "rounded",
-          borderColor: COLORS.borderActive,
-          marginLeft: state.layoutMode === "wide" ? -42 : undefined,
-          flexDirection: "column",
-          gap: 1,
-        },
-        Text({ content: "Select Kind", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
-        createFormField("Search", modal.kindQuery, false, "Type to fuzzy search kinds"),
-        Text({ content: `Showing ${start + 1}-${end} of ${options.length}`, fg: COLORS.muted }),
-        ...visibleOptions.map((option, visibleIndex) =>
+  const query = modal.kindQuery.trim().toLowerCase()
+  const filteredOptions = state.kindDefinitions
+    .map((item) => ({ item, score: fuzzyKindScore(item.kind, query) }))
+    .filter((entry) => query.length === 0 || entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.item.kind.localeCompare(right.item.kind))
+    .map((entry) => entry.item)
+  const noneOption = { kind: "None", description: "Create this concept without assigning a kind.", source: "options" as const }
+  const options = query.length === 0 || fuzzyKindScore(noneOption.kind, query) > 0 ? [noneOption, ...filteredOptions] : filteredOptions
+  const selectedKind = options[Math.max(0, Math.min(modal.kindCursor, Math.max(0, options.length - 1)))] ?? null
+  const exactQueryMatch = state.kindDefinitions.find((item) => item.kind.toLowerCase() === query) ?? null
+  const selectedKindLabel = selectedKind?.kind ?? exactQueryMatch?.kind ?? (modal.kindQuery.trim() ? modal.kindQuery.trim() : "No kind")
+  const pathPreviewBase = modal.draft.title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "new_concept"
+  const pathPreview = `${state.currentParentPath}.${pathPreviewBase}`
+  const viewportHeight = process.stdout.rows || 24
+  const maxVisibleOptions = viewportHeight <= 32 ? 2 : 4
+  const { start, end } = clampVisibleWindow(modal.kindCursor, options.length, maxVisibleOptions)
+  const visibleOptions = options.slice(start, end)
+  const optionRows = modal.fieldIndex === 1 && modal.kindExpanded
+    ? options.length === 0
+      ? [
           Box(
             {
               width: "100%",
               paddingX: 1,
               flexDirection: "column",
-              backgroundColor: start + visibleIndex === modal.kindCursor ? COLORS.selectedBg : COLORS.panel,
+              backgroundColor: COLORS.panel,
             },
-            Text({ content: option.kind, fg: start + visibleIndex === modal.kindCursor ? COLORS.selectedFg : COLORS.text, attributes: start + visibleIndex === modal.kindCursor ? TextAttributes.BOLD : 0 }),
-            Text({ content: truncateSingleLine(option.description || "(no description provided)", state.layoutMode === "wide" ? 72 : 52), fg: start + visibleIndex === modal.kindCursor ? COLORS.selectedFg : COLORS.muted }),
+            Text({ content: modal.kindQuery.trim() ? "No kinds match this search yet." : "No kinds available.", fg: COLORS.warning, attributes: TextAttributes.BOLD }),
+            Text({ content: "Backspace edits the search. Left closes the list. Right clears the search.", fg: COLORS.muted }),
           ),
-        ),
-        Text({ content: "Type to search, Ctrl+J/Ctrl+K move, Enter selects, Esc/Ctrl+Q cancels", fg: COLORS.muted }),
-      ),
-    ]
-  }
-
+        ]
+      : [
+          Text({ content: `Showing ${start + 1}-${end} of ${options.length}`, fg: COLORS.muted }),
+          ...visibleOptions.map((option, visibleIndex) => {
+            const selected = start + visibleIndex === modal.kindCursor
+            return Box(
+              {
+                width: "100%",
+                paddingX: 1,
+                flexDirection: "column",
+                backgroundColor: selected ? COLORS.selectedBg : COLORS.panel,
+              },
+              Text({ content: option.kind, fg: selected ? COLORS.selectedFg : COLORS.text, attributes: selected ? TextAttributes.BOLD : 0 }),
+              Text({ content: truncateSingleLine(option.description || "(no description provided)", state.layoutMode === "wide" ? 76 : 54), fg: selected ? COLORS.selectedFg : COLORS.muted }),
+            )
+          }),
+        ]
+    : []
+  const modalTop = state.layoutMode === "wide" ? 3 : 0
+  const modalWidth = state.layoutMode === "wide" ? 88 : "94%"
   return [
     Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
     Box(
       {
         position: "absolute",
-        top: state.layoutMode === "wide" ? 5 : 4,
+        top: modalTop,
         left: state.layoutMode === "wide" ? "50%" : 2,
-        width: state.layoutMode === "wide" ? 76 : "92%",
+        width: modalWidth,
+        maxHeight: state.layoutMode === "wide" ? undefined : "74%",
         padding: 1,
         backgroundColor: COLORS.panelSoft,
         borderStyle: "rounded",
         borderColor: COLORS.borderActive,
-        marginLeft: state.layoutMode === "wide" ? -38 : undefined,
+        title: "New Concept",
+        marginLeft: state.layoutMode === "wide" ? -44 : undefined,
         flexDirection: "column",
         gap: 1,
       },
-      Text({ content: "Define New Kind", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
-      createFormField("Kind Name", modal.draft.newKindName, modal.fieldIndex === 0, "Type the kind name"),
-      createFormField("Kind Description", modal.draft.newKindDescription, modal.fieldIndex === 1, "Describe this kind's semantics"),
-        Text({ content: "Type to edit. Tab/Ctrl+J/Ctrl+K changes field. Enter continues. Esc/Ctrl+Q cancels.", fg: COLORS.muted }),
+      createFormField("Concept name", modal.draft.title, modal.fieldIndex === 0, "Type the concept name"),
+      createFormField("Kind (optional)", selectedKindLabel, modal.fieldIndex === 1, state.kindDefinitions.length === 0 ? "No kinds available" : "Press Enter to browse kinds", `Path preview: ${pathPreview}`),
+      ...optionRows,
+      createFormField("Short summary", modal.draft.summary, modal.fieldIndex === 2, "Explain why this concept matters"),
+      Text({ content: modal.fieldIndex === 1 && modal.kindExpanded ? "Type to search kinds. Up/Down move. Enter confirms. Left closes. Right clears the search." : "Tab/Shift+Tab or Up/Down move between fields. Enter creates, or opens kind choices. Esc cancels.", fg: COLORS.muted }),
     ),
   ]
 }
@@ -306,6 +540,23 @@ function bufferModalCategoryMeta(category: BufferModalCategory): { title: string
   return { title: "Buffered Concepts", color: COLORS.accent, empty: "No buffered concepts" }
 }
 
+function bufferCategoryLabelColor(category: BufferModalCategory): string {
+  if (category === "deleted") {
+    return COLORS.error
+  }
+  if (category === "created") {
+    return COLORS.warning
+  }
+  return COLORS.accent
+}
+
+function bufferPaneTitle(state: AppState): string {
+  const right = state.bufferModal.mode === "retyping" ? "mode: Retyping" : "mode: Displaying"
+  const width = state.layoutMode === "wide" ? 100 : 44
+  const spaces = Math.max(1, width - "Concepts".length - right.length)
+  return `Concepts${" ".repeat(spaces)}${right}`
+}
+
 function renderBufferCategoryPane(state: AppState, category: BufferModalCategory, maxVisible: number, paneHeight: number, showRange: boolean): Renderable | VNode<any, any[]> {
   const meta = bufferModalCategoryMeta(category)
   const items = bufferModalItems(state, category)
@@ -329,17 +580,16 @@ function renderBufferCategoryPane(state: AppState, category: BufferModalCategory
 
   return Box(
     {
-      width: state.layoutMode === "wide" ? 22 : "100%",
-      flexGrow: state.layoutMode === "wide" ? 1 : 0,
+      width: "100%",
       height: paneHeight,
       padding: 1,
       backgroundColor: activePane ? COLORS.panel : "#171d22",
       borderStyle: "rounded",
       borderColor: activePane ? COLORS.borderActive : COLORS.border,
+      title: bufferPaneTitle(state),
       flexDirection: "column",
       gap: 1,
     },
-    Text({ content: meta.title, fg: meta.color, attributes: TextAttributes.BOLD }),
     ...(items.length === 0
       ? [Text({ content: meta.empty, fg: COLORS.muted })]
       : [
@@ -348,17 +598,35 @@ function renderBufferCategoryPane(state: AppState, category: BufferModalCategory
             { width: "100%", flexDirection: "column", gap: 0 },
             ...visibleItems.flatMap((path, visibleIndex) => {
               const selected = focusInPane && start + visibleIndex === cursor
+              const retypePreview = selected && state.bufferModal.mode === "retyping" && state.bufferModal.retypeTargetCategory
+                ? `-> ${state.bufferModal.retypeTargetCategory}`
+                : null
               return [
                 Box(
                   {
                     width: "100%",
                     paddingX: 1,
                     backgroundColor: selected ? COLORS.selectedBg : activePane ? COLORS.panelSoft : COLORS.panel,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
                   },
+                  Box(
+                    { flexDirection: "row", gap: 1, flexGrow: 1 },
+                    Text({ content: path, fg: selected ? COLORS.selectedFg : meta.color, attributes: selected ? TextAttributes.BOLD : 0 }),
+                    ...(state.conceptAliases[path]
+                      ? [
+                          Text({
+                            content: `(${state.conceptAliases[path]})`,
+                            fg: selected ? COLORS.selectedFg : COLORS.warning,
+                            attributes: TextAttributes.BOLD,
+                          }),
+                        ]
+                      : []),
+                  ),
                   Text({
-                    content: meta.deleteLabel ? `${path} [delete]` : path,
-                    fg: selected ? COLORS.selectedFg : meta.color,
-                    attributes: selected ? TextAttributes.BOLD : 0,
+                    content: retypePreview ?? "",
+                    fg: selected ? COLORS.selectedFg : COLORS.muted,
+                    attributes: selected && retypePreview ? TextAttributes.BOLD : 0,
                   }),
                 ),
                 ...(state.conceptNotes[path]?.trim()
@@ -389,8 +657,79 @@ function renderBufferCategoryPane(state: AppState, category: BufferModalCategory
   )
 }
 
-function visibleBufferModalCategories(state: AppState): BufferModalCategory[] {
-  return bufferModalCategories().filter((category) => bufferModalItems(state, category).length > 0)
+function renderBufferCategorySwitcher(state: AppState, visibleCategories: BufferModalCategory[]): Renderable | VNode<any, any[]> {
+  if (state.bufferModal.mode === "retyping") {
+    const displayCategories = bufferModalCategories().filter((category) => bufferModalItems(state, category).length > 0)
+    const current = visibleCategories.includes(state.bufferModal.activeCategory) ? state.bufferModal.activeCategory : visibleCategories[0] ?? null
+    const activeIndex = visibleCategories.indexOf(current ?? visibleCategories[0] ?? "buffered")
+    const leftCandidate = activeIndex > 0 ? visibleCategories[activeIndex - 1] : null
+    const rightCandidate = activeIndex >= 0 && activeIndex < visibleCategories.length - 1 ? visibleCategories[activeIndex + 1] : null
+    const left = leftCandidate && displayCategories.includes(leftCandidate) ? leftCandidate : null
+    const right = rightCandidate && displayCategories.includes(rightCandidate) ? rightCandidate : null
+    const width = state.layoutMode === "wide" ? 92 : 56
+    const thirdWidth = Math.floor(width / 3)
+
+    return Box(
+      {
+        width,
+        flexDirection: "row",
+        justifyContent: "center",
+        alignItems: "center",
+        alignSelf: "center",
+      },
+      Box(
+        { width: thirdWidth, justifyContent: "center", alignItems: "center" },
+        Text({ content: left ? `${left}  <` : "", fg: COLORS.muted }),
+      ),
+      Box(
+        { width: thirdWidth, justifyContent: "center", alignItems: "center" },
+        Text({ content: current ?? "", fg: current ? bufferCategoryLabelColor(current) : COLORS.accent, attributes: TextAttributes.BOLD }),
+      ),
+      Box(
+        { width: width - thirdWidth * 2, justifyContent: "center", alignItems: "center" },
+        Text({ content: right ? `>  ${right}` : "", fg: COLORS.muted }),
+      ),
+    )
+  }
+  if (visibleCategories.length <= 1) {
+    return Box(
+      {
+        width: "100%",
+        justifyContent: "center",
+        alignItems: "center",
+        paddingX: 1,
+      },
+      Text({ content: visibleCategories[0] ?? "", fg: visibleCategories[0] ? bufferCategoryLabelColor(visibleCategories[0]) : COLORS.accent, attributes: TextAttributes.BOLD }),
+    )
+  }
+  const activeIndex = visibleCategories.indexOf(state.bufferModal.activeCategory)
+  const left = activeIndex > 0 ? visibleCategories[activeIndex - 1] : null
+  const current = activeIndex >= 0 ? visibleCategories[activeIndex] : null
+  const right = activeIndex >= 0 && activeIndex < visibleCategories.length - 1 ? visibleCategories[activeIndex + 1] : null
+  const width = state.layoutMode === "wide" ? 92 : 56
+  const thirdWidth = Math.floor(width / 3)
+
+  return Box(
+    {
+      width,
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      alignSelf: "center",
+    },
+    Box(
+      { width: thirdWidth, justifyContent: "center", alignItems: "center" },
+      Text({ content: left ? `${left}  <` : "", fg: COLORS.muted }),
+    ),
+    Box(
+      { width: thirdWidth, justifyContent: "center", alignItems: "center" },
+      Text({ content: current ?? "", fg: current ? bufferCategoryLabelColor(current) : COLORS.accent, attributes: TextAttributes.BOLD }),
+    ),
+    Box(
+      { width: width - thirdWidth * 2, justifyContent: "center", alignItems: "center" },
+      Text({ content: right ? `>  ${right}` : "", fg: COLORS.muted }),
+    ),
+  )
 }
 
 function bufferModalLayout(state: AppState, visibleCategories: BufferModalCategory[]): {
@@ -398,7 +737,7 @@ function bufferModalLayout(state: AppState, visibleCategories: BufferModalCatego
   height: number
   paneVisibleRows: number
   paneHeight: number
-  renderCategories: BufferModalCategory[]
+  selectedCategory: BufferModalCategory | null
   promptPreviewLines: number
   showRange: boolean
 } {
@@ -412,35 +751,34 @@ function bufferModalLayout(state: AppState, visibleCategories: BufferModalCatego
   const availableHeight = Math.max(minModalHeight, viewportHeight - top - outerPadding - statusPaneHeight - gapAboveStatus + narrowExtraStretch + 1)
   const promptPreviewLines = Math.max(1, Math.min(4, state.promptText.replace(/\r\n/g, "\n").split("\n").length))
   const promptHeight = 2 + promptPreviewLines
-  const footerHeight = state.layoutMode === "wide" ? 2 : 3
+  const footerHeight = 2
   const modalPaddingAndBorders = 4
-  const renderCategories = state.layoutMode === "wide"
-    ? visibleCategories
-    : visibleCategories.filter((category) => category === state.bufferModal.activeCategory)
-  const categoryContainerGap = renderCategories.length > 0 ? 1 : 0
-  const paneHeaderRows = renderCategories.length > 0 ? 2 : 0
-  const paneFrameRows = renderCategories.length > 0 ? 3 : 0
-  const desiredPaneContentRows = renderCategories.reduce((maxRows, category) => {
-    const rows = bufferModalItems(state, category).reduce((total, path) => total + (state.conceptNotes[path]?.trim() ? 2 : 1), 0)
-    return Math.max(maxRows, rows)
-  }, 0)
-  const desiredPaneVisibleRows = renderCategories.length === 0
+  const selectedCategory = visibleCategories.includes(state.bufferModal.activeCategory) ? state.bufferModal.activeCategory : visibleCategories[0] ?? null
+  const categoryContainerGap = selectedCategory ? 1 : 0
+  const paneHeaderRows = selectedCategory ? 3 : 0
+  const paneFrameRows = selectedCategory ? 3 : 0
+  const desiredPaneContentRows = selectedCategory
+    ? bufferModalItems(state, selectedCategory).reduce((total, path) => total + (state.conceptNotes[path]?.trim() ? 2 : 1), 0)
+    : 0
+  const desiredPaneVisibleRows = !selectedCategory
     ? 0
     : Math.max(2, Math.min(state.layoutMode === "wide" ? 8 : 6, desiredPaneContentRows))
-  const desiredPaneHeight = renderCategories.length === 0
+  const desiredPaneHeight = !selectedCategory
     ? 0
     : desiredPaneVisibleRows + paneHeaderRows + paneFrameRows + 1
   const paneArea = Math.max(0, availableHeight - promptHeight - footerHeight - modalPaddingAndBorders - categoryContainerGap)
-  const paneHeight = renderCategories.length === 0
+  const paneHeight = !selectedCategory
     ? 0
     : Math.min(paneArea, Math.max(8, desiredPaneHeight))
-  const paneVisibleRows = renderCategories.length === 0
+  const paneVisibleRows = !selectedCategory
     ? 0
     : Math.max(2, paneHeight - paneHeaderRows - paneFrameRows - 1)
-  const showRange = renderCategories.some((category) => bufferModalItems(state, category).some((path) => state.conceptNotes[path]?.trim())
-    ? bufferModalItems(state, category).reduce((total, path) => total + (state.conceptNotes[path]?.trim() ? 2 : 1), 0) > paneVisibleRows
-    : bufferModalItems(state, category).length > paneVisibleRows)
-  const computedHeight = renderCategories.length === 0
+  const showRange = selectedCategory
+    ? (bufferModalItems(state, selectedCategory).some((path) => state.conceptNotes[path]?.trim())
+        ? bufferModalItems(state, selectedCategory).reduce((total, path) => total + (state.conceptNotes[path]?.trim() ? 2 : 1), 0) > paneVisibleRows
+        : bufferModalItems(state, selectedCategory).length > paneVisibleRows)
+    : false
+  const computedHeight = !selectedCategory
     ? promptHeight + footerHeight + modalPaddingAndBorders
     : promptHeight + footerHeight + modalPaddingAndBorders + categoryContainerGap + paneHeight
   return {
@@ -448,27 +786,23 @@ function bufferModalLayout(state: AppState, visibleCategories: BufferModalCatego
     height: Math.min(availableHeight, Math.max(minModalHeight, computedHeight)),
     paneVisibleRows,
     paneHeight,
-    renderCategories,
+    selectedCategory,
     promptPreviewLines,
     showRange,
   }
 }
 
-function bufferModalHelpText(state: AppState, renderedCategoryCount: number, promptSelected: boolean): string {
-  if (renderedCategoryCount === 0) {
+function bufferModalHelpText(state: AppState, hasCategory: boolean, promptSelected: boolean): string {
+  if (state.bufferModal.mode === "retyping") {
+    return "Tab next target, Shift+Tab exit, Enter apply, Esc cancel"
+  }
+  if (!hasCategory) {
     return "Enter edits prompt"
   }
-  if (renderedCategoryCount === 1) {
-    return promptSelected ? "j/down enters pane; Enter edits" : "j/k move; Enter edits"
-  }
   if (promptSelected) {
-    return state.layoutMode === "wide"
-      ? "Prompt selected. j/down enters the active concept pane."
-      : "j/down enters pane; h/l switch; Enter edits"
+    return "j/down enters pane; h/l switch concept type; Enter edits prompt"
   }
-  return state.layoutMode === "wide"
-    ? "h/l or arrows switch panes. j/k or arrows move. Enter edits."
-    : "h/l switch panes; j/k move; Enter edits"
+  return "h/l switch concept type; j/k move; Enter edits; Tab retype"
 }
 
 function fuzzyKindScore(candidate: string, query: string): number {
@@ -493,6 +827,9 @@ function fuzzyKindScore(candidate: string, query: string): number {
 export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, root: { getChildren: () => Renderable[]; add: (child: Renderable | VNode<any, any[]>, index?: number) => number }): void {
   const listItems = listLines(state)
   const selectedNode = currentNode(state)
+  const nextContextKey = contextKeyForNode(selectedNode.path, selectedNode.loc, selectedNode.summary)
+  const shouldRefreshContext = contextPreviewKey !== nextContextKey
+  const renderVersion = shouldRefreshContext ? (contextRenderVersion += 1) : contextRenderVersion
 
   replaceChildren(
     listScroll,
@@ -521,224 +858,52 @@ export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainSc
     ),
   )
 
-  void buildSnippetPreview(state, selectedNode).then(async (preview) => {
-    const syntaxStyle = await getSnippetSyntaxStyle()
-    const content = preview.lines.map((line) => line.chunks.map((chunk) => chunk.text).join("")).join("\n")
-    replaceChildren(
-      mainScroll,
-      Box(
-        { width: "100%", flexDirection: "column", gap: 0 },
-        ...(selectedNode.summary
-          ? [
-              Text({ content: "Summary", fg: COLORS.accentSoft, attributes: TextAttributes.BOLD }),
-              Text({ content: selectedNode.summary, fg: COLORS.text }),
-              Text({ content: "", fg: COLORS.text }),
-            ]
-          : []),
-        Code({
-          width: "100%",
-          flexGrow: 1,
-          content,
-          filetype: "text",
-          syntaxStyle,
-          wrapMode: "none",
-          drawUnstyledText: true,
-          onChunks: (_chunks) => {
-            const flattened = preview.lines.flatMap((line, index) => {
-              const withNewline = index === preview.lines.length - 1 ? line.chunks : [...line.chunks, { __isChunk: true, text: "\n" } satisfies TextChunk]
-              return withNewline
-            })
-            return flattened
-          },
-        }),
-      ),
-    )
-  })
-
-  const sidebar = Box(
-    {
-      width: state.layoutMode === "wide" ? 44 : "100%",
-      flexShrink: 0,
-      flexDirection: "column",
-    },
-    Box(
-      {
-        flexGrow: 1,
-        borderStyle: "rounded",
-        borderColor: COLORS.borderActive,
-        title: `Concepts                         nav: ${conceptMovementIndicator(state)}`,
-        padding: 1,
-        backgroundColor: COLORS.panel,
-      },
-      listScroll,
-    ),
-  )
-
-  const context = Box(
-    {
-      flexGrow: 1,
-      borderStyle: "rounded",
-      borderColor: COLORS.border,
-      title: selectedNode.loc ? `Context ${selectedNode.loc.file}:${selectedNode.loc.startLine}-${selectedNode.loc.endLine}` : "Context",
-      padding: 1,
-      backgroundColor: COLORS.panel,
-    },
-    mainScroll,
-  )
-
-  const overlays: Array<Renderable | VNode<any, any[]>> = []
-
-  if (state.showBufferModal) {
-    const visibleCategories = visibleBufferModalCategories(state)
-    const layout = bufferModalLayout(state, visibleCategories)
-    const promptSelected = selectedBufferModalTarget(state).kind === "prompt"
-    overlays.push(
-      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
-      Box(
-        {
-          position: "absolute",
-          top: layout.top,
-          left: state.layoutMode === "wide" ? "50%" : 2,
-          width: state.layoutMode === "wide" ? 108 : "94%",
-          height: layout.height,
-          padding: 1,
-          backgroundColor: COLORS.panelSoft,
-          borderStyle: "rounded",
-          borderColor: COLORS.borderActive,
-          marginLeft: state.layoutMode === "wide" ? -54 : undefined,
-          flexDirection: "column",
-          gap: 1,
-        },
-        Text({ content: "Prompt Editor", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
-        (() => {
-          const promptLines = state.promptText.trim()
-            ? truncatePreviewLines(state.promptText, layout.promptPreviewLines, state.layoutMode === "wide" ? 64 : 48)
-            : Array.from({ length: layout.promptPreviewLines }, () => "")
-          return Box(
-            {
-              width: "100%",
-              paddingX: 1,
-              paddingY: 0,
-              backgroundColor: promptSelected ? COLORS.selectedBg : COLORS.panel,
-              flexDirection: "column",
-            },
-            ...promptLines.map((line) =>
-              Text({
-                content: line,
-                fg: promptSelected ? COLORS.selectedFg : state.promptText.trim() ? COLORS.text : COLORS.muted,
-                attributes: promptSelected ? TextAttributes.BOLD : 0,
-              }),
-            ),
-          )
-        })(),
-        ...(visibleCategories.length > 0
-          ? [
-              Box(
-                {
-                  width: "100%",
-                  flexDirection: state.layoutMode === "wide" ? "row" : "column",
-                  gap: 1,
-                },
-                ...layout.renderCategories.map((category) => renderBufferCategoryPane(state, category, layout.paneVisibleRows, layout.paneHeight, layout.showRange)),
-              ),
-            ]
-          : []),
-        Text({ content: bufferModalHelpText(state, layout.renderCategories.length, promptSelected), fg: COLORS.muted }),
-      ),
-    )
-  }
-
-  if (state.editorModal) {
-    overlays.push(
-      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000066" }),
-      Box(
-        {
-          position: "absolute",
-          top: state.layoutMode === "wide" ? 7 : 5,
-          left: state.layoutMode === "wide" ? "50%" : 2,
-          width: state.layoutMode === "wide" ? 84 : "94%",
-          padding: 1,
-          backgroundColor: COLORS.panel,
-          borderStyle: "rounded",
-          borderColor: COLORS.borderActive,
-          marginLeft: state.layoutMode === "wide" ? -42 : undefined,
-          flexDirection: "column",
-          gap: 1,
-        },
-        Text({
-          content: state.editorModal.target.kind === "prompt" ? "Edit Prompt" : `Edit Context: ${state.editorModal.target.path}`,
-          fg: COLORS.accent,
-          attributes: TextAttributes.BOLD,
-        }),
+  if (shouldRefreshContext) {
+    contextPreviewKey = nextContextKey
+    void buildSnippetPreview(state, selectedNode).then(async (preview) => {
+      if (renderVersion !== contextRenderVersion || contextPreviewKey !== nextContextKey) {
+        return
+      }
+      const syntaxStyle = await getSnippetSyntaxStyle()
+      if (renderVersion !== contextRenderVersion || contextPreviewKey !== nextContextKey) {
+        return
+      }
+      const content = preview.lines.map((line) => line.chunks.map((chunk) => chunk.text).join("")).join("\n")
+      replaceChildren(
+        mainScroll,
         Box(
-          {
+          { width: "100%", flexDirection: "column", gap: 0 },
+          ...(selectedNode.summary
+            ? [
+                Text({ content: "Summary", fg: COLORS.accentSoft, attributes: TextAttributes.BOLD }),
+                Text({ content: selectedNode.summary, fg: COLORS.text }),
+                Text({ content: "", fg: COLORS.text }),
+              ]
+            : []),
+          Code({
             width: "100%",
-            minHeight: 8,
-            backgroundColor: COLORS.panelSoft,
-            flexDirection: "column",
-          },
-          state.editorModal.renderable,
+            flexGrow: 1,
+            content,
+            filetype: "text",
+            syntaxStyle,
+            wrapMode: "none",
+            drawUnstyledText: true,
+            onChunks: (_chunks) => {
+              const flattened = preview.lines.flatMap((line, index) => {
+                const withNewline = index === preview.lines.length - 1 ? line.chunks : [...line.chunks, { __isChunk: true, text: "\n" } satisfies TextChunk]
+                return withNewline
+              })
+              return flattened
+            },
+          }),
         ),
-        Text({ content: "Esc/Ctrl+Q cancels, Ctrl+Enter saves, Ctrl+G opens $EDITOR", fg: COLORS.muted }),
-      ),
-    )
+      )
+    })
   }
-
-  if (state.createConceptModal) {
-    overlays.push(...renderCreateConceptModal(state, state.createConceptModal))
-  }
-
-  overlays.push(...renderConfirmModal(state))
 
   replaceChildren(
     root,
-    Box(
-      {
-        width: "100%",
-        height: "100%",
-        flexDirection: "column",
-        backgroundColor: COLORS.bg,
-        padding: 1,
-        gap: 1,
-      },
-      Box(
-        {
-          width: "100%",
-          borderStyle: "rounded",
-          borderColor: COLORS.borderActive,
-          paddingX: 2,
-          paddingY: 1,
-          backgroundColor: COLORS.panel,
-        },
-        Box(
-          { width: "100%", flexDirection: state.layoutMode === "wide" ? "row" : "column", justifyContent: "space-between" },
-          Text({ content: "setsumei", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
-          Text({ content: currentNode(state).path, fg: COLORS.muted }),
-        ),
-      ),
-      Box(
-        {
-          width: "100%",
-          flexGrow: 1,
-          flexDirection: state.layoutMode === "wide" ? "row" : "column",
-          gap: 1,
-        },
-        sidebar,
-        context,
-      ),
-      ...overlays,
-      Box(
-        {
-          width: "100%",
-          borderStyle: "rounded",
-          borderColor: statusPaneColor(state),
-          paddingX: 1,
-          paddingY: 1,
-          backgroundColor: COLORS.panel,
-        },
-        Text({ content: state.status.message, fg: statusPaneColor(state) }),
-      ),
-    ),
+    renderFrame(state, listScroll, mainScroll, renderStatusPane(state)),
   )
 
   scrollListForCursor(state, listScroll)

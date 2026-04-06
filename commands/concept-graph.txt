@@ -1,11 +1,15 @@
-/concept-graph <target> [existing-graph]
+/concept-graph <target> [mode] [existing-graph]
 
 Goal: route concept-graph work to the right prompt flow for the given file, directory, or subsystem.
 
 Instructions for the LLM:
-- First decide whether this is a graph-generation pass or an anchor-enrichment pass.
+- Supported modes are `generate`, `anchors`, and `kinds`.
+- If a mode is provided, use it directly.
+- If no mode is provided, decide whether this is a graph-generation pass or an anchor-enrichment pass.
 - If no existing concept graph is provided, use `prompts/generate_concept_graph.md` and create the main `setsumei` JSON concept graph for the target.
-- If an existing concept graph is provided, use `prompts/enrich_concept_graph_anchors.md` and return an updated graph that improves `loc` and `code_refs` without changing stable paths or the core hierarchy unless the supplied graph is clearly wrong.
+- If mode is `anchors`, use `prompts/enrich_concept_graph_anchors.md` and return an updated graph that improves `loc` without changing stable paths or the core hierarchy unless the supplied graph is clearly wrong.
+- If mode is `kinds`, use `prompts/enrich_kind_definitions.md` and return a JSON options object with `kind_definitions` for the kinds already present in the supplied graph.
+- If no mode is provided and an existing concept graph is provided, default to `anchors`.
 - Follow the selected prompt template's output contract exactly.
 - Preserve stable `children` keys because they define canonical derived paths.
 - Prefer a good concept graph over uncertain anchors.

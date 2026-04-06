@@ -3,6 +3,13 @@ import { spawn } from "node:child_process"
 import { asMetadataObject, bulletList } from "./model"
 import type { AppState, BufferedConcept, ConceptAction, ConceptNode, JsonValue } from "./types"
 
+function expandAliases(text: string, aliasPaths: Record<string, string>): string {
+  return text.replace(/(^|\s)(@[a-zA-Z0-9_.-]+)/g, (match, prefix: string, alias: string) => {
+    const resolved = aliasPaths[alias]
+    return resolved ? `${prefix}${resolved}` : match
+  })
+}
+
 function noteLabel(action: ConceptAction | undefined): string {
   return action === "delete" ? "instructions" : "context"
 }
@@ -22,7 +29,12 @@ function actionInstruction(action: ConceptAction): string {
 }
 
 export function renderClipboardBlock(node: ConceptNode, compact: boolean, action: ConceptAction | undefined): string {
-  const lines = ["## Concept", `- path: \`${node.path}\``, `- title: ${node.title}`, `- kind: ${node.kind}`]
+  const lines = ["## Concept", `- path: \`${node.path}\``, `- title: ${node.title}`]
+  if (node.kind) {
+    lines.push(`- kind: ${node.kind}`)
+  } else {
+    lines.push("- kind: (no kind)")
+  }
   if (node.isDraft) {
     lines.push("- action: create")
   } else if (action) {
@@ -122,9 +134,9 @@ export function buildClipboardPayload(state: AppState, compact: boolean, current
   const bufferedConcepts = state.bufferedConcepts.length > 0 ? state.bufferedConcepts : [{ path: currentPath }]
   const selectedNodes = bufferedConcepts.map((item) => state.nodes.get(item.path)!).filter(Boolean)
   const concepts = bufferedConcepts
-    .map((item) => renderClipboardBlockWithContext(state.nodes.get(item.path)!, compact, state.conceptNotes[item.path], item.action))
+    .map((item) => renderClipboardBlockWithContext(state.nodes.get(item.path)!, compact, expandAliases(state.conceptNotes[item.path] ?? "", state.aliasPaths), item.action))
     .join("\n")
-  const promptText = state.promptText.trim()
+  const promptText = expandAliases(state.promptText.trim(), state.aliasPaths)
   if (compact) {
     return [promptText, concepts.trimEnd()].filter(Boolean).join("\n\n") + "\n"
   }

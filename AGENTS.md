@@ -28,13 +28,12 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 - Treat the JSON schema as user-facing and long-lived; avoid breaking changes unless clearly necessary.
 - Concepts may describe views, workflows, controls, regions, data models, behaviors, transitions, or any other useful abstraction.
 - Default clipboard export should stay concise, with richer context available on demand.
-- Shared interpretation hints such as `kind_definitions` should stay compact and reusable across the graph.
 
 ## Guidance for agents working here
 
 - Preserve stable child keys and therefore stable derived paths whenever possible.
 - Prefer a good concept graph over uncertain source anchors.
-- Use `loc` for one best primary span and `code_refs` for supplementary anchors.
+- Prefer a concept-graph-first workflow and add source anchors in a later enrichment pass when needed.
 - Favor plain text formats that paste cleanly into LLM chats.
 - Apply more specific local `AGENTS.md` guidance when working inside subdirectories such as `src/` or `prompts/`.
 
@@ -51,7 +50,7 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 - Canonical schema guidance lives in `docs/json_schema.md`.
 - Keep the top-level graph shape consistent with the canonical schema and schema version.
 - `source_file` is graph-level context, while `loc.file` is concept-level truth for a specific anchor.
-- Use optional fields such as `why_it_exists`, `loc`, `code_refs`, `related_paths`, `aliases`, `state_predicate`, and `interpretation_hint.kind_definitions` only when they add real value.
+- Use optional fields such as `why_it_exists`, `loc`, `related_paths`, `aliases`, and `state_predicate` only when they add real value.
 
 ## Concept-graph workflow
 

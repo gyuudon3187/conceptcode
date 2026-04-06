@@ -6,7 +6,7 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 export type ConceptNode = {
   path: string
   title: string
-  kind: string
+  kind: string | null
   summary: string
   parentPath: string | null
   metadata: Record<string, JsonValue>
@@ -73,11 +73,21 @@ export type BufferModalState = {
   focus: "prompt" | "categories"
   activeCategory: BufferModalCategory
   cursors: Record<BufferModalCategory, number>
+  mode: "displaying" | "retyping"
+  retypeTargetCategory: Exclude<BufferModalCategory, "created"> | null
+}
+
+export type AliasSuggestionState = {
+  query: string
+  start: number
+  end: number
+  selectedIndex: number
 }
 
 export type EditorModalState = {
   target: BufferModalTarget
   renderable: TextareaRenderable
+  aliasSuggestion: AliasSuggestionState | null
 }
 
 export type CopyMode = "full" | "compact"
@@ -90,21 +100,18 @@ export type PendingCopyChoiceState = {
 export type KindDefinition = {
   kind: string
   description: string
-  source: "graph" | "session"
+  source: "graph" | "options"
 }
 
 export type CreateConceptDraft = {
   title: string
   summary: string
-  selectedKind: string | null
-  newKindName: string
-  newKindDescription: string
 }
 
 export type CreateConceptModalState = {
-  step: "details" | "pick-kind" | "new-kind"
   draft: CreateConceptDraft
   fieldIndex: number
+  kindExpanded: boolean
   kindCursor: number
   kindQuery: string
 }
@@ -137,6 +144,8 @@ export type AppState = {
   bufferModal: BufferModalState
   promptText: string
   conceptNotes: Record<string, string>
+  conceptAliases: Record<string, string>
+  aliasPaths: Record<string, string>
   editorModal: EditorModalState | null
   pendingCopyChoice: PendingCopyChoiceState | null
   statusTimeout: ReturnType<typeof setTimeout> | null

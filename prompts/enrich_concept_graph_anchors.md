@@ -12,17 +12,18 @@ Requirements:
 - Preserve the existing `schema_version`, top-level shape, stable child keys, and concept hierarchy unless a supplied graph is structurally invalid.
 - Do not rename concept keys under `children`.
 - Keep existing summaries and conceptual decomposition unless a supplied value is clearly wrong.
-- Add or refine a primary `loc` field for each concept when possible.
-- Use `loc` for the main implementation span of the concept, with an explicit `file`, inclusive `start_line`, and inclusive `end_line`.
+- Add or refine `loc` for leaf concepts when possible.
+- Use `loc` for one best primary implementation span of the concept, with an explicit `file`, inclusive `start_line`, and inclusive `end_line`.
 - Keep `loc` compact; choose the smallest span that still represents the main part of the concept.
 - Keep one-line concepts as `start_line == end_line`.
-- Add or refine `code_refs` only for supplementary anchors, especially when the concept is implemented across multiple relevant locations or files.
-- Remove guessed or weak anchors rather than keeping low-confidence spans.
+- Omit uncertain anchors rather than guessing.
+- If a concept is conceptual or has no meaningful implementation span, omit `loc`.
 - Do not add large quoted code snippets or prose outside the JSON.
 
 Anchor rules:
-- Use `loc` for one best primary span.
-- Use `code_refs` for extra supporting anchors.
+- By default, add `loc` only to leaf concepts.
+- A non-leaf concept may have a `loc` only when it has a clear canonical implementation site that is not well represented by any child concept.
+- Use one best primary span rather than several weak spans.
 - Omit uncertain anchors rather than guessing.
 
 Output shape:
@@ -40,6 +41,7 @@ Make the concept graph better at pointing to real implementation locations while
 ## Authoring advice
 
 - Prefer preserving a good concept graph over forcing an uncertain anchor.
-- When a concept is spread across several locations, anchor the main controlling location in `loc` and keep the others in `code_refs`.
-- If a concept is conceptual and has no meaningful implementation span, omit `loc` rather than inventing one.
+- Favor precise leaf anchors over broad parent anchors.
+- When a parent concept is represented by child anchors well enough, omit the parent `loc`.
+- If a concept is spread across several locations and no single primary span stands out, omit `loc` rather than inventing a weak anchor.
 - Keep edits minimal and targeted to source-anchor quality.

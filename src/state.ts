@@ -1,5 +1,39 @@
 import type { AppState, BufferModalCategory, BufferModalTarget, BufferSummary, BufferedConcept, ConceptNode, LayoutMode, StatusTone } from "./types"
 
+function pathSegments(path: string): string[] {
+  return path.split(".")
+}
+
+function aliasForPath(path: string, depth: number): string {
+  const segments = pathSegments(path)
+  const sliceStart = Math.max(0, segments.length - depth)
+  return `@${segments.slice(sliceStart).join(".")}`
+}
+
+export function rebuildConceptAliases(state: AppState): void {
+  const uniquePaths = [...new Set(state.bufferedConcepts.map((item) => item.path))]
+  const conceptAliases: Record<string, string> = {}
+  const aliasPaths: Record<string, string> = {}
+
+  for (const path of uniquePaths) {
+    const segmentCount = pathSegments(path).length
+    let resolvedAlias = aliasForPath(path, 1)
+    for (let depth = 1; depth <= segmentCount; depth += 1) {
+      const candidate = aliasForPath(path, depth)
+      const collisions = uniquePaths.filter((otherPath) => aliasForPath(otherPath, depth) === candidate)
+      resolvedAlias = candidate
+      if (collisions.length === 1) {
+        break
+      }
+    }
+    conceptAliases[path] = resolvedAlias
+    aliasPaths[resolvedAlias] = path
+  }
+
+  state.conceptAliases = conceptAliases
+  state.aliasPaths = aliasPaths
+}
+
 export function bufferedConceptForPath(state: AppState, path: string): BufferedConcept | undefined {
   return state.bufferedConcepts.find((item) => item.path === path)
 }
@@ -86,6 +120,7 @@ export function bufferModalItems(state: AppState, category: BufferModalCategory)
 }
 
 export function clampBufferModalState(state: AppState): void {
+  rebuildConceptAliases(state)
   for (const category of bufferModalCategories()) {
     const items = bufferModalItems(state, category)
     state.bufferModal.cursors[category] = Math.max(0, Math.min(state.bufferModal.cursors[category], Math.max(0, items.length - 1)))
@@ -103,6 +138,8 @@ export function resetBufferModal(state: AppState): void {
   state.bufferModal = {
     focus: "prompt",
     activeCategory: firstNonEmpty,
+    mode: "displaying",
+    retypeTargetCategory: null,
     cursors: {
       buffered: 0,
       deleted: 0,
@@ -153,8 +190,35 @@ export function moveBufferModalCursor(state: AppState, delta: number): boolean {
 }
 
 export function moveBufferModalCategory(state: AppState, delta: number): boolean {
-  const categories = bufferModalCategories()
+  const categories = bufferModalCategories().filter((category) => bufferModalItems(state, category).length > 0)
+  if (categories.length <= 1) {
+    return false
+  }
   const previousIndex = categories.indexOf(state.bufferModal.activeCategory)
+  const nextIndex = Math.max(0, Math.min(previousIndex + delta, categories.length - 1))
+  if (nextIndex === previousIndex) {
+    return false
+  }
+  state.bufferModal.activeCategory = categories[nextIndex]
+  clampBufferModalState(state)
+  return true
+}
+
+export function retypingBufferModalCategories(): BufferModalCategory[] {
+  return ["buffered", "deleted"]
+}
+
+export function visibleBufferModalCategories(state: AppState): BufferModalCategory[] {
+  if (state.bufferModal.mode === "retyping") {
+    return retypingBufferModalCategories()
+  }
+  return bufferModalCategories().filter((category) => bufferModalItems(state, category).length > 0)
+}
+
+export function moveRetypingBufferModalCategory(state: AppState, delta: number): boolean {
+  const categories = retypingBufferModalCategories()
+  const activeCategory = categories.includes(state.bufferModal.activeCategory) ? state.bufferModal.activeCategory : "buffered"
+  const previousIndex = categories.indexOf(activeCategory)
   const nextIndex = Math.max(0, Math.min(previousIndex + delta, categories.length - 1))
   if (nextIndex === previousIndex) {
     return false

@@ -14,6 +14,10 @@ function asString(value: JsonValue | undefined, fallback = ""): string {
   return typeof value === "string" ? value : fallback
 }
 
+function optionalString(value: JsonValue | undefined): string | null {
+  return typeof value === "string" && value.trim() ? value : null
+}
+
 function normalizeChildren(children: JsonValue | undefined): Record<string, Record<string, JsonValue>> {
   const source = asObject(children)
   const out: Record<string, Record<string, JsonValue>> = {}
@@ -52,7 +56,7 @@ function buildNodes(
   nodes.set(path, {
     path,
     title: asString(nodePayload.title, path.split(".").at(-1) ?? path),
-    kind: asString(nodePayload.kind, "concept"),
+    kind: optionalString(nodePayload.kind),
     summary: asString(nodePayload.summary),
     parentPath,
     metadata,
@@ -95,17 +99,34 @@ export function sourceLinesForNode(sourceFileCache: Map<string, string[]>, jsonP
   return lines.slice(node.loc.startLine - 1, node.loc.endLine)
 }
 
-function kindDefinitionsFromPayload(payload: GraphPayload, nodes: Map<string, ConceptNode>): KindDefinition[] {
-  const interpretationHint = asObject(payload.interpretation_hint)
-  const kindDefinitions = asObject(interpretationHint.kind_definitions)
-  const fromGraph = Object.entries(kindDefinitions)
-    .filter(([, value]) => typeof value === "string")
-    .map(([kind, description]) => ({ kind, description: String(description), source: "graph" as const }))
-  if (fromGraph.length > 0) {
-    return fromGraph.sort((left, right) => left.kind.localeCompare(right.kind))
-  }
-  const inferredKinds = [...new Set([...nodes.values()].map((node) => node.kind))].sort((left, right) => left.localeCompare(right))
+function inferredKindDefinitions(nodes: Map<string, ConceptNode>): KindDefinition[] {
+  const inferredKinds = [...new Set([...nodes.values()].map((node) => node.kind).filter((kind): kind is string => Boolean(kind)))]
+    .sort((left, right) => left.localeCompare(right))
   return inferredKinds.map((kind) => ({ kind, description: "", source: "graph" as const }))
+}
+
+function kindDefinitionsFromOptions(optionsPath: string | undefined): KindDefinition[] {
+  if (!optionsPath) {
+    return []
+  }
+  const payload = JSON.parse(readFileSync(optionsPath, "utf8")) as JsonValue
+  const root = asObject(payload)
+  const kindDefinitions = asObject(root.kind_definitions)
+  return Object.entries(kindDefinitions)
+    .filter(([, value]) => typeof value === "string")
+    .map(([kind, description]) => ({ kind, description: String(description), source: "options" as const }))
+    .sort((left, right) => left.kind.localeCompare(right.kind))
+}
+
+function mergeKindDefinitions(inferred: KindDefinition[], configured: KindDefinition[]): KindDefinition[] {
+  const merged = new Map<string, KindDefinition>()
+  for (const item of inferred) {
+    merged.set(item.kind, item)
+  }
+  for (const item of configured) {
+    merged.set(item.kind, item)
+  }
+  return [...merged.values()].sort((left, right) => left.kind.localeCompare(right.kind))
 }
 
 export function asMetadataObject(value: JsonValue | undefined): Record<string, JsonValue> {
@@ -119,12 +140,12 @@ export function bulletList(value: JsonValue | undefined): string[] {
   return value.filter((item): item is string | number => typeof item === "string" || typeof item === "number").map(String)
 }
 
-export function loadConceptGraph(jsonPath: string): { graphPayload: GraphPayload; nodes: Map<string, ConceptNode>; kindDefinitions: KindDefinition[] } {
+export function loadConceptGraph(jsonPath: string, optionsPath?: string): { graphPayload: GraphPayload; nodes: Map<string, ConceptNode>; kindDefinitions: KindDefinition[] } {
   const payload = JSON.parse(readFileSync(jsonPath, "utf8")) as GraphPayload
   const rootPayload = asObject(payload.root as JsonValue | undefined)
   if (Object.keys(rootPayload).length === 0) {
     throw new Error(`Concept graph at ${jsonPath} is missing a root object`)
   }
   const nodes = buildNodes(rootPayload, "root", null)
-  return { graphPayload: payload, nodes, kindDefinitions: kindDefinitionsFromPayload(payload, nodes) }
+  return { graphPayload: payload, nodes, kindDefinitions: mergeKindDefinitions(inferredKindDefinitions(nodes), kindDefinitionsFromOptions(optionsPath)) }
 }

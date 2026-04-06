@@ -7,9 +7,9 @@ import { ScrollBoxRenderable, TextareaRenderable, createCliRenderer, type CliRen
 
 import { buildClipboardPayload, clipboardSelection, copyToClipboard } from "./clipboard"
 import { loadConceptGraph } from "./model"
-import { applySelectionChange, bufferedConceptForPath, clampBufferModalState, clampCursor, currentNode, currentPath, handleResize, moveBufferModalCategory, moveBufferModalCursor, moveCursor, pageSize, resetBufferModal, scrollMain, selectedBufferModalTarget, setStatus, visiblePaths } from "./state"
-import type { AppState, ConceptNode, CopyMode, CreateConceptDraft, EditorModalState, KindDefinition } from "./types"
-import { repaint } from "./view"
+import { applySelectionChange, bufferedConceptForPath, clampBufferModalState, clampCursor, currentNode, currentPath, handleResize, moveBufferModalCategory, moveBufferModalCursor, moveCursor, pageSize, rebuildConceptAliases, resetBufferModal, scrollMain, selectedBufferModalTarget, setStatus, visiblePaths } from "./state"
+import type { AppState, BufferModalCategory, ConceptNode, CopyMode, CreateConceptDraft, EditorModalState, KindDefinition } from "./types"
+import { repaint, renderFrame, renderStatusPane, replaceChildren, scrollListForCursor } from "./view"
 
 const DEBUG_STATUS = process.env.SETSUMEI_DEBUG_STATUS === "1"
 
@@ -20,26 +20,35 @@ function debugStatus(event: string, details: Record<string, unknown>): void {
   console.error(`[setsumei-debug] ${event} ${JSON.stringify(details)}`)
 }
 
-function parseArgs(argv: string[]): { conceptsPath: string } {
+function parseArgs(argv: string[]): { conceptsPath: string; optionsPath?: string } {
+  let conceptsPath: string | null = null
+  let optionsPath: string | undefined
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--concepts-path") {
       const value = argv[index + 1]
       if (!value) {
         throw new Error("Missing value for --concepts-path")
       }
-      return { conceptsPath: value }
+      conceptsPath = value
+    }
+    if (argv[index] === "--options-path") {
+      const value = argv[index + 1]
+      if (!value) {
+        throw new Error("Missing value for --options-path")
+      }
+      optionsPath = value
     }
   }
-  throw new Error("Expected --concepts-path <path>")
+  if (!conceptsPath) {
+    throw new Error("Expected --concepts-path <path>")
+  }
+  return { conceptsPath, optionsPath }
 }
 
 function emptyCreateDraft(): CreateConceptDraft {
   return {
     title: "",
     summary: "",
-    selectedKind: null,
-    newKindName: "",
-    newKindDescription: "",
   }
 }
 
@@ -50,6 +59,121 @@ function slugifyTitle(title: string): string {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
   return normalized || "new_concept"
+}
+
+function aliasSuggestions(state: AppState, query: string): string[] {
+  const aliases = Object.keys(state.aliasPaths).sort((left, right) => left.localeCompare(right))
+  if (!query) {
+    return aliases
+  }
+  const normalizedQuery = query.toLowerCase()
+  const prefixMatches = aliases.filter((alias) => alias.slice(1).toLowerCase().startsWith(normalizedQuery))
+  const substringMatches = aliases.filter((alias) => !prefixMatches.includes(alias) && alias.slice(1).toLowerCase().includes(normalizedQuery))
+  return [...prefixMatches, ...substringMatches]
+}
+
+function editorCursorOffset(editor: EditorModalState): number {
+  const cursorOffset = (editor.renderable as TextareaRenderable & { cursorOffset?: number }).cursorOffset
+  return typeof cursorOffset === "number" ? cursorOffset : editor.renderable.plainText.length
+}
+
+function activeAliasSuggestion(state: AppState, editor: EditorModalState): { query: string; start: number; end: number; suggestions: string[] } | null {
+  const text = editor.renderable.plainText
+  const cursor = editorCursorOffset(editor)
+  const beforeCursor = text.slice(0, cursor)
+  const match = beforeCursor.match(/(?:^|\s)(@([a-zA-Z0-9_.-]*))$/)
+  if (!match) {
+    return null
+  }
+  const token = match[1]
+  const query = match[2] ?? ""
+  const start = cursor - token.length
+  const afterCursor = text.slice(cursor)
+  const suffixMatch = afterCursor.match(/^([a-zA-Z0-9_.-]*)/)
+  const end = cursor + (suffixMatch?.[1]?.length ?? 0)
+  return {
+    query,
+    start,
+    end,
+    suggestions: aliasSuggestions(state, query),
+  }
+}
+
+function refreshAliasSuggestion(state: AppState): void {
+  const editor = state.editorModal
+  if (!editor) {
+    return
+  }
+  const next = activeAliasSuggestion(state, editor)
+  if (!next || next.suggestions.length === 0) {
+    editor.aliasSuggestion = null
+    return
+  }
+  const previousIndex = editor.aliasSuggestion?.selectedIndex ?? 0
+  editor.aliasSuggestion = {
+    query: next.query,
+    start: next.start,
+    end: next.end,
+    selectedIndex: Math.max(0, Math.min(previousIndex, next.suggestions.length - 1)),
+  }
+}
+
+function refreshAliasSuggestionSoon(state: AppState, redraw: () => void): void {
+  setTimeout(() => {
+    const editor = state.editorModal
+    if (!editor) {
+      return
+    }
+    try {
+      editor.renderable.plainText
+    } catch {
+      return
+    }
+    refreshAliasSuggestion(state)
+    redraw()
+  }, 0)
+}
+
+function moveAliasSuggestionSelection(state: AppState, delta: number): boolean {
+  const editor = state.editorModal
+  if (!editor?.aliasSuggestion) {
+    return false
+  }
+  const suggestions = aliasSuggestions(state, editor.aliasSuggestion.query)
+  if (suggestions.length === 0) {
+    editor.aliasSuggestion = null
+    return false
+  }
+  const previous = editor.aliasSuggestion.selectedIndex
+  editor.aliasSuggestion.selectedIndex = Math.max(0, Math.min(previous + delta, suggestions.length - 1))
+  return editor.aliasSuggestion.selectedIndex !== previous
+}
+
+function acceptAliasSuggestion(state: AppState): boolean {
+  const editor = state.editorModal
+  if (!editor?.aliasSuggestion) {
+    return false
+  }
+  const suggestions = aliasSuggestions(state, editor.aliasSuggestion.query)
+  const alias = suggestions[editor.aliasSuggestion.selectedIndex]
+  if (!alias) {
+    editor.aliasSuggestion = null
+    return false
+  }
+  const text = editor.renderable.plainText
+  const nextText = `${text.slice(0, editor.aliasSuggestion.start)}${alias}${text.slice(editor.aliasSuggestion.end)}`
+  const originalOnSubmit = editor.renderable.onSubmit
+  editor.renderable.onSubmit = undefined
+  editor.renderable.setText(nextText)
+  editor.renderable.gotoBufferEnd()
+  editor.renderable.focus()
+  setTimeout(() => {
+    if (state.editorModal?.renderable === editor.renderable) {
+      editor.renderable.onSubmit = originalOnSubmit
+    }
+  }, 0)
+  editor.aliasSuggestion = null
+  return true
 }
 
 function uniqueChildPath(state: AppState, parentPath: string, title: string): string {
@@ -67,17 +191,17 @@ function isDraftConcept(state: AppState, path: string): boolean {
   return Boolean(state.nodes.get(path)?.isDraft)
 }
 
-function insertDraftConcept(state: AppState, draft: CreateConceptDraft, kindDefinition: KindDefinition): string {
+function insertDraftConcept(state: AppState, draft: CreateConceptDraft, kindDefinition: KindDefinition | null): string {
   const parent = state.nodes.get(state.currentParentPath)
   if (!parent) {
     throw new Error("Current parent concept not found")
   }
   const path = uniqueChildPath(state, state.currentParentPath, draft.title)
-  const metadata: ConceptNode["metadata"] = kindDefinition.description ? { kind_description: kindDefinition.description } : {}
+  const metadata: ConceptNode["metadata"] = kindDefinition?.description ? { kind_description: kindDefinition.description } : {}
   const node: ConceptNode = {
     path,
     title: draft.title.trim(),
-    kind: kindDefinition.kind,
+    kind: kindDefinition?.kind ?? null,
     summary: draft.summary.trim(),
     parentPath: state.currentParentPath,
     metadata,
@@ -89,7 +213,7 @@ function insertDraftConcept(state: AppState, draft: CreateConceptDraft, kindDefi
   parent.childPaths = [...parent.childPaths, path]
   state.cursor = parent.childPaths.indexOf(path)
   applySelectionChange(state)
-  if (!state.kindDefinitions.some((item) => item.kind === kindDefinition.kind)) {
+  if (kindDefinition && !state.kindDefinitions.some((item) => item.kind === kindDefinition.kind)) {
     state.kindDefinitions = [...state.kindDefinitions, kindDefinition].sort((left, right) => left.kind.localeCompare(right.kind))
   }
   if (!state.bufferedConcepts.some((item) => item.path === path)) {
@@ -117,8 +241,8 @@ function removeDraftConcept(state: AppState, path: string): void {
 }
 
 async function main(): Promise<void> {
-  const { conceptsPath } = parseArgs(process.argv.slice(2))
-  const { graphPayload, nodes, kindDefinitions } = loadConceptGraph(conceptsPath)
+  const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
+  const { graphPayload, nodes, kindDefinitions } = loadConceptGraph(conceptsPath, optionsPath)
   const state: AppState = {
     jsonPath: conceptsPath,
     graphPayload,
@@ -129,9 +253,9 @@ async function main(): Promise<void> {
     bufferedConcepts: [],
     kindDefinitions,
     createConceptModal: null,
-    confirmModal: null,
-    status: {
-      message: "Browse concepts. n creates a draft concept. y copies context.",
+      confirmModal: null,
+      status: {
+      message: "Browse concepts. n creates. space buffers. d marks deleted. y copies context.",
       tone: "info",
     },
     layoutMode: "wide",
@@ -141,6 +265,8 @@ async function main(): Promise<void> {
     bufferModal: {
       focus: "prompt",
       activeCategory: "buffered",
+      mode: "displaying",
+      retypeTargetCategory: null,
       cursors: {
         buffered: 0,
         deleted: 0,
@@ -149,6 +275,8 @@ async function main(): Promise<void> {
     },
     promptText: "",
     conceptNotes: {},
+    conceptAliases: {},
+    aliasPaths: {},
     editorModal: null,
     pendingCopyChoice: null,
     statusTimeout: null,
@@ -158,6 +286,8 @@ async function main(): Promise<void> {
   let renderer: CliRenderer
   let listScroll: ScrollBoxRenderable
   let mainScroll: ScrollBoxRenderable
+
+  rebuildConceptAliases(state)
 
   function mountRenderer(nextRenderer: CliRenderer): void {
     renderer = nextRenderer
@@ -181,9 +311,9 @@ async function main(): Promise<void> {
 
   function openCreateConceptModal(): void {
     state.createConceptModal = {
-      step: "details",
       draft: emptyCreateDraft(),
       fieldIndex: 0,
+      kindExpanded: false,
       kindCursor: 0,
       kindQuery: "",
     }
@@ -202,7 +332,7 @@ async function main(): Promise<void> {
     if (!modal) {
       return false
     }
-    const field = modal.step === "details" ? (modal.fieldIndex === 0 ? "title" : "summary") : modal.fieldIndex === 0 ? "newKindName" : "newKindDescription"
+    const field = modal.fieldIndex === 0 ? "title" : "summary"
     if (key.name === "backspace") {
       modal.draft[field] = modal.draft[field].slice(0, -1)
       return true
@@ -221,6 +351,68 @@ async function main(): Promise<void> {
     return false
   }
 
+  function fuzzyKindScore(candidate: string, query: string): number {
+    if (!query) {
+      return 1
+    }
+    const normalizedCandidate = candidate.toLowerCase()
+    if (normalizedCandidate.includes(query)) {
+      return 100 - normalizedCandidate.indexOf(query)
+    }
+    let queryIndex = 0
+    let score = 0
+    for (let index = 0; index < normalizedCandidate.length && queryIndex < query.length; index += 1) {
+      if (normalizedCandidate[index] === query[queryIndex]) {
+        score += 2
+        queryIndex += 1
+      }
+    }
+    return queryIndex === query.length ? score : 0
+  }
+
+  function createKindOptions(query: string): KindDefinition[] {
+    const normalizedQuery = query.trim().toLowerCase()
+    const filtered = state.kindDefinitions
+      .map((item) => ({ item, score: fuzzyKindScore(item.kind, normalizedQuery) }))
+      .filter((entry) => normalizedQuery.length === 0 || entry.score > 0)
+      .sort((left, right) => right.score - left.score || left.item.kind.localeCompare(right.item.kind))
+      .map((entry) => entry.item)
+    const noneOption: KindDefinition = { kind: "None", description: "Create this concept without assigning a kind.", source: "options" }
+    return normalizedQuery.length === 0 || fuzzyKindScore(noneOption.kind, normalizedQuery) > 0 ? [noneOption, ...filtered] : filtered
+  }
+
+  function exactKindMatch(query: string): KindDefinition | null {
+    const normalizedQuery = query.trim().toLowerCase()
+    if (!normalizedQuery) {
+      return null
+    }
+    return state.kindDefinitions.find((item) => item.kind.toLowerCase() === normalizedQuery) ?? null
+  }
+
+  function submitCreateConceptModal(): boolean {
+    const modal = state.createConceptModal
+    if (!modal) {
+      return false
+    }
+    if (!modal.draft.title.trim() || !modal.draft.summary.trim()) {
+      setTimedStatus("Concept name and summary are required", "warning")
+      return true
+    }
+    const options = createKindOptions(modal.kindQuery)
+    const selectedKind = modal.kindExpanded
+      ? options.length > 0
+        ? options[Math.max(0, Math.min(modal.kindCursor, options.length - 1))]
+        : exactKindMatch(modal.kindQuery)
+      : exactKindMatch(modal.kindQuery)
+    const resolvedKind = selectedKind?.kind === "None" ? null : selectedKind
+    const createdPath = insertDraftConcept(state, modal.draft, resolvedKind)
+    closeCreateConceptModal()
+    clampCursor(state)
+    setStatusNow(resolvedKind ? `Created draft concept: ${createdPath}` : `Created draft concept without kind: ${createdPath}`, "success")
+    draw()
+    return true
+  }
+
   function handleCreateConceptModalKey(key: KeyEvent): boolean {
     const modal = state.createConceptModal
     if (!modal) {
@@ -232,105 +424,105 @@ async function main(): Promise<void> {
       draw()
       return true
     }
-    if (modal.step === "details" || modal.step === "new-kind") {
-      if (key.name === "tab" || (key.ctrl && key.name === "j")) {
-        modal.fieldIndex = (modal.fieldIndex + 1) % 2
+    const fieldCount = 3
+    const kindFieldSelected = modal.fieldIndex === 1
+    if (kindFieldSelected && modal.kindExpanded) {
+      const options = createKindOptions(modal.kindQuery)
+      modal.kindCursor = Math.min(modal.kindCursor, Math.max(0, options.length - 1))
+      if (key.name === "left") {
+        modal.kindExpanded = false
         draw()
         return true
       }
-      if ((key.shift && key.name === "tab") || (key.ctrl && key.name === "k")) {
-        modal.fieldIndex = (modal.fieldIndex + 1) % 2
-        draw()
-        return true
-      }
-      if (key.name === "return") {
-        if (modal.step === "details") {
-          if (!modal.draft.title.trim() || !modal.draft.summary.trim()) {
-            setTimedStatus("Name and summary are required", "warning")
-            return true
-          }
-          modal.step = "pick-kind"
-          modal.kindCursor = 0
-          modal.kindQuery = ""
-          draw()
-          return true
-        }
-        if (!modal.draft.newKindName.trim() || !modal.draft.newKindDescription.trim()) {
-          setTimedStatus("Kind name and description are required", "warning")
-          return true
-        }
-        const kindDefinition: KindDefinition = {
-          kind: modal.draft.newKindName.trim(),
-          description: modal.draft.newKindDescription.trim(),
-          source: "session",
-        }
-        const createdPath = insertDraftConcept(state, modal.draft, kindDefinition)
-        closeCreateConceptModal()
-        clampCursor(state)
-        setStatusNow(`Created draft concept: ${createdPath}`, "success")
-        draw()
-        return true
-      }
-      if (updateCreateDraftText(key)) {
-        draw()
-        return true
-      }
-      return true
-    }
-
-    const query = modal.kindQuery.trim().toLowerCase()
-    const rankedOptions = state.kindDefinitions
-      .map((item) => ({ item, score: fuzzyKindScore(item.kind, query) }))
-      .filter((entry) => query.length === 0 || entry.score > 0)
-      .sort((left, right) => right.score - left.score || left.item.kind.localeCompare(right.item.kind))
-      .map((entry) => entry.item)
-    const options = [{ kind: "<new kind>", description: "Create a new kind with its own semantic description.", source: "session" as const }, ...rankedOptions]
-    modal.kindCursor = Math.min(modal.kindCursor, Math.max(0, options.length - 1))
-    if (key.ctrl && key.name === "j") {
-      modal.kindCursor = Math.min(options.length - 1, modal.kindCursor + 1)
-      draw()
-      return true
-    }
-    if (key.ctrl && key.name === "k") {
-      modal.kindCursor = Math.max(0, modal.kindCursor - 1)
-      draw()
-      return true
-    }
-    if (key.name === "return") {
-      const selected = options[modal.kindCursor]
-      if (selected.kind === "<new kind>") {
-        modal.step = "new-kind"
-        modal.fieldIndex = 0
-        draw()
-        return true
-      }
-      const createdPath = insertDraftConcept(state, modal.draft, selected)
-      closeCreateConceptModal()
-      clampCursor(state)
-      setStatusNow(`Created draft concept: ${createdPath}`, "success")
-      draw()
-      return true
-    }
-    if (key.name === "backspace") {
-      modal.kindQuery = modal.kindQuery.slice(0, -1)
-      modal.kindCursor = 0
-      draw()
-      return true
-    }
-    if (key.name === "space") {
-      modal.kindQuery += " "
-      modal.kindCursor = 0
-      draw()
-      return true
-    }
-    if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) {
-      const code = key.sequence.charCodeAt(0)
-      if (code >= 32 && code <= 126) {
-        modal.kindQuery += key.sequence
+      if (key.name === "right") {
+        modal.kindQuery = ""
         modal.kindCursor = 0
         draw()
         return true
       }
+      if (key.name === "escape") {
+        modal.kindExpanded = false
+        draw()
+        return true
+      }
+      if (key.name === "up" || (key.ctrl && key.name === "k")) {
+        modal.kindCursor = Math.max(0, modal.kindCursor - 1)
+        draw()
+        return true
+      }
+      if (key.name === "down" || (key.ctrl && key.name === "j")) {
+        modal.kindCursor = Math.min(Math.max(0, options.length - 1), modal.kindCursor + 1)
+        draw()
+        return true
+      }
+      if (key.name === "return") {
+        modal.kindExpanded = false
+        draw()
+        return true
+      }
+      if (key.name === "backspace") {
+        modal.kindQuery = modal.kindQuery.slice(0, -1)
+        modal.kindCursor = 0
+        draw()
+        return true
+      }
+      if (key.name === "space") {
+        modal.kindQuery += " "
+        modal.kindCursor = 0
+        draw()
+        return true
+      }
+      if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) {
+        const code = key.sequence.charCodeAt(0)
+        if (code >= 32 && code <= 126) {
+          modal.kindQuery += key.sequence
+          modal.kindCursor = 0
+          draw()
+          return true
+        }
+      }
+      return true
+    }
+    if (key.name === "tab" || key.name === "down" || (key.ctrl && key.name === "j")) {
+      modal.fieldIndex = (modal.fieldIndex + 1) % fieldCount
+      draw()
+      return true
+    }
+    if ((key.shift && key.name === "tab") || key.name === "up" || (key.ctrl && key.name === "k")) {
+      modal.fieldIndex = (modal.fieldIndex + fieldCount - 1) % fieldCount
+      draw()
+      return true
+    }
+    if (kindFieldSelected) {
+      if (key.name === "return") {
+        modal.kindExpanded = true
+        modal.kindCursor = 0
+        draw()
+        return true
+      }
+      if (key.name === "backspace") {
+        modal.kindQuery = ""
+        draw()
+        return true
+      }
+      if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) {
+        const code = key.sequence.charCodeAt(0)
+        if (code >= 32 && code <= 126) {
+          modal.kindExpanded = true
+          modal.kindQuery += key.sequence
+          modal.kindCursor = 0
+          draw()
+          return true
+        }
+      }
+      return true
+    }
+    if (key.name === "return") {
+      return submitCreateConceptModal()
+    }
+    if (updateCreateDraftText(key)) {
+      draw()
+      return true
     }
     return true
   }
@@ -368,23 +560,164 @@ async function main(): Promise<void> {
     }
   }
 
-  function fuzzyKindScore(candidate: string, query: string): number {
-    if (!query) {
-      return 1
+  function setConceptBuffered(path: string): void {
+    const existing = bufferedConceptForPath(state, path)
+    if (existing && existing.action !== "delete") {
+      state.bufferedConcepts = state.bufferedConcepts.filter((item) => item.path !== path)
+      clearStatusTimeout()
+      debugStatus("buffer-remove", { path, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
+      setStatusNow(state.bufferedConcepts.length === 0 ? "Buffer cleared" : bufferStatusMessage(), state.bufferedConcepts.length === 0 ? "info" : "success")
+    } else if (existing?.action === "delete") {
+      state.bufferedConcepts = state.bufferedConcepts.map((item) => (item.path === path ? { path } : item))
+      clearStatusTimeout()
+      debugStatus("buffer-add", { path, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
+      setStatusNow(bufferStatusMessage(), "success")
+    } else {
+      state.bufferedConcepts = [...state.bufferedConcepts, { path }]
+      clearStatusTimeout()
+      debugStatus("buffer-add", { path, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
+      setStatusNow(bufferStatusMessage(), "success")
     }
-    const normalizedCandidate = candidate.toLowerCase()
-    if (normalizedCandidate.includes(query)) {
-      return 100 - normalizedCandidate.indexOf(query)
+    clampBufferModalState(state)
+  }
+
+  function setConceptDeleted(path: string): void {
+    const existing = bufferedConceptForPath(state, path)
+    if (existing?.action === "delete") {
+      state.bufferedConcepts = state.bufferedConcepts.filter((item) => item.path !== path)
+      clearStatusTimeout()
+      setStatusNow(state.bufferedConcepts.length === 0 ? "Buffer cleared" : bufferStatusMessage(), state.bufferedConcepts.length === 0 ? "info" : "success")
+    } else if (existing) {
+      state.bufferedConcepts = state.bufferedConcepts.map((item) => (item.path === path ? { ...item, action: "delete" } : item))
+      clearStatusTimeout()
+      setStatusNow(`Marked for deletion: ${path}`, "success")
+    } else {
+      state.bufferedConcepts = [...state.bufferedConcepts, { path, action: "delete" }]
+      clearStatusTimeout()
+      setStatusNow(`Marked for deletion: ${path}`, "success")
     }
-    let queryIndex = 0
-    let score = 0
-    for (let index = 0; index < normalizedCandidate.length && queryIndex < query.length; index += 1) {
-      if (normalizedCandidate[index] === query[queryIndex]) {
-        score += 2
-        queryIndex += 1
-      }
+    clampBufferModalState(state)
+  }
+
+  function retypeEditorConcept(delta: -1 | 1): boolean {
+    const editor = state.editorModal
+    if (!editor || editor.target.kind !== "concept" || !editor.target.path) {
+      return false
     }
-    return queryIndex === query.length ? score : 0
+    if (isDraftConcept(state, editor.target.path)) {
+      setTimedStatus("Draft concepts can be edited or removed, but not retyped", "warning")
+      return true
+    }
+    const currentEntry = bufferedConceptForPath(state, editor.target.path)
+    const currentCategory: BufferModalCategory = currentEntry?.action === "delete" ? "deleted" : "buffered"
+    const categories: BufferModalCategory[] = ["buffered", "deleted"]
+    const currentIndex = categories.indexOf(currentCategory)
+    const nextIndex = Math.max(0, Math.min(currentIndex + delta, categories.length - 1))
+    if (nextIndex === currentIndex) {
+      return true
+    }
+    applyEditorText(editor)
+    const nextCategory = categories[nextIndex]
+    if (nextCategory === "buffered") {
+      setConceptBuffered(editor.target.path)
+    } else {
+      setConceptDeleted(editor.target.path)
+    }
+    state.bufferModal.activeCategory = nextCategory
+    state.bufferModal.focus = "categories"
+    clampBufferModalState(state)
+    const items = nextCategory === "deleted"
+      ? state.bufferedConcepts.filter((item) => item.action === "delete").map((item) => item.path)
+      : state.bufferedConcepts.filter((item) => item.action !== "delete" && !state.nodes.get(item.path)?.isDraft).map((item) => item.path)
+    const nextCursor = items.indexOf(editor.target.path)
+    if (nextCursor >= 0) {
+      state.bufferModal.cursors[nextCategory] = nextCursor
+    }
+    setStatusNow(nextCategory === "deleted" ? `Moved to deleted: ${editor.target.path}` : `Moved to buffered: ${editor.target.path}`, "success")
+    return true
+  }
+
+  function selectedRetypeTargetCategory(): Exclude<BufferModalCategory, "created"> | null {
+    const target = selectedBufferModalTarget(state)
+    if (target.kind !== "concept" || !target.path) {
+      return null
+    }
+    if (isDraftConcept(state, target.path)) {
+      return null
+    }
+    const currentEntry = bufferedConceptForPath(state, target.path)
+    return currentEntry?.action === "delete" ? "buffered" : "deleted"
+  }
+
+  function enterRetypeMode(): boolean {
+    const target = selectedBufferModalTarget(state)
+    if (target.kind !== "concept" || !target.path) {
+      setTimedStatus("Select a concept to retype", "warning")
+      return true
+    }
+    if (isDraftConcept(state, target.path)) {
+      setTimedStatus("Draft concepts can be edited or removed, but not retyped", "warning")
+      return true
+    }
+    state.bufferModal.mode = "retyping"
+    state.bufferModal.retypeTargetCategory = selectedRetypeTargetCategory()
+    return true
+  }
+
+  function exitRetypeMode(): boolean {
+    if (state.bufferModal.mode !== "retyping") {
+      return false
+    }
+    state.bufferModal.mode = "displaying"
+    state.bufferModal.retypeTargetCategory = null
+    return true
+  }
+
+  function advanceRetypeTarget(): boolean {
+    if (state.bufferModal.mode !== "retyping") {
+      return false
+    }
+    const nextTarget = selectedRetypeTargetCategory()
+    if (!nextTarget) {
+      return exitRetypeMode()
+    }
+    if (state.bufferModal.retypeTargetCategory === nextTarget) {
+      return exitRetypeMode()
+    }
+    state.bufferModal.retypeTargetCategory = nextTarget
+    return true
+  }
+
+  function applyRetypePromptEditorConcept(): boolean {
+    const target = selectedBufferModalTarget(state)
+    const nextCategory = state.bufferModal.retypeTargetCategory
+    if (target.kind !== "concept" || !target.path || !nextCategory) {
+      setTimedStatus("Select a concept to retype", "warning")
+      return true
+    }
+    if (isDraftConcept(state, target.path)) {
+      setTimedStatus("Draft concepts can be edited or removed, but not retyped", "warning")
+      return true
+    }
+    if (nextCategory === "buffered") {
+      setConceptBuffered(target.path)
+    } else {
+      setConceptDeleted(target.path)
+    }
+    state.bufferModal.activeCategory = nextCategory
+    state.bufferModal.focus = "categories"
+    clampBufferModalState(state)
+    const items = nextCategory === "deleted"
+      ? state.bufferedConcepts.filter((item) => item.action === "delete").map((item) => item.path)
+      : state.bufferedConcepts.filter((item) => item.action !== "delete" && !state.nodes.get(item.path)?.isDraft).map((item) => item.path)
+    const nextCursor = items.indexOf(target.path)
+    if (nextCursor >= 0) {
+      state.bufferModal.cursors[nextCategory] = nextCursor
+    }
+    setStatusNow(nextCategory === "deleted" ? `Moved to deleted: ${target.path}` : `Moved to buffered: ${target.path}`, "success")
+    state.bufferModal.mode = "displaying"
+    state.bufferModal.retypeTargetCategory = null
+    return true
   }
 
   function bindKeyHandler(): void {
@@ -426,13 +759,6 @@ async function main(): Promise<void> {
           draw()
           return
         }
-        if (key.ctrl && key.name === "return") {
-          applyEditorText(state.editorModal)
-          state.editorModal.renderable.blur()
-          state.editorModal = null
-          draw()
-          return
-        }
         if (key.ctrl && key.name === "g") {
           try {
             renderer.suspend()
@@ -441,6 +767,7 @@ async function main(): Promise<void> {
             state.editorModal.renderable.setText(nextText)
             state.editorModal.renderable.gotoBufferEnd()
             state.editorModal.renderable.focus()
+            refreshAliasSuggestion(state)
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
             try {
@@ -454,6 +781,41 @@ async function main(): Promise<void> {
           draw()
           return
         }
+        if (key.ctrl && key.name === "h") {
+          if (retypeEditorConcept(-1)) {
+            draw()
+          }
+          return
+        }
+        if (key.ctrl && key.name === "l") {
+          if (retypeEditorConcept(1)) {
+            draw()
+          }
+          return
+        }
+        if (state.editorModal.aliasSuggestion && (key.name === "down" || key.name === "j" || (key.ctrl && key.name === "j"))) {
+          if (moveAliasSuggestionSelection(state, 1)) {
+            draw()
+          } else {
+            draw()
+          }
+          return
+        }
+        if (state.editorModal.aliasSuggestion && (key.name === "up" || key.name === "k" || (key.ctrl && key.name === "k"))) {
+          if (moveAliasSuggestionSelection(state, -1)) {
+            draw()
+          } else {
+            draw()
+          }
+          return
+        }
+        if (state.editorModal.aliasSuggestion && key.name === "return") {
+          if (acceptAliasSuggestion(state)) {
+            draw()
+            return
+          }
+        }
+        refreshAliasSuggestionSoon(state, draw)
         draw()
         return
       }
@@ -466,31 +828,74 @@ async function main(): Promise<void> {
           draw()
           return
         }
-        if (key.name === "j" || key.name === "down") {
-          moveBufferModalCursor(state, 1)
-          setStatusNow(bufferModalStatusMessage(), "info")
+
+        if (key.name === "tab" && !key.shift) {
+          if (state.bufferModal.mode !== "retyping") {
+            if (enterRetypeMode()) {
+              draw()
+            }
+            return
+          }
+          if (advanceRetypeTarget()) {
+            draw()
+          }
+          return
+        }
+
+        if (state.bufferModal.mode === "retyping" && key.shift && key.name === "tab") {
+          if (exitRetypeMode()) {
+            draw()
+          }
+          return
+        }
+
+        if (state.bufferModal.mode === "retyping" && key.name === "return") {
+          if (applyRetypePromptEditorConcept()) {
+            draw()
+          }
           draw()
+          return
+        }
+        if (state.bufferModal.mode === "retyping") {
+          const target = selectedBufferModalTarget(state)
+          if (target.kind === "concept" && target.path && !isDraftConcept(state, target.path)) {
+            state.bufferModal.retypeTargetCategory = selectedRetypeTargetCategory()
+          } else {
+            state.bufferModal.retypeTargetCategory = null
+          }
+        }
+        if (key.name === "j" || key.name === "down") {
+          if (moveBufferModalCursor(state, 1)) {
+            setStatusNow(bufferModalStatusMessage(), "info")
+            draw()
+          }
           return
         }
         if (key.name === "k" || key.name === "up") {
-          moveBufferModalCursor(state, -1)
-          setStatusNow(bufferModalStatusMessage(), "info")
-          draw()
+          if (moveBufferModalCursor(state, -1)) {
+            setStatusNow(bufferModalStatusMessage(), "info")
+            draw()
+          }
           return
         }
         if (key.name === "h" || key.name === "left") {
-          moveBufferModalCategory(state, -1)
-          setStatusNow(bufferModalStatusMessage(), "info")
-          draw()
+          if (moveBufferModalCategory(state, -1)) {
+            state.bufferModal.mode = "displaying"
+            setStatusNow(bufferModalStatusMessage(), "info")
+            draw()
+          }
           return
         }
         if (key.name === "l" || key.name === "right") {
-          moveBufferModalCategory(state, 1)
-          setStatusNow(bufferModalStatusMessage(), "info")
-          draw()
+          if (moveBufferModalCategory(state, 1)) {
+            state.bufferModal.mode = "displaying"
+            setStatusNow(bufferModalStatusMessage(), "info")
+            draw()
+          }
           return
         }
         if (key.name === "return") {
+          state.bufferModal.mode = "displaying"
           const target = selectedBufferModalTarget(state)
           const text = target.kind === "prompt" ? state.promptText : state.conceptNotes[target.path ?? ""] ?? ""
           const renderable = new TextareaRenderable(renderer, {
@@ -507,9 +912,23 @@ async function main(): Promise<void> {
             cursorStyle: { style: "block", blinking: true },
             wrapMode: "word",
             showCursor: true,
+            keyBindings: [
+              { name: "return", action: "submit" },
+              { name: "return", shift: true, action: "newline" },
+            ],
+            onSubmit: () => {
+              if (!state.editorModal || state.editorModal.renderable !== renderable) {
+                return
+              }
+              applyEditorText(state.editorModal)
+              state.editorModal.renderable.blur()
+              state.editorModal = null
+              draw()
+            },
           })
           renderable.gotoBufferEnd()
-          state.editorModal = { target, renderable }
+          state.editorModal = { target, renderable, aliasSuggestion: null }
+          refreshAliasSuggestion(state)
           draw()
           setTimeout(() => {
             if (state.editorModal?.renderable === renderable) {
@@ -526,43 +945,54 @@ async function main(): Promise<void> {
         process.exit(0)
       }
       if (key.name === "j" || key.name === "down") {
-        moveCursor(state, 1)
-        draw()
+        if (moveCursor(state, 1)) {
+          draw()
+        }
         return
       }
       if (key.name === "k" || key.name === "up") {
-        moveCursor(state, -1)
-        draw()
+        if (moveCursor(state, -1)) {
+          draw()
+        }
         return
       }
       if (key.name === "pagedown") {
         if (key.ctrl) {
           scrollMain(state, Math.max(1, state.mainViewportHeight - 2))
+          draw()
         } else {
-          moveCursor(state, pageSize(state.layoutMode))
+          if (moveCursor(state, pageSize(state.layoutMode))) {
+            draw()
+          }
         }
-        draw()
         return
       }
       if (key.name === "pageup") {
         if (key.ctrl) {
           scrollMain(state, -Math.max(1, state.mainViewportHeight - 2))
+          draw()
         } else {
-          moveCursor(state, -pageSize(state.layoutMode))
+          if (moveCursor(state, -pageSize(state.layoutMode))) {
+            draw()
+          }
         }
-        draw()
         return
       }
       if (key.name === "home" || key.name === "g") {
-        state.cursor = 0
-        applySelectionChange(state)
-        draw()
+        if (state.cursor !== 0) {
+          state.cursor = 0
+          applySelectionChange(state)
+          draw()
+        }
         return
       }
       if (key.name === "end" || (key.shift && key.name === "g")) {
-        state.cursor = Math.max(0, visible.length - 1)
-        applySelectionChange(state)
-        draw()
+        const nextCursor = Math.max(0, visible.length - 1)
+        if (state.cursor !== nextCursor) {
+          state.cursor = nextCursor
+          applySelectionChange(state)
+          draw()
+        }
         return
       }
       if (key.name === "l" || key.name === "right") {
@@ -596,12 +1026,6 @@ async function main(): Promise<void> {
         }
         return
       }
-      if (key.name === "n") {
-        clearStatusTimeout()
-        openCreateConceptModal()
-        draw()
-        return
-      }
       if (key.name === "space") {
         const path = currentPath(state)
         if (isDraftConcept(state, path)) {
@@ -609,18 +1033,7 @@ async function main(): Promise<void> {
           draw()
           return
         }
-        if (bufferedConceptForPath(state, path)) {
-          state.bufferedConcepts = state.bufferedConcepts.filter((item) => item.path !== path)
-          clearStatusTimeout()
-          debugStatus("buffer-remove", { path, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-          setStatusNow(state.bufferedConcepts.length === 0 ? "Buffer cleared" : bufferStatusMessage(), state.bufferedConcepts.length === 0 ? "info" : "success")
-        } else {
-          state.bufferedConcepts = [...state.bufferedConcepts, { path }]
-          clearStatusTimeout()
-          debugStatus("buffer-add", { path, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-          setStatusNow(bufferStatusMessage(), "success")
-        }
-        clampBufferModalState(state)
+        setConceptBuffered(path)
         draw()
         return
       }
@@ -631,21 +1044,13 @@ async function main(): Promise<void> {
           draw()
           return
         }
-        const existing = bufferedConceptForPath(state, path)
-        if (existing?.action === "delete") {
-          state.bufferedConcepts = state.bufferedConcepts.filter((item) => item.path !== path)
-          clearStatusTimeout()
-          setStatusNow(state.bufferedConcepts.length === 0 ? "Buffer cleared" : bufferStatusMessage(), state.bufferedConcepts.length === 0 ? "info" : "success")
-        } else if (existing) {
-          state.bufferedConcepts = state.bufferedConcepts.map((item) => (item.path === path ? { ...item, action: "delete" } : item))
-          clearStatusTimeout()
-          setStatusNow(`Marked for deletion: ${path}`, "success")
-        } else {
-          state.bufferedConcepts = [...state.bufferedConcepts, { path, action: "delete" }]
-          clearStatusTimeout()
-          setStatusNow(`Marked for deletion: ${path}`, "success")
-        }
-        clampBufferModalState(state)
+        setConceptDeleted(path)
+        draw()
+        return
+      }
+      if (key.name === "n") {
+        clearStatusTimeout()
+        openCreateConceptModal()
         draw()
         return
       }
@@ -681,12 +1086,13 @@ async function main(): Promise<void> {
         return
       }
       if (key.name === "?" || (key.shift && key.name === "/")) {
-        setTimedStatus("Keys: j/k move, pgup/pgdn jump, Ctrl+pgup/pgdn scroll context preview, g/G home/end, l open, h back, n new concept, space buffer/remove draft, d delete-buffer/remove draft, Enter open modal, y copy, p path, c clear, q quit", "info")
+        setTimedStatus("Keys: j/k move, pgup/pgdn jump, Ctrl+pgup/pgdn scroll context preview, g/G home/end, l open, h back, n new concept, space buffer/remove draft, d delete/discard draft, Enter open modal, y copy, p path, c clear, q quit", "info")
       }
     })
   }
 
-  mountRenderer(await createCliRenderer({ exitOnCtrlC: true }))
+  const initialRenderer = await createCliRenderer({ exitOnCtrlC: true })
+  mountRenderer(initialRenderer)
   bindKeyHandler()
 
   function draw(): void {
@@ -699,6 +1105,17 @@ async function main(): Promise<void> {
       currentParentPath: state.currentParentPath,
     })
     repaint(state, listScroll, mainScroll, renderer.root)
+  }
+
+  function drawStatus(): void {
+    replaceChildren(renderer.root, renderFrame(state, listScroll, mainScroll, renderStatusPane(state)))
+    scrollMainToState()
+  }
+
+  function scrollMainToState(): void {
+    scrollListForCursor(state, listScroll)
+    state.mainViewportHeight = Math.max(8, mainScroll.viewport.height || (state.layoutMode === "wide" ? 18 : 12))
+    mainScroll.scrollTo({ x: 0, y: state.mainScrollTop })
   }
 
   function bufferStatusMessage(): string {
@@ -714,13 +1131,15 @@ async function main(): Promise<void> {
     return "Prompt Editor selected"
   }
 
-  function defaultStatusMessage(): string {
+    function defaultStatusMessage(): string {
     const fallback = bufferStatusMessage()
-    return fallback || "Browse concepts. n creates a draft concept. y copies context."
+    return fallback || "Browse concepts. n creates. space buffers. d marks deleted. y copies context."
   }
 
   function closeBufferModal(): void {
     state.showBufferModal = false
+    state.bufferModal.mode = "displaying"
+    state.bufferModal.retypeTargetCategory = null
     state.editorModal?.renderable.blur()
     state.editorModal = null
     clampBufferModalState(state)
@@ -787,7 +1206,7 @@ async function main(): Promise<void> {
     clearStatusTimeout()
     debugStatus("set-timed-status", { message, tone, durationMs, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
     setStatusNow(message, tone)
-    draw()
+    drawStatus()
     const version = state.statusVersion
     state.statusTimeout = setTimeout(() => {
       if (state.statusVersion !== version) {
@@ -798,7 +1217,7 @@ async function main(): Promise<void> {
       const fallback = bufferStatusMessage()
       debugStatus("timeout-fired", { previousMessage: message, fallback, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
       setStatusNow(defaultStatusMessage(), fallback ? "success" : "info")
-      draw()
+      drawStatus()
     }, durationMs)
   }
 

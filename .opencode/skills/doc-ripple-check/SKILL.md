@@ -86,7 +86,7 @@ Use these topic cues while classifying:
 
 - `schema_contract`: `schema_version`, top-level JSON shape, `interpretation_hint`, output contract
 - `concept_path_semantics`: stable child keys, derived paths, path stability
-- `anchor_semantics`: `loc`, `loc.file`, `code_refs`, confidence, anchoring rules
+- `anchor_semantics`: `loc`, `loc.file`, confidence, anchoring rules
 - `prompt_workflow`: generate-versus-enrich split, pass ordering, preserve-structure rules
 - `product_framing`: what `setsumei` is for, supported system types, browsing goals
 - `architecture_dev`: setup, scripts, runtime architecture, source layout
