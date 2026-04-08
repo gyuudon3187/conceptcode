@@ -2,7 +2,7 @@
 
 `setsumei` is a tool for browsing hierarchical concept graphs.
 
-The current application is an OpenTUI browser that reads a JSON concept graph, lets you navigate by stable concept path, and copies compact or full LLM-ready references to your clipboard.
+The current application is an OpenTUI browser that reads a JSON concept graph, lets you navigate by stable concept path, and copies LLM-ready concept context plus field-interpretation guidance to your clipboard.
 
 ## Current goals
 
@@ -82,7 +82,7 @@ Example options file:
 - `src/model.ts` loads and normalizes concept graphs
 - `src/state.ts` manages navigation, status, layout mode, and scroll state
 - `src/view.ts` renders the interface and pane layouts
-- `src/clipboard.ts` builds export payloads, including buffered concept actions, and integrates with `wl-copy`
+- `src/clipboard.ts` builds export payloads, including selected concepts, concept-field guidance for LLMs, and `wl-copy` integration
 
 ## Prompt workflows
 
@@ -105,13 +105,22 @@ Example options file:
 - `G` / `end`: jump to bottom
 - `l` / right: drill down
 - `h` / left: go back
-- `space`: open actions for the highlighted concept, or confirm removal for draft concepts
-- `enter`: copy compact context
-- `y`: copy full context
+- `space`: select the highlighted concept, or confirm removal for draft concepts
+- `enter`: open the buffer and notes modal
+- `y`: copy context for the current or buffered concepts
 - `p`: copy path only
 - `c`: clear buffer
 - `?`: show key help in the status bar
 - `q`: quit
+
+Inside the buffer modal:
+
+- add prompt text or per-concept notes that will be copied alongside the selected concepts
+- use the copied preamble to tell the LLM how to interpret concept fields and optional anchors
+- `enter`: edit the focused prompt or note
+- `esc`: close the modal or editor
+
+Every copied prompt includes a short instruction preamble loaded from `prompts/clipboard_preamble.md`, a compact `# System Overview` section derived from the root concept, a clearly labeled `# Main Instructions` section when prompt text is present, and the selected concept context. The preamble explains that stable paths come from `children` keys, that the graph models conceptual structure first, that fields such as `summary`, `related_paths`, `why_it_exists`, `aliases`, and `loc` are optional and should be used opportunistically, that missing anchors are preferable to guessed ones, and that if the agent's work changes the represented system it should update the concept graph only as its very last step.
 
 ## Included example
 

@@ -27,7 +27,7 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 - Stable concept paths come from object keys under `children`, so those keys are user-facing and should stay stable when possible.
 - Treat the JSON schema as user-facing and long-lived; avoid breaking changes unless clearly necessary.
 - Concepts may describe views, workflows, controls, regions, data models, behaviors, transitions, or any other useful abstraction.
-- Default clipboard export should stay concise, with richer context available on demand.
+- Clipboard export should favor a low-friction agent-inference workflow, with the copied prompt explaining how to interpret available concept fields and optional anchors.
 
 ## Guidance for agents working here
 

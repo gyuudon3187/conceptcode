@@ -1,8 +1,8 @@
-import { type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, Code, type TextChunk } from "@opentui/core"
+import { type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, TextNodeRenderable, type TextChunk } from "@opentui/core"
 
-import { getSnippetSyntaxStyle, buildSnippetPreview } from "./snippet"
-import { bufferModalCategories, bufferModalItems, bufferedConceptForPath, currentNode, selectedBufferModalTarget, visibleBufferModalCategories, visiblePaths } from "./state"
-import type { AppState, BufferModalCategory, CreateConceptModalState, ListLine, StatusTone } from "./types"
+import { getSnippetSyntaxStyle, buildContextPreview, type PreviewLegendItem } from "./snippet"
+import { bufferModalItems, bufferedConceptForPath, currentNode, selectedBufferModalTarget, visiblePaths } from "./state"
+import type { AppState, CreateConceptModalState, ListLine, StatusTone } from "./types"
 
 export const COLORS = {
   bg: "#111417",
@@ -34,6 +34,46 @@ function contextKeyForNode(path: string, loc: { file: string; startLine: number;
     return `${path}::no-loc::${summary}`
   }
   return `${path}::${loc.file}:${loc.startLine}-${loc.endLine}::${summary}`
+}
+
+function textNodesForChunks(chunks: TextChunk[]): TextNodeRenderable[] {
+  return chunks.map((chunk) => TextNodeRenderable.fromString(chunk.text, {
+    fg: chunk.fg,
+    bg: chunk.bg,
+    attributes: chunk.attributes,
+  }))
+}
+
+function renderLegendFooter(items: PreviewLegendItem[]): Renderable | VNode<any, any[]> {
+  if (items.length === 0) {
+    return Box({ width: "100%" })
+  }
+  const nodes: Array<Renderable | VNode<any, any[]>> = []
+  items.forEach((item, index) => {
+    if (index > 0) {
+      nodes.push(Text({ content: "  ·  ", fg: COLORS.border }))
+    }
+    nodes.push(Text({ content: item.kindLabel, fg: item.color, attributes: TextAttributes.BOLD }))
+  })
+  return Box(
+    {
+      position: "absolute",
+      right: 1,
+      bottom: 0,
+    },
+    Box(
+      {
+        borderStyle: "rounded",
+        borderColor: COLORS.border,
+        backgroundColor: COLORS.panel,
+        paddingX: 1,
+        paddingY: 0,
+        flexDirection: "row",
+        flexWrap: "wrap",
+      },
+      ...nodes,
+    ),
+  )
 }
 
 export function renderStatusPane(state: AppState): Renderable | VNode<any, any[]> {
@@ -81,22 +121,37 @@ export function renderFrame(
       flexGrow: 1,
       borderStyle: "rounded",
       borderColor: COLORS.border,
-      title: selectedNode.loc ? `Context ${selectedNode.loc.file}:${selectedNode.loc.startLine}-${selectedNode.loc.endLine}` : "Context",
+      title: state.contextTitle || (selectedNode.loc ? `Context ${selectedNode.loc.file}:${selectedNode.loc.startLine}-${selectedNode.loc.endLine}` : "Context"),
       padding: 1,
       backgroundColor: COLORS.panel,
     },
-    mainScroll,
+    Box(
+      { width: "100%", height: "100%", flexDirection: "column" },
+      Box({ width: "100%", height: "100%" }, mainScroll),
+      renderLegendFooter(state.contextLegendItems ?? []),
+    ),
   )
 
   const overlays: Array<Renderable | VNode<any, any[]>> = []
+  const statusPaneHeight = 5
+  const modalBackdrop = state.preserveStatusAboveModal
+    ? Box(
+        {
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          bottom: statusPaneHeight,
+          backgroundColor: "#00000088",
+        },
+      )
+    : null
 
   if (state.showBufferModal) {
-    const visibleCategories = visibleBufferModalCategories(state)
-    const layout = bufferModalLayout(state, visibleCategories)
+    const layout = bufferModalLayout(state)
     const promptSelected = selectedBufferModalTarget(state).kind === "prompt"
-    const hasCategory = Boolean(layout.selectedCategory)
     overlays.push(
-      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
+      ...(modalBackdrop ? [modalBackdrop] : [Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" })]),
       Box(
         {
           position: "absolute",
@@ -112,7 +167,7 @@ export function renderFrame(
           flexDirection: "column",
           gap: 1,
         },
-        Text({ content: "Prompt Editor", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
+        Text({ content: "Prompt", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
         (() => {
           const promptLines = state.promptText.trim()
             ? truncatePreviewLines(state.promptText, layout.promptPreviewLines, state.layoutMode === "wide" ? 64 : 48)
@@ -134,15 +189,14 @@ export function renderFrame(
             ),
           )
         })(),
-        ...(layout.selectedCategory
+        ...(layout.hasItems
           ? [
-              renderBufferCategorySwitcher(state, visibleCategories),
               Box(
                 {
                   width: "100%",
                   flexDirection: "column",
                 },
-                renderBufferCategoryPane(state, layout.selectedCategory, layout.paneVisibleRows, layout.paneHeight, layout.showRange),
+                renderSelectedConceptsPane(state, layout.paneVisibleRows, layout.paneHeight, layout.showRange),
               ),
             ]
           : []),
@@ -151,7 +205,7 @@ export function renderFrame(
             width: "100%",
             paddingX: 1,
           },
-          Text({ content: bufferModalHelpText(state, hasCategory, promptSelected), fg: COLORS.muted }),
+          Text({ content: bufferModalHelpText(layout.hasItems, promptSelected), fg: COLORS.muted }),
         ),
       ),
     )
@@ -166,7 +220,7 @@ export function renderFrame(
           .filter((alias) => aliasSuggestion.query.length === 0 || alias.slice(1).toLowerCase().includes(aliasSuggestion.query.toLowerCase()))
       : []
     overlays.push(
-      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000066" }),
+      ...(modalBackdrop ? [modalBackdrop] : [Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000066" })]),
       Box(
         {
           position: "absolute",
@@ -182,14 +236,15 @@ export function renderFrame(
           gap: 1,
         },
         Text({
-          content: state.editorModal.target.kind === "prompt" ? "Edit Prompt" : `Edit Context: ${state.editorModal.target.path}`,
+          content: state.editorModal.target.kind === "prompt" ? "Edit Prompt" : `Edit Note: ${state.editorModal.target.path}`,
           fg: COLORS.accent,
           attributes: TextAttributes.BOLD,
         }),
         Box(
           {
             width: "100%",
-            minHeight: 8,
+            minHeight: state.editorModal.visibleLineCount + 2,
+            maxHeight: state.editorModal.visibleLineCount + 2,
             backgroundColor: COLORS.panelSoft,
             flexDirection: "column",
           },
@@ -228,7 +283,6 @@ export function renderFrame(
               ),
             ]
           : []),
-        Text({ content: "Esc/Ctrl+Q cancels, Enter saves, Shift+Enter adds newline, Ctrl+G opens $EDITOR, Ctrl+H/Ctrl+L retypes existing concepts", fg: COLORS.muted }),
       ),
     )
   }
@@ -256,25 +310,20 @@ export function renderFrame(
         paddingX: 2,
         paddingY: 1,
         backgroundColor: COLORS.panel,
+        flexDirection: "row",
+        justifyContent: "space-between",
       },
       Box(
-        { width: "100%", flexDirection: state.layoutMode === "wide" ? "row" : "column", justifyContent: "space-between" },
-        Text({ content: "⚓", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
-        Text({ content: currentNode(state).path, fg: COLORS.muted }),
+        { flexDirection: "row" },
+        Text({ content: "anchor", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
       ),
+      Text({ content: truncateFromStart(selectedNode.path, state.layoutMode === "wide" ? 56 : 28), fg: COLORS.muted }),
     ),
-    Box(
-      {
-        width: "100%",
-        flexGrow: 1,
-        flexDirection: state.layoutMode === "wide" ? "row" : "column",
-        gap: 1,
-      },
-      sidebar,
-      context,
-    ),
-    ...overlays,
+    ...(state.layoutMode === "wide"
+      ? [Box({ width: "100%", flexGrow: 1, flexDirection: "row", gap: 1 }, sidebar, context)]
+      : [sidebar, context]),
     statusPane,
+    ...overlays,
   )
 }
 
@@ -296,16 +345,15 @@ export function listLines(state: AppState): ListLine[] {
   return visible.map((path, index) => {
     const node = state.nodes.get(path)!
     const selected = index === state.cursor
-    const bufferedConcept = bufferedConceptForPath(state, path)
-    const buffered = Boolean(bufferedConcept)
-    const stateLabel = node.isDraft ? "new" : bufferedConcept?.action === "delete" ? "del" : buffered ? "buf" : undefined
+    const buffered = Boolean(bufferedConceptForPath(state, path))
+    const stateLabel = node.isDraft ? "new" : buffered ? "sel" : undefined
     return {
       title: node.title,
       kindLabel: node.kind ?? "(no kind)",
       stateLabel,
       selected,
       buffered,
-      tone: node.isDraft ? "draft" : bufferedConcept?.action === "delete" ? "delete" : undefined,
+      tone: node.isDraft ? "draft" : undefined,
     }
   })
 }
@@ -339,9 +387,9 @@ function conceptRowColors(item: ListLine): { background: string; title: string; 
   }
   return {
     background: item.buffered ? COLORS.panelSoft : COLORS.panel,
-    title: item.tone === "delete" ? COLORS.error : item.tone === "draft" ? COLORS.warning : COLORS.text,
+    title: item.tone === "draft" ? COLORS.warning : COLORS.text,
     kind: COLORS.muted,
-    badge: item.tone === "delete" ? COLORS.error : item.tone === "draft" ? COLORS.warning : item.buffered ? COLORS.accentSoft : COLORS.border,
+    badge: item.tone === "draft" ? COLORS.warning : item.buffered ? COLORS.accentSoft : COLORS.border,
   }
 }
 
@@ -359,7 +407,7 @@ export function toneColor(tone: StatusTone): string {
 }
 
 function statusPaneColor(state: AppState): string {
-  return state.pendingCopyChoice ? COLORS.warning : toneColor(state.status.tone)
+  return toneColor(state.status.tone)
 }
 
 function truncateSingleLine(text: string, width: number): string {
@@ -368,6 +416,17 @@ function truncateSingleLine(text: string, width: number): string {
     return compact
   }
   return `${compact.slice(0, Math.max(0, width - 3))}...`
+}
+
+function truncateFromStart(text: string, width: number): string {
+  const compact = text.replace(/\s+/g, " ").trim()
+  if (compact.length <= width) {
+    return compact
+  }
+  if (width <= 3) {
+    return compact.slice(Math.max(0, compact.length - width))
+  }
+  return `...${compact.slice(Math.max(0, compact.length - (width - 3)))}`
 }
 
 function truncatePreviewLines(text: string, maxLines: number, width: number): string[] {
@@ -379,199 +438,68 @@ function truncatePreviewLines(text: string, maxLines: number, width: number): st
       flattened.push("")
       continue
     }
-    let remaining = source
-    while (remaining.length > width) {
-      flattened.push(remaining.slice(0, width))
-      remaining = remaining.slice(width)
+    for (let index = 0; index < source.length; index += width) {
+      flattened.push(source.slice(index, index + width))
     }
-    flattened.push(remaining)
   }
-  if (flattened.length <= maxLines) {
-    return [...flattened, ...Array.from({ length: Math.max(0, maxLines - flattened.length) }, () => "")].slice(0, maxLines)
-  }
-  const visible = flattened.slice(0, maxLines)
-  visible[maxLines - 1] = truncateSingleLine(visible[maxLines - 1], width)
-  if (visible[maxLines - 1].length >= 3) {
-    visible[maxLines - 1] = `${visible[maxLines - 1].slice(0, Math.max(0, width - 3))}...`
-  }
-  return visible
+  return flattened.slice(0, maxLines)
 }
 
-function clampVisibleWindow(cursor: number, total: number, maxVisible: number): { start: number; end: number } {
-  if (total <= maxVisible) {
-    return { start: 0, end: total }
+function bufferModalLayout(state: AppState): {
+  top: number
+  height: number
+  paneVisibleRows: number
+  paneHeight: number
+  promptPreviewLines: number
+  showRange: boolean
+  hasItems: boolean
+} {
+  const items = bufferModalItems(state)
+  const top = 4
+  const viewportHeight = process.stdout.rows || (state.layoutMode === "wide" ? 32 : 24)
+  const outerPadding = 2
+  const statusPaneHeight = 5
+  const gapAboveStatus = 1
+  const minModalHeight = state.layoutMode === "wide" ? 14 : 12
+  const narrowExtraStretch = state.layoutMode === "wide" ? 0 : 2
+  const availableHeight = Math.max(minModalHeight, viewportHeight - top - outerPadding - statusPaneHeight - gapAboveStatus + narrowExtraStretch + 1)
+  const promptPreviewLines = Math.max(1, Math.min(4, state.promptText.replace(/\r\n/g, "\n").split("\n").length))
+  const promptHeight = 2 + promptPreviewLines
+  const footerHeight = 2
+  const modalPaddingAndBorders = 4
+  const paneHeaderRows = items.length > 0 ? 3 : 0
+  const paneFrameRows = items.length > 0 ? 3 : 0
+  const desiredPaneContentRows = items.reduce((total, path) => total + (state.conceptNotes[path]?.trim() ? 2 : 1), 0)
+  const desiredPaneVisibleRows = items.length === 0 ? 0 : Math.max(2, Math.min(state.layoutMode === "wide" ? 8 : 6, desiredPaneContentRows))
+  const desiredPaneHeight = items.length === 0 ? 0 : desiredPaneVisibleRows + paneHeaderRows + paneFrameRows + 1
+  const paneArea = Math.max(0, availableHeight - promptHeight - footerHeight - modalPaddingAndBorders - (items.length > 0 ? 1 : 0))
+  const paneHeight = items.length === 0 ? 0 : Math.min(paneArea, Math.max(8, desiredPaneHeight))
+  const paneVisibleRows = items.length === 0 ? 0 : Math.max(2, paneHeight - paneHeaderRows - paneFrameRows - 1)
+  const showRange = items.some((path) => state.conceptNotes[path]?.trim())
+    ? desiredPaneContentRows > paneVisibleRows
+    : items.length > paneVisibleRows
+  const computedHeight = items.length === 0
+    ? promptHeight + footerHeight + modalPaddingAndBorders
+    : promptHeight + footerHeight + modalPaddingAndBorders + 1 + paneHeight
+  return {
+    top,
+    height: Math.min(availableHeight, Math.max(minModalHeight, computedHeight)),
+    paneVisibleRows,
+    paneHeight,
+    promptPreviewLines,
+    showRange,
+    hasItems: items.length > 0,
   }
-  const half = Math.floor(maxVisible / 2)
-  let start = Math.max(0, cursor - half)
-  const maxStart = Math.max(0, total - maxVisible)
-  if (start > maxStart) {
-    start = maxStart
-  }
-  return { start, end: Math.min(total, start + maxVisible) }
 }
 
-function createFormField(label: string, value: string, selected: boolean, placeholder: string, detail?: string): Renderable | VNode<any, any[]> {
-  return Box(
-    {
-      width: "100%",
-      flexDirection: "column",
-      gap: 0,
-    },
-    Text({ content: label, fg: COLORS.accentSoft, attributes: TextAttributes.BOLD }),
-    Box(
-      {
-        width: "100%",
-        paddingX: 1,
-        backgroundColor: selected ? COLORS.selectedBg : COLORS.panel,
-      },
-      Text({ content: value || placeholder, fg: selected ? COLORS.selectedFg : value ? COLORS.text : COLORS.muted, attributes: selected ? TextAttributes.BOLD : 0 }),
-    ),
-    ...(detail ? [Text({ content: detail, fg: COLORS.muted })] : []),
-  )
+function bufferModalHelpText(_hasItems: boolean, _promptSelected: boolean): string {
+  return "Enter -> Edit  Esc -> Close"
 }
 
-function renderCreateConceptModal(state: AppState, modal: CreateConceptModalState): Array<Renderable | VNode<any, any[]>> {
-  const query = modal.kindQuery.trim().toLowerCase()
-  const filteredOptions = state.kindDefinitions
-    .map((item) => ({ item, score: fuzzyKindScore(item.kind, query) }))
-    .filter((entry) => query.length === 0 || entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.item.kind.localeCompare(right.item.kind))
-    .map((entry) => entry.item)
-  const noneOption = { kind: "None", description: "Create this concept without assigning a kind.", source: "options" as const }
-  const options = query.length === 0 || fuzzyKindScore(noneOption.kind, query) > 0 ? [noneOption, ...filteredOptions] : filteredOptions
-  const selectedKind = options[Math.max(0, Math.min(modal.kindCursor, Math.max(0, options.length - 1)))] ?? null
-  const exactQueryMatch = state.kindDefinitions.find((item) => item.kind.toLowerCase() === query) ?? null
-  const selectedKindLabel = selectedKind?.kind ?? exactQueryMatch?.kind ?? (modal.kindQuery.trim() ? modal.kindQuery.trim() : "No kind")
-  const pathPreviewBase = modal.draft.title
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "") || "new_concept"
-  const pathPreview = `${state.currentParentPath}.${pathPreviewBase}`
-  const viewportHeight = process.stdout.rows || 24
-  const maxVisibleOptions = viewportHeight <= 32 ? 2 : 4
-  const { start, end } = clampVisibleWindow(modal.kindCursor, options.length, maxVisibleOptions)
-  const visibleOptions = options.slice(start, end)
-  const optionRows = modal.fieldIndex === 1 && modal.kindExpanded
-    ? options.length === 0
-      ? [
-          Box(
-            {
-              width: "100%",
-              paddingX: 1,
-              flexDirection: "column",
-              backgroundColor: COLORS.panel,
-            },
-            Text({ content: modal.kindQuery.trim() ? "No kinds match this search yet." : "No kinds available.", fg: COLORS.warning, attributes: TextAttributes.BOLD }),
-            Text({ content: "Backspace edits the search. Left closes the list. Right clears the search.", fg: COLORS.muted }),
-          ),
-        ]
-      : [
-          Text({ content: `Showing ${start + 1}-${end} of ${options.length}`, fg: COLORS.muted }),
-          ...visibleOptions.map((option, visibleIndex) => {
-            const selected = start + visibleIndex === modal.kindCursor
-            return Box(
-              {
-                width: "100%",
-                paddingX: 1,
-                flexDirection: "column",
-                backgroundColor: selected ? COLORS.selectedBg : COLORS.panel,
-              },
-              Text({ content: option.kind, fg: selected ? COLORS.selectedFg : COLORS.text, attributes: selected ? TextAttributes.BOLD : 0 }),
-              Text({ content: truncateSingleLine(option.description || "(no description provided)", state.layoutMode === "wide" ? 76 : 54), fg: selected ? COLORS.selectedFg : COLORS.muted }),
-            )
-          }),
-        ]
-    : []
-  const modalTop = state.layoutMode === "wide" ? 3 : 0
-  const modalWidth = state.layoutMode === "wide" ? 88 : "94%"
-  return [
-    Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
-    Box(
-      {
-        position: "absolute",
-        top: modalTop,
-        left: state.layoutMode === "wide" ? "50%" : 2,
-        width: modalWidth,
-        maxHeight: state.layoutMode === "wide" ? undefined : "74%",
-        padding: 1,
-        backgroundColor: COLORS.panelSoft,
-        borderStyle: "rounded",
-        borderColor: COLORS.borderActive,
-        title: "New Concept",
-        marginLeft: state.layoutMode === "wide" ? -44 : undefined,
-        flexDirection: "column",
-        gap: 1,
-      },
-      createFormField("Concept name", modal.draft.title, modal.fieldIndex === 0, "Type the concept name"),
-      createFormField("Kind (optional)", selectedKindLabel, modal.fieldIndex === 1, state.kindDefinitions.length === 0 ? "No kinds available" : "Press Enter to browse kinds", `Path preview: ${pathPreview}`),
-      ...optionRows,
-      createFormField("Short summary", modal.draft.summary, modal.fieldIndex === 2, "Explain why this concept matters"),
-      Text({ content: modal.fieldIndex === 1 && modal.kindExpanded ? "Type to search kinds. Up/Down move. Enter confirms. Left closes. Right clears the search." : "Tab/Shift+Tab or Up/Down move between fields. Enter creates, or opens kind choices. Esc cancels.", fg: COLORS.muted }),
-    ),
-  ]
-}
-
-function renderConfirmModal(state: AppState): Array<Renderable | VNode<any, any[]>> {
-  if (!state.confirmModal) {
-    return []
-  }
-  return [
-    Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
-    Box(
-      {
-        position: "absolute",
-        top: state.layoutMode === "wide" ? 8 : 6,
-        left: state.layoutMode === "wide" ? "50%" : 2,
-        width: state.layoutMode === "wide" ? 74 : "92%",
-        padding: 1,
-        backgroundColor: COLORS.panelSoft,
-        borderStyle: "rounded",
-        borderColor: COLORS.borderActive,
-        marginLeft: state.layoutMode === "wide" ? -37 : undefined,
-        flexDirection: "column",
-        gap: 1,
-      },
-      Text({ content: state.confirmModal.title, fg: COLORS.accent, attributes: TextAttributes.BOLD }),
-      ...state.confirmModal.message.map((line) => Text({ content: line, fg: COLORS.text })),
-      Text({ content: `Enter ${state.confirmModal.confirmLabel}. Esc/Ctrl+Q cancels.`, fg: COLORS.muted }),
-    ),
-  ]
-}
-
-function bufferModalCategoryMeta(category: BufferModalCategory): { title: string; color: string; empty: string; deleteLabel?: boolean } {
-  if (category === "deleted") {
-    return { title: "Deleted Concepts", color: COLORS.error, empty: "No deleted concepts", deleteLabel: true }
-  }
-  if (category === "created") {
-    return { title: "Created Concepts", color: COLORS.warning, empty: "No created concepts" }
-  }
-  return { title: "Buffered Concepts", color: COLORS.accent, empty: "No buffered concepts" }
-}
-
-function bufferCategoryLabelColor(category: BufferModalCategory): string {
-  if (category === "deleted") {
-    return COLORS.error
-  }
-  if (category === "created") {
-    return COLORS.warning
-  }
-  return COLORS.accent
-}
-
-function bufferPaneTitle(state: AppState): string {
-  const right = state.bufferModal.mode === "retyping" ? "mode: Retyping" : "mode: Displaying"
-  const width = state.layoutMode === "wide" ? 100 : 44
-  const spaces = Math.max(1, width - "Concepts".length - right.length)
-  return `Concepts${" ".repeat(spaces)}${right}`
-}
-
-function renderBufferCategoryPane(state: AppState, category: BufferModalCategory, maxVisible: number, paneHeight: number, showRange: boolean): Renderable | VNode<any, any[]> {
-  const meta = bufferModalCategoryMeta(category)
-  const items = bufferModalItems(state, category)
-  const activePane = state.bufferModal.activeCategory === category
-  const focusInPane = state.bufferModal.focus === "categories" && activePane
-  const cursor = state.bufferModal.cursors[category] ?? 0
+function renderSelectedConceptsPane(state: AppState, maxVisible: number, paneHeight: number, showRange: boolean): Renderable | VNode<any, any[]> {
+  const items = bufferModalItems(state)
+  const focusInPane = state.bufferModal.focus === "categories"
+  const cursor = state.bufferModal.conceptCursor
   const itemHeights = items.map((path) => (state.conceptNotes[path]?.trim() ? 2 : 1))
   const boundedCursor = Math.max(0, Math.min(cursor, Math.max(0, items.length - 1)))
   let start = boundedCursor
@@ -592,36 +520,34 @@ function renderBufferCategoryPane(state: AppState, category: BufferModalCategory
       width: "100%",
       height: paneHeight,
       padding: 1,
-      backgroundColor: activePane ? COLORS.panel : "#171d22",
+      backgroundColor: COLORS.panel,
       borderStyle: "rounded",
-      borderColor: activePane ? COLORS.borderActive : COLORS.border,
-      title: bufferPaneTitle(state),
+      borderColor: COLORS.borderActive,
+      title: "Selection",
       flexDirection: "column",
       gap: 1,
     },
     ...(items.length === 0
-      ? [Text({ content: meta.empty, fg: COLORS.muted })]
+      ? [Text({ content: "No selected concepts", fg: COLORS.muted })]
       : [
           ...(showRange ? [Text({ content: `Showing ${start + 1}-${end} of ${items.length}`, fg: COLORS.muted })] : []),
           Box(
             { width: "100%", flexDirection: "column", gap: 0 },
             ...visibleItems.flatMap((path, visibleIndex) => {
               const selected = focusInPane && start + visibleIndex === cursor
-              const retypePreview = selected && state.bufferModal.mode === "retyping" && state.bufferModal.retypeTargetCategory
-                ? `-> ${state.bufferModal.retypeTargetCategory}`
-                : null
+              const isDraft = Boolean(state.nodes.get(path)?.isDraft)
               return [
                 Box(
                   {
                     width: "100%",
                     paddingX: 1,
-                    backgroundColor: selected ? COLORS.selectedBg : activePane ? COLORS.panelSoft : COLORS.panel,
+                    backgroundColor: selected ? COLORS.selectedBg : COLORS.panelSoft,
                     flexDirection: "row",
                     justifyContent: "space-between",
                   },
                   Box(
                     { flexDirection: "row", gap: 1, flexGrow: 1 },
-                    Text({ content: path, fg: selected ? COLORS.selectedFg : meta.color, attributes: selected ? TextAttributes.BOLD : 0 }),
+                    Text({ content: path, fg: selected ? COLORS.selectedFg : COLORS.accent, attributes: selected ? TextAttributes.BOLD : 0 }),
                     ...(state.conceptAliases[path]
                       ? [
                           Text({
@@ -633,9 +559,9 @@ function renderBufferCategoryPane(state: AppState, category: BufferModalCategory
                       : []),
                   ),
                   Text({
-                    content: retypePreview ?? "",
-                    fg: selected ? COLORS.selectedFg : COLORS.muted,
-                    attributes: selected && retypePreview ? TextAttributes.BOLD : 0,
+                    content: isDraft ? "new" : "",
+                    fg: selected ? COLORS.selectedFg : COLORS.warning,
+                    attributes: isDraft ? TextAttributes.BOLD : 0,
                   }),
                 ),
                 ...(state.conceptNotes[path]?.trim()
@@ -666,109 +592,74 @@ function renderBufferCategoryPane(state: AppState, category: BufferModalCategory
   )
 }
 
-function renderBufferCategorySwitcher(state: AppState, visibleCategories: BufferModalCategory[]): Renderable | VNode<any, any[]> {
-  const activeIndex = visibleCategories.indexOf(state.bufferModal.activeCategory)
-  const left = activeIndex > 0 ? visibleCategories[activeIndex - 1] : null
-  const current = activeIndex >= 0 ? visibleCategories[activeIndex] : null
-  const right = activeIndex >= 0 && activeIndex < visibleCategories.length - 1 ? visibleCategories[activeIndex + 1] : null
-  const width = state.layoutMode === "wide" ? 92 : 56
-  const thirdWidth = Math.floor(width / 3)
-  const showNeighbors = visibleCategories.length > 1
-
-  return Box(
-    {
-      width,
-      flexDirection: "row",
-      justifyContent: "center",
-      alignItems: "center",
-      alignSelf: "center",
-    },
+function renderCreateConceptModal(state: AppState, modal: CreateConceptModalState): Array<Renderable | VNode<any, any[]>> {
+  const options = createKindOptions(state, modal.kindQuery)
+  const selectedOption = options[Math.max(0, Math.min(modal.kindCursor, Math.max(0, options.length - 1)))]
+  const visibleOptions = options.slice(0, state.layoutMode === "wide" ? 8 : 6)
+  return [
+    Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
     Box(
-      { width: thirdWidth, justifyContent: "center", alignItems: "center" },
-      Text({ content: showNeighbors && left ? `${left}  <` : "", fg: COLORS.muted }),
+      {
+        position: "absolute",
+        top: state.layoutMode === "wide" ? 5 : 3,
+        left: state.layoutMode === "wide" ? "50%" : 2,
+        width: state.layoutMode === "wide" ? 84 : "94%",
+        padding: 1,
+        backgroundColor: COLORS.panelSoft,
+        borderStyle: "rounded",
+        borderColor: COLORS.borderActive,
+        marginLeft: state.layoutMode === "wide" ? -42 : undefined,
+        flexDirection: "column",
+        gap: 1,
+      },
+      Text({ content: "Add Draft Concept", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
+      Text({ content: modal.fieldIndex === 0 ? `Name: ${modal.draft.title || ""}` : `Name: ${modal.draft.title || ""}`, fg: modal.fieldIndex === 0 ? COLORS.selectedBg : COLORS.text }),
+      Text({ content: modal.fieldIndex === 1 ? `Kind: ${selectedOption?.kind ?? (modal.kindQuery || "None")}` : `Kind: ${selectedOption?.kind ?? (modal.kindQuery || "None")}`, fg: modal.fieldIndex === 1 ? COLORS.selectedBg : COLORS.text }),
+      ...(modal.kindExpanded
+        ? [
+            Box(
+              {
+                width: "100%",
+                padding: 1,
+                backgroundColor: COLORS.panel,
+                borderStyle: "rounded",
+                borderColor: COLORS.warning,
+                flexDirection: "column",
+              },
+              ...visibleOptions.map((option, index) => {
+                const selected = index === Math.max(0, Math.min(modal.kindCursor, visibleOptions.length - 1))
+                return Box(
+                  {
+                    width: "100%",
+                    paddingX: 1,
+                    backgroundColor: selected ? COLORS.selectedBg : COLORS.panel,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                  },
+                  Text({ content: option.kind, fg: selected ? COLORS.selectedFg : COLORS.text, attributes: selected ? TextAttributes.BOLD : 0 }),
+                  Text({ content: option.description, fg: selected ? COLORS.selectedFg : COLORS.muted }),
+                )
+              }),
+            ),
+          ]
+        : []),
+      Text({ content: modal.fieldIndex === 2 ? `Summary: ${modal.draft.summary || ""}` : `Summary: ${modal.draft.summary || ""}`, fg: modal.fieldIndex === 2 ? COLORS.selectedBg : COLORS.text }),
+      Text({ content: modal.kindExpanded ? "Type -> Filter  Arrows -> Move  Enter -> Close  Esc -> Close" : "Tab -> Next  Shift+Tab -> Prev  Enter -> Open/Create  Esc -> Close", fg: COLORS.muted }),
     ),
-    Box(
-      { width: thirdWidth, justifyContent: "center", alignItems: "center" },
-      Text({ content: current ?? "", fg: current ? bufferCategoryLabelColor(current) : COLORS.accent, attributes: TextAttributes.BOLD }),
-    ),
-    Box(
-      { width: width - thirdWidth * 2, justifyContent: "center", alignItems: "center" },
-      Text({ content: showNeighbors && right ? `>  ${right}` : "", fg: COLORS.muted }),
-    ),
-  )
+  ]
 }
 
-function bufferModalLayout(state: AppState, visibleCategories: BufferModalCategory[]): {
-  top: number
-  height: number
-  paneVisibleRows: number
-  paneHeight: number
-  selectedCategory: BufferModalCategory | null
-  promptPreviewLines: number
-  showRange: boolean
-} {
-  const top = 4
-  const viewportHeight = process.stdout.rows || (state.layoutMode === "wide" ? 32 : 24)
-  const outerPadding = 2
-  const statusPaneHeight = 5
-  const gapAboveStatus = 1
-  const minModalHeight = state.layoutMode === "wide" ? 14 : 12
-  const narrowExtraStretch = state.layoutMode === "wide" ? 0 : 2
-  const availableHeight = Math.max(minModalHeight, viewportHeight - top - outerPadding - statusPaneHeight - gapAboveStatus + narrowExtraStretch + 1)
-  const promptPreviewLines = Math.max(1, Math.min(4, state.promptText.replace(/\r\n/g, "\n").split("\n").length))
-  const promptHeight = 2 + promptPreviewLines
-  const footerHeight = 2
-  const modalPaddingAndBorders = 4
-  const selectedCategory = visibleCategories.includes(state.bufferModal.activeCategory) ? state.bufferModal.activeCategory : visibleCategories[0] ?? null
-  const categoryContainerGap = selectedCategory ? 1 : 0
-  const paneHeaderRows = selectedCategory ? 3 : 0
-  const paneFrameRows = selectedCategory ? 3 : 0
-  const desiredPaneContentRows = selectedCategory
-    ? bufferModalItems(state, selectedCategory).reduce((total, path) => total + (state.conceptNotes[path]?.trim() ? 2 : 1), 0)
-    : 0
-  const desiredPaneVisibleRows = !selectedCategory
-    ? 0
-    : Math.max(2, Math.min(state.layoutMode === "wide" ? 8 : 6, desiredPaneContentRows))
-  const desiredPaneHeight = !selectedCategory
-    ? 0
-    : desiredPaneVisibleRows + paneHeaderRows + paneFrameRows + 1
-  const paneArea = Math.max(0, availableHeight - promptHeight - footerHeight - modalPaddingAndBorders - categoryContainerGap)
-  const paneHeight = !selectedCategory
-    ? 0
-    : Math.min(paneArea, Math.max(8, desiredPaneHeight))
-  const paneVisibleRows = !selectedCategory
-    ? 0
-    : Math.max(2, paneHeight - paneHeaderRows - paneFrameRows - 1)
-  const showRange = selectedCategory
-    ? (bufferModalItems(state, selectedCategory).some((path) => state.conceptNotes[path]?.trim())
-        ? bufferModalItems(state, selectedCategory).reduce((total, path) => total + (state.conceptNotes[path]?.trim() ? 2 : 1), 0) > paneVisibleRows
-        : bufferModalItems(state, selectedCategory).length > paneVisibleRows)
-    : false
-  const computedHeight = !selectedCategory
-    ? promptHeight + footerHeight + modalPaddingAndBorders
-    : promptHeight + footerHeight + modalPaddingAndBorders + categoryContainerGap + paneHeight
-  return {
-    top,
-    height: Math.min(availableHeight, Math.max(minModalHeight, computedHeight)),
-    paneVisibleRows,
-    paneHeight,
-    selectedCategory,
-    promptPreviewLines,
-    showRange,
-  }
-}
-
-function bufferModalHelpText(state: AppState, hasCategory: boolean, promptSelected: boolean): string {
-  if (state.bufferModal.mode === "retyping") {
-    return "Tab next target, Shift+Tab exit, Enter apply, Esc cancel"
-  }
-  if (!hasCategory) {
-    return "Enter edits prompt"
-  }
-  if (promptSelected) {
-    return "j/down enters pane; h/l switch concept type; Enter edits prompt"
-  }
-  return "h/l switch concept type; j/k move; Enter edits; Tab retype"
+function createKindOptions(state: AppState, query: string): Array<{ kind: string; description: string }> {
+  const normalizedQuery = query.trim().toLowerCase()
+  const filtered = state.kindDefinitions
+    .filter((item) => normalizedQuery.length === 0 || fuzzyKindScore(item.kind, normalizedQuery) > 0)
+    .sort((left, right) => {
+      const leftScore = fuzzyKindScore(left.kind, normalizedQuery)
+      const rightScore = fuzzyKindScore(right.kind, normalizedQuery)
+      return rightScore - leftScore || left.kind.localeCompare(right.kind)
+    })
+    .map((item) => ({ kind: item.kind, description: item.description }))
+  return [{ kind: "None", description: "Create this concept without assigning a kind." }, ...filtered]
 }
 
 function fuzzyKindScore(candidate: string, query: string): number {
@@ -790,6 +681,33 @@ function fuzzyKindScore(candidate: string, query: string): number {
   return queryIndex === query.length ? score : 0
 }
 
+function renderConfirmModal(state: AppState): Array<Renderable | VNode<any, any[]>> {
+  if (!state.confirmModal) {
+    return []
+  }
+  return [
+    Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
+    Box(
+      {
+        position: "absolute",
+        top: state.layoutMode === "wide" ? 8 : 6,
+        left: state.layoutMode === "wide" ? "50%" : 2,
+        width: state.layoutMode === "wide" ? 74 : "92%",
+        padding: 1,
+        backgroundColor: COLORS.panelSoft,
+        borderStyle: "rounded",
+        borderColor: COLORS.borderActive,
+        marginLeft: state.layoutMode === "wide" ? -37 : undefined,
+        flexDirection: "column",
+        gap: 1,
+      },
+      Text({ content: state.confirmModal.title, fg: COLORS.accent, attributes: TextAttributes.BOLD }),
+      ...state.confirmModal.message.map((line) => Text({ content: line, fg: COLORS.text })),
+      Text({ content: `Enter -> Remove  Esc -> Close`, fg: COLORS.muted }),
+    ),
+  ]
+}
+
 export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, root: { getChildren: () => Renderable[]; add: (child: Renderable | VNode<any, any[]>, index?: number) => number }): void {
   const listItems = listLines(state)
   const selectedNode = currentNode(state)
@@ -801,11 +719,11 @@ export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainSc
     listScroll,
     Box(
       { width: "100%", flexDirection: "column", gap: 0 },
-        ...listItems.map((item) => {
-          const colors = conceptRowColors(item)
-          const titleWidth = state.layoutMode === "wide" ? 28 : 22
-          const kindWidth = state.layoutMode === "wide" ? 12 : 10
-          return Box(
+      ...listItems.map((item) => {
+        const colors = conceptRowColors(item)
+        const titleWidth = state.layoutMode === "wide" ? 28 : 22
+        const kindWidth = state.layoutMode === "wide" ? 12 : 10
+        return Box(
           {
             width: "100%",
             paddingX: 1,
@@ -826,53 +744,40 @@ export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainSc
 
   if (shouldRefreshContext) {
     contextPreviewKey = nextContextKey
-    void buildSnippetPreview(state, selectedNode).then(async (preview) => {
+    void buildContextPreview(state, selectedNode).then(async (preview) => {
       if (renderVersion !== contextRenderVersion || contextPreviewKey !== nextContextKey) {
         return
       }
-      const syntaxStyle = await getSnippetSyntaxStyle()
-      if (renderVersion !== contextRenderVersion || contextPreviewKey !== nextContextKey) {
-        return
+      state.contextTitle = preview.title
+      state.contextLegendItems = preview.legendItems ?? []
+      if (preview.useSyntaxStyle) {
+        await getSnippetSyntaxStyle()
+        if (renderVersion !== contextRenderVersion || contextPreviewKey !== nextContextKey) {
+          return
+        }
       }
-      const content = preview.lines.map((line) => line.chunks.map((chunk) => chunk.text).join("")).join("\n")
       replaceChildren(
         mainScroll,
         Box(
           { width: "100%", flexDirection: "column", gap: 0 },
           ...(selectedNode.summary
             ? [
-                Text({ content: "Summary", fg: COLORS.accentSoft, attributes: TextAttributes.BOLD }),
                 Text({ content: selectedNode.summary, fg: COLORS.text }),
                 Text({ content: "", fg: COLORS.text }),
               ]
             : []),
-          Code({
-            width: "100%",
-            flexGrow: 1,
-            content,
-            filetype: "text",
-            syntaxStyle,
-            wrapMode: "none",
-            drawUnstyledText: true,
-            onChunks: (_chunks) => {
-              const flattened = preview.lines.flatMap((line, index) => {
-                const withNewline = index === preview.lines.length - 1 ? line.chunks : [...line.chunks, { __isChunk: true, text: "\n" } satisfies TextChunk]
-                return withNewline
-              })
-              return flattened
-            },
-          }),
+          Box(
+            { width: "100%", flexDirection: "column", gap: 0 },
+            ...preview.lines.map((line) =>
+              Text({}, ...textNodesForChunks(line.chunks)),
+            ),
+          ),
         ),
       )
+      mainScroll.scrollTo({ x: 0, y: state.mainScrollTop })
+      replaceChildren(root, renderFrame(state, listScroll, mainScroll, renderStatusPane(state)))
     })
   }
 
-  replaceChildren(
-    root,
-    renderFrame(state, listScroll, mainScroll, renderStatusPane(state)),
-  )
-
-  scrollListForCursor(state, listScroll)
-  state.mainViewportHeight = Math.max(8, mainScroll.viewport.height || (state.layoutMode === "wide" ? 18 : 12))
-  mainScroll.scrollTo({ x: 0, y: state.mainScrollTop })
+  replaceChildren(root, renderFrame(state, listScroll, mainScroll, renderStatusPane(state)))
 }

@@ -7,8 +7,8 @@ import { ScrollBoxRenderable, TextareaRenderable, createCliRenderer, type CliRen
 
 import { buildClipboardPayload, clipboardSelection, copyToClipboard } from "./clipboard"
 import { loadConceptGraph } from "./model"
-import { applySelectionChange, bufferedConceptForPath, clampBufferModalState, clampCursor, currentNode, currentPath, handleResize, moveBufferModalCategory, moveBufferModalCursor, moveCursor, pageSize, rebuildConceptAliases, resetBufferModal, scrollMain, selectedBufferModalTarget, setStatus, visiblePaths } from "./state"
-import type { AppState, BufferModalCategory, ConceptNode, CopyMode, CreateConceptDraft, EditorModalState, KindDefinition } from "./types"
+import { applySelectionChange, bufferedConceptForPath, bufferModalItems, clampBufferModalState, clampCursor, currentNode, currentPath, handleResize, moveBufferModalCursor, moveCursor, pageSize, rebuildConceptAliases, resetBufferModal, scrollMain, selectedBufferModalTarget, setStatus, visiblePaths } from "./state"
+import type { AppState, ConceptNode, CreateConceptDraft, EditorModalState, KindDefinition } from "./types"
 import { repaint, renderFrame, renderStatusPane, replaceChildren, scrollListForCursor } from "./view"
 
 const DEBUG_STATUS = process.env.SETSUMEI_DEBUG_STATUS === "1"
@@ -130,6 +130,26 @@ function refreshAliasSuggestion(state: AppState): void {
   )
 }
 
+function editorVisibleLineCount(text: string): number {
+  const lineCount = text.split("\n").length
+  return Math.max(1, Math.min(4, lineCount))
+}
+
+function refreshEditorModalHeight(state: AppState): boolean {
+  const editor = state.editorModal
+  if (!editor) {
+    return false
+  }
+  const nextVisibleLineCount = editorVisibleLineCount(editor.renderable.plainText)
+  if (editor.visibleLineCount === nextVisibleLineCount) {
+    return false
+  }
+  editor.visibleLineCount = nextVisibleLineCount
+  editor.renderable.minHeight = nextVisibleLineCount + 2
+  editor.renderable.maxHeight = nextVisibleLineCount + 2
+  return true
+}
+
 function refreshAliasSuggestionSoon(state: AppState, redraw: () => void): void {
   setTimeout(() => {
     const editor = state.editorModal
@@ -141,6 +161,7 @@ function refreshAliasSuggestionSoon(state: AppState, redraw: () => void): void {
     } catch {
       return
     }
+    refreshEditorModalHeight(state)
     refreshAliasSuggestion(state)
     redraw()
   }, 0)
@@ -158,7 +179,8 @@ function moveAliasSuggestionSelection(state: AppState, delta: number): boolean {
     return false
   }
   const previous = editor.aliasSuggestion.selectedIndex
-  editor.aliasSuggestion.selectedIndex = Math.max(0, Math.min(previous + delta, suggestions.length - 1))
+  const suggestionCount = suggestions.length
+  editor.aliasSuggestion.selectedIndex = ((previous + delta) % suggestionCount + suggestionCount) % suggestionCount
   if (editor.aliasSuggestion.selectedIndex < editor.aliasSuggestion.visibleStartIndex) {
     editor.aliasSuggestion.visibleStartIndex = editor.aliasSuggestion.selectedIndex
   } else if (editor.aliasSuggestion.selectedIndex >= editor.aliasSuggestion.visibleStartIndex + maxVisibleSuggestions) {
@@ -179,19 +201,26 @@ function acceptAliasSuggestion(state: AppState): boolean {
     return false
   }
   const text = editor.renderable.plainText
-  const nextText = `${text.slice(0, editor.aliasSuggestion.start)}${alias}${text.slice(editor.aliasSuggestion.end)}`
-  const originalOnSubmit = editor.renderable.onSubmit
-  editor.renderable.onSubmit = undefined
+  const suffix = text.slice(editor.aliasSuggestion.end)
+  const needsTrailingSpace = suffix.length === 0 || !/^[\s.,;:!?)}\]]/.test(suffix)
+  const nextText = `${text.slice(0, editor.aliasSuggestion.start)}${alias}${needsTrailingSpace ? " " : ""}${suffix}`
   editor.renderable.setText(nextText)
   editor.renderable.gotoBufferEnd()
   editor.renderable.focus()
-  setTimeout(() => {
-    if (state.editorModal?.renderable === editor.renderable) {
-      editor.renderable.onSubmit = originalOnSubmit
-    }
-  }, 0)
+  applyEditorText(state, editor)
   editor.aliasSuggestion = null
   return true
+}
+
+function applyEditorText(state: AppState, editor: EditorModalState): void {
+  const text = editor.renderable.plainText
+  if (editor.target.kind === "prompt") {
+    state.promptText = text
+    return
+  }
+  if (editor.target.path) {
+    state.conceptNotes[editor.target.path] = text
+  }
 }
 
 function uniqueChildPath(state: AppState, parentPath: string, title: string): string {
@@ -273,30 +302,27 @@ async function main(): Promise<void> {
     createConceptModal: null,
       confirmModal: null,
       status: {
-      message: "Browse concepts. n creates. space buffers. d marks deleted. y copies context.",
+      message: "Browse concepts. n adds a draft. Space toggles selection. y copies context.",
       tone: "info",
     },
     layoutMode: "wide",
     mainScrollTop: 0,
     mainViewportHeight: 18,
+    contextTitle: "Context",
+    contextLegendItems: [],
     showBufferModal: false,
     bufferModal: {
       focus: "prompt",
-      activeCategory: "buffered",
-      mode: "displaying",
-      retypeTargetCategory: null,
-      cursors: {
-        buffered: 0,
-        deleted: 0,
-        created: 0,
-      },
+      conceptCursor: 0,
     },
     promptText: "",
     conceptNotes: {},
     conceptAliases: {},
     aliasPaths: {},
     editorModal: null,
-    pendingCopyChoice: null,
+    pendingCtrlCExit: false,
+    ctrlCExitTimeout: null,
+    preserveStatusAboveModal: false,
     statusTimeout: null,
     statusVersion: 0,
   }
@@ -426,7 +452,7 @@ async function main(): Promise<void> {
     const createdPath = insertDraftConcept(state, modal.draft, resolvedKind)
     closeCreateConceptModal()
     clampCursor(state)
-    setStatusNow(resolvedKind ? `Created draft concept: ${createdPath}` : `Created draft concept without kind: ${createdPath}`, "success")
+    setStatusNow(resolvedKind ? `Added draft concept: ${createdPath}` : `Added draft concept without kind: ${createdPath}`, "success")
     draw()
     return true
   }
@@ -447,28 +473,17 @@ async function main(): Promise<void> {
     if (kindFieldSelected && modal.kindExpanded) {
       const options = createKindOptions(modal.kindQuery)
       modal.kindCursor = Math.min(modal.kindCursor, Math.max(0, options.length - 1))
-      if (key.name === "left") {
-        modal.kindExpanded = false
-        draw()
-        return true
-      }
-      if (key.name === "right") {
-        modal.kindQuery = ""
-        modal.kindCursor = 0
-        draw()
-        return true
-      }
       if (key.name === "escape") {
         modal.kindExpanded = false
         draw()
         return true
       }
-      if (key.name === "up" || (key.ctrl && key.name === "k")) {
+      if (key.name === "up") {
         modal.kindCursor = Math.max(0, modal.kindCursor - 1)
         draw()
         return true
       }
-      if (key.name === "down" || (key.ctrl && key.name === "j")) {
+      if (key.name === "down") {
         modal.kindCursor = Math.min(Math.max(0, options.length - 1), modal.kindCursor + 1)
         draw()
         return true
@@ -501,12 +516,12 @@ async function main(): Promise<void> {
       }
       return true
     }
-    if (key.name === "tab" || key.name === "down" || (key.ctrl && key.name === "j")) {
+    if (key.name === "tab") {
       modal.fieldIndex = (modal.fieldIndex + 1) % fieldCount
       draw()
       return true
     }
-    if ((key.shift && key.name === "tab") || key.name === "up" || (key.ctrl && key.name === "k")) {
+    if (key.shift && key.name === "tab") {
       modal.fieldIndex = (modal.fieldIndex + fieldCount - 1) % fieldCount
       draw()
       return true
@@ -558,7 +573,7 @@ async function main(): Promise<void> {
     if (key.name === "return") {
       removeDraftConcept(state, modal.path)
       closeConfirmModal()
-      setStatusNow("Removed draft concept", "info")
+      setStatusNow("Removed draft", "info")
       draw()
       return true
     }
@@ -568,10 +583,10 @@ async function main(): Promise<void> {
   function promptToRemoveDraft(path: string): void {
     state.confirmModal = {
       kind: "remove-draft",
-      title: "Remove Draft Concept",
+      title: "Remove Draft",
       message: [
-        `Remove drafted concept ${path}?`,
-        "This removes the concept from the current TUI session.",
+        `Remove draft ${path}?`,
+        "This removes the draft from the current TUI session.",
       ],
       confirmLabel: "removes this draft concept",
       path,
@@ -580,16 +595,11 @@ async function main(): Promise<void> {
 
   function setConceptBuffered(path: string): void {
     const existing = bufferedConceptForPath(state, path)
-    if (existing && existing.action !== "delete") {
+    if (existing) {
       state.bufferedConcepts = state.bufferedConcepts.filter((item) => item.path !== path)
       clearStatusTimeout()
       debugStatus("buffer-remove", { path, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-      setStatusNow(state.bufferedConcepts.length === 0 ? "Buffer cleared" : bufferStatusMessage(), state.bufferedConcepts.length === 0 ? "info" : "success")
-    } else if (existing?.action === "delete") {
-      state.bufferedConcepts = state.bufferedConcepts.map((item) => (item.path === path ? { path } : item))
-      clearStatusTimeout()
-      debugStatus("buffer-add", { path, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-      setStatusNow(bufferStatusMessage(), "success")
+      setStatusNow(state.bufferedConcepts.length === 0 ? "Selection cleared" : bufferStatusMessage(), state.bufferedConcepts.length === 0 ? "info" : "success")
     } else {
       state.bufferedConcepts = [...state.bufferedConcepts, { path }]
       clearStatusTimeout()
@@ -599,147 +609,32 @@ async function main(): Promise<void> {
     clampBufferModalState(state)
   }
 
-  function setConceptDeleted(path: string): void {
-    const existing = bufferedConceptForPath(state, path)
-    if (existing?.action === "delete") {
-      state.bufferedConcepts = state.bufferedConcepts.filter((item) => item.path !== path)
-      clearStatusTimeout()
-      setStatusNow(state.bufferedConcepts.length === 0 ? "Buffer cleared" : bufferStatusMessage(), state.bufferedConcepts.length === 0 ? "info" : "success")
-    } else if (existing) {
-      state.bufferedConcepts = state.bufferedConcepts.map((item) => (item.path === path ? { ...item, action: "delete" } : item))
-      clearStatusTimeout()
-      setStatusNow(`Marked for deletion: ${path}`, "success")
-    } else {
-      state.bufferedConcepts = [...state.bufferedConcepts, { path, action: "delete" }]
-      clearStatusTimeout()
-      setStatusNow(`Marked for deletion: ${path}`, "success")
-    }
-    clampBufferModalState(state)
-  }
-
-  function retypeEditorConcept(delta: -1 | 1): boolean {
-    const editor = state.editorModal
-    if (!editor || editor.target.kind !== "concept" || !editor.target.path) {
-      return false
-    }
-    if (isDraftConcept(state, editor.target.path)) {
-      setTimedStatus("Draft concepts can be edited or removed, but not retyped", "warning")
-      return true
-    }
-    const currentEntry = bufferedConceptForPath(state, editor.target.path)
-    const currentCategory: BufferModalCategory = currentEntry?.action === "delete" ? "deleted" : "buffered"
-    const categories: BufferModalCategory[] = ["buffered", "deleted"]
-    const currentIndex = categories.indexOf(currentCategory)
-    const nextIndex = Math.max(0, Math.min(currentIndex + delta, categories.length - 1))
-    if (nextIndex === currentIndex) {
-      return true
-    }
-    applyEditorText(editor)
-    const nextCategory = categories[nextIndex]
-    if (nextCategory === "buffered") {
-      setConceptBuffered(editor.target.path)
-    } else {
-      setConceptDeleted(editor.target.path)
-    }
-    state.bufferModal.activeCategory = nextCategory
-    state.bufferModal.focus = "categories"
-    clampBufferModalState(state)
-    const items = nextCategory === "deleted"
-      ? state.bufferedConcepts.filter((item) => item.action === "delete").map((item) => item.path)
-      : state.bufferedConcepts.filter((item) => item.action !== "delete" && !state.nodes.get(item.path)?.isDraft).map((item) => item.path)
-    const nextCursor = items.indexOf(editor.target.path)
-    if (nextCursor >= 0) {
-      state.bufferModal.cursors[nextCategory] = nextCursor
-    }
-    setStatusNow(nextCategory === "deleted" ? `Moved to deleted: ${editor.target.path}` : `Moved to buffered: ${editor.target.path}`, "success")
-    return true
-  }
-
-  function selectedRetypeTargetCategory(): Exclude<BufferModalCategory, "created"> | null {
-    const target = selectedBufferModalTarget(state)
-    if (target.kind !== "concept" || !target.path) {
-      return null
-    }
-    if (isDraftConcept(state, target.path)) {
-      return null
-    }
-    const currentEntry = bufferedConceptForPath(state, target.path)
-    return currentEntry?.action === "delete" ? "buffered" : "deleted"
-  }
-
-  function enterRetypeMode(): boolean {
-    const target = selectedBufferModalTarget(state)
-    if (target.kind !== "concept" || !target.path) {
-      setTimedStatus("Select a concept to retype", "warning")
-      return true
-    }
-    if (isDraftConcept(state, target.path)) {
-      setTimedStatus("Draft concepts can be edited or removed, but not retyped", "warning")
-      return true
-    }
-    state.bufferModal.mode = "retyping"
-    state.bufferModal.retypeTargetCategory = selectedRetypeTargetCategory()
-    return true
-  }
-
-  function exitRetypeMode(): boolean {
-    if (state.bufferModal.mode !== "retyping") {
-      return false
-    }
-    state.bufferModal.mode = "displaying"
-    state.bufferModal.retypeTargetCategory = null
-    return true
-  }
-
-  function advanceRetypeTarget(): boolean {
-    if (state.bufferModal.mode !== "retyping") {
-      return false
-    }
-    const nextTarget = selectedRetypeTargetCategory()
-    if (!nextTarget) {
-      return exitRetypeMode()
-    }
-    if (state.bufferModal.retypeTargetCategory === nextTarget) {
-      return exitRetypeMode()
-    }
-    state.bufferModal.retypeTargetCategory = nextTarget
-    return true
-  }
-
-  function applyRetypePromptEditorConcept(): boolean {
-    const target = selectedBufferModalTarget(state)
-    const nextCategory = state.bufferModal.retypeTargetCategory
-    if (target.kind !== "concept" || !target.path || !nextCategory) {
-      setTimedStatus("Select a concept to retype", "warning")
-      return true
-    }
-    if (isDraftConcept(state, target.path)) {
-      setTimedStatus("Draft concepts can be edited or removed, but not retyped", "warning")
-      return true
-    }
-    if (nextCategory === "buffered") {
-      setConceptBuffered(target.path)
-    } else {
-      setConceptDeleted(target.path)
-    }
-    state.bufferModal.activeCategory = nextCategory
-    state.bufferModal.focus = "categories"
-    clampBufferModalState(state)
-    const items = nextCategory === "deleted"
-      ? state.bufferedConcepts.filter((item) => item.action === "delete").map((item) => item.path)
-      : state.bufferedConcepts.filter((item) => item.action !== "delete" && !state.nodes.get(item.path)?.isDraft).map((item) => item.path)
-    const nextCursor = items.indexOf(target.path)
-    if (nextCursor >= 0) {
-      state.bufferModal.cursors[nextCategory] = nextCursor
-    }
-    setStatusNow(nextCategory === "deleted" ? `Moved to deleted: ${target.path}` : `Moved to buffered: ${target.path}`, "success")
-    state.bufferModal.mode = "displaying"
-    state.bufferModal.retypeTargetCategory = null
-    return true
-  }
-
   function bindKeyHandler(): void {
     renderer.keyInput.on("keypress", async (key: KeyEvent) => {
+      if (key.ctrl && key.name === "c") {
+        key.preventDefault()
+        key.stopPropagation()
+        if (state.editorModal) {
+          if (state.editorModal.renderable.plainText.length > 0) {
+            state.editorModal.renderable.setText("")
+            state.editorModal.renderable.focus()
+            applyEditorText(state, state.editorModal)
+            refreshAliasSuggestion(state)
+            refreshEditorModalHeight(state)
+            clearCtrlCExitState()
+            draw()
+            return
+          }
+        }
+        if (state.pendingCtrlCExit) {
+          renderer.destroy()
+          process.exit(0)
+        }
+        armCtrlCExit()
+        draw()
+        return
+      }
+      clearCtrlCExitStateIfNeeded()
       const visible = visiblePaths(state)
       if (state.confirmModal) {
         handleConfirmModalKey(key)
@@ -749,29 +644,9 @@ async function main(): Promise<void> {
         handleCreateConceptModalKey(key)
         return
       }
-      if (state.pendingCopyChoice) {
-        if (key.name === "escape") {
-          const previous = state.pendingCopyChoice
-          state.pendingCopyChoice = null
-          clearStatusTimeout()
-          setStatusNow(previous.previousMessage, previous.previousTone)
-          draw()
-          return
-        }
-        if (key.name === "1") {
-          state.pendingCopyChoice = null
-          await handleCopyChoice("full")
-          return
-        }
-        if (key.name === "2") {
-          state.pendingCopyChoice = null
-          await handleCopyChoice("compact")
-          return
-        }
-        return
-      }
       if (state.editorModal) {
-        if (key.name === "escape" || (key.ctrl && key.name === "q")) {
+        if (key.name === "escape") {
+          applyEditorText(state, state.editorModal)
           state.editorModal.renderable.blur()
           state.editorModal = null
           draw()
@@ -791,27 +666,15 @@ async function main(): Promise<void> {
             try {
               renderer.resume()
             } catch {
-              mountRenderer(await createCliRenderer({ exitOnCtrlC: true }))
-              bindKeyHandler()
+               mountRenderer(await createCliRenderer({ exitOnCtrlC: false }))
+               bindKeyHandler()
             }
             setTimedStatus(message, "error")
           }
           draw()
           return
         }
-        if (key.ctrl && key.name === "h") {
-          if (retypeEditorConcept(-1)) {
-            draw()
-          }
-          return
-        }
-        if (key.ctrl && key.name === "l") {
-          if (retypeEditorConcept(1)) {
-            draw()
-          }
-          return
-        }
-        if (state.editorModal.aliasSuggestion && (key.name === "down" || key.name === "j" || (key.ctrl && key.name === "j"))) {
+        if (state.editorModal.aliasSuggestion && (key.name === "down" || (key.ctrl && key.name === "n"))) {
           if (moveAliasSuggestionSelection(state, 1)) {
             draw()
           } else {
@@ -819,7 +682,7 @@ async function main(): Promise<void> {
           }
           return
         }
-        if (state.editorModal.aliasSuggestion && (key.name === "up" || key.name === "k" || (key.ctrl && key.name === "k"))) {
+        if (state.editorModal.aliasSuggestion && (key.name === "up" || (key.ctrl && key.name === "p"))) {
           if (moveAliasSuggestionSelection(state, -1)) {
             draw()
           } else {
@@ -828,17 +691,21 @@ async function main(): Promise<void> {
           return
         }
         if (state.editorModal.aliasSuggestion && key.name === "return") {
+          key.preventDefault()
+          key.stopPropagation()
           if (acceptAliasSuggestion(state)) {
             draw()
             return
           }
+          return
         }
+        applyEditorText(state, state.editorModal)
         refreshAliasSuggestionSoon(state, draw)
         draw()
         return
       }
       if (state.showBufferModal) {
-        if (key.name === "escape" || key.name === "q") {
+        if (key.name === "escape") {
           closeBufferModal()
           const fallback = bufferStatusMessage()
           clearStatusTimeout()
@@ -847,41 +714,6 @@ async function main(): Promise<void> {
           return
         }
 
-        if (key.name === "tab" && !key.shift) {
-          if (state.bufferModal.mode !== "retyping") {
-            if (enterRetypeMode()) {
-              draw()
-            }
-            return
-          }
-          if (advanceRetypeTarget()) {
-            draw()
-          }
-          return
-        }
-
-        if (state.bufferModal.mode === "retyping" && key.shift && key.name === "tab") {
-          if (exitRetypeMode()) {
-            draw()
-          }
-          return
-        }
-
-        if (state.bufferModal.mode === "retyping" && key.name === "return") {
-          if (applyRetypePromptEditorConcept()) {
-            draw()
-          }
-          draw()
-          return
-        }
-        if (state.bufferModal.mode === "retyping") {
-          const target = selectedBufferModalTarget(state)
-          if (target.kind === "concept" && target.path && !isDraftConcept(state, target.path)) {
-            state.bufferModal.retypeTargetCategory = selectedRetypeTargetCategory()
-          } else {
-            state.bufferModal.retypeTargetCategory = null
-          }
-        }
         if (key.name === "j" || key.name === "down") {
           if (moveBufferModalCursor(state, 1)) {
             setStatusNow(bufferModalStatusMessage(), "info")
@@ -896,30 +728,15 @@ async function main(): Promise<void> {
           }
           return
         }
-        if (key.name === "h" || key.name === "left") {
-          if (moveBufferModalCategory(state, -1)) {
-            state.bufferModal.mode = "displaying"
-            setStatusNow(bufferModalStatusMessage(), "info")
-            draw()
-          }
-          return
-        }
-        if (key.name === "l" || key.name === "right") {
-          if (moveBufferModalCategory(state, 1)) {
-            state.bufferModal.mode = "displaying"
-            setStatusNow(bufferModalStatusMessage(), "info")
-            draw()
-          }
-          return
-        }
         if (key.name === "return") {
-          state.bufferModal.mode = "displaying"
           const target = selectedBufferModalTarget(state)
           const text = target.kind === "prompt" ? state.promptText : state.conceptNotes[target.path ?? ""] ?? ""
+          const visibleLineCount = editorVisibleLineCount(text)
           const renderable = new TextareaRenderable(renderer, {
             initialValue: text,
             width: "100%",
-            minHeight: 8,
+            minHeight: visibleLineCount + 2,
+            maxHeight: visibleLineCount + 2,
             paddingX: 1,
             paddingY: 1,
             backgroundColor: "#202930",
@@ -931,21 +748,20 @@ async function main(): Promise<void> {
             wrapMode: "word",
             showCursor: true,
             keyBindings: [
-              { name: "return", action: "submit" },
+              { name: "j", ctrl: true, action: "newline" },
               { name: "return", shift: true, action: "newline" },
             ],
-            onSubmit: () => {
-              if (!state.editorModal || state.editorModal.renderable !== renderable) {
-                return
+            onContentChange: () => {
+              if (state.editorModal?.renderable === renderable) {
+                applyEditorText(state, state.editorModal)
               }
-              applyEditorText(state.editorModal)
-              state.editorModal.renderable.blur()
-              state.editorModal = null
-              draw()
+              if (refreshEditorModalHeight(state)) {
+                draw()
+              }
             },
           })
           renderable.gotoBufferEnd()
-          state.editorModal = { target, renderable, aliasSuggestion: null }
+          state.editorModal = { target, renderable, aliasSuggestion: null, visibleLineCount }
           refreshAliasSuggestion(state)
           draw()
           setTimeout(() => {
@@ -1016,7 +832,7 @@ async function main(): Promise<void> {
       if (key.name === "l" || key.name === "right") {
         const node = currentNode(state)
         if (node.childPaths.length === 0) {
-          setTimedStatus(`${node.path} has no child concepts`, "warning")
+          setTimedStatus(`${node.path} has no children`, "warning")
         } else {
           clearStatusTimeout()
           state.currentParentPath = node.path
@@ -1031,7 +847,7 @@ async function main(): Promise<void> {
       if (key.name === "h" || key.name === "left") {
         const currentParent = state.nodes.get(state.currentParentPath)!
         if (currentParent.parentPath === null) {
-          setTimedStatus("Already at the root concept", "warning")
+          setTimedStatus("Already at the root", "warning")
         } else {
           clearStatusTimeout()
           const oldParent = state.currentParentPath
@@ -1055,17 +871,6 @@ async function main(): Promise<void> {
         draw()
         return
       }
-      if (key.name === "d") {
-        const path = currentPath(state)
-        if (isDraftConcept(state, path)) {
-          promptToRemoveDraft(path)
-          draw()
-          return
-        }
-        setConceptDeleted(path)
-        draw()
-        return
-      }
       if (key.name === "n") {
         clearStatusTimeout()
         openCreateConceptModal()
@@ -1074,18 +879,17 @@ async function main(): Promise<void> {
       }
       if (key.name === "y") {
         clearStatusTimeout()
-        state.pendingCopyChoice = {
-          previousMessage: state.status.message,
-          previousTone: state.status.tone,
-        }
-        setStatusNow("Copy to clipboard: 1 Full Context, 2 Compact Context, Esc cancel", "info")
-        draw()
+        const selection = clipboardSelection(state, currentPath(state))
+        await copyWithStatus(
+          buildClipboardPayload(state, currentPath(state)),
+          `Copied context for ${selection.count} concept${selection.count === 1 ? "" : "s"}`,
+        )
         return
       }
       if (key.name === "c") {
         clearStatusTimeout()
         state.bufferedConcepts = state.bufferedConcepts.filter((item) => isDraftConcept(state, item.path))
-        setStatusNow("Cleared buffered concepts", "info")
+        setStatusNow("Cleared selection", "info")
         clampBufferModalState(state)
         draw()
         return
@@ -1104,12 +908,12 @@ async function main(): Promise<void> {
         return
       }
       if (key.name === "?" || (key.shift && key.name === "/")) {
-        setTimedStatus("Keys: j/k move, pgup/pgdn jump, Ctrl+pgup/pgdn scroll context preview, g/G home/end, l open, h back, n new concept, space buffer/remove draft, d delete/discard draft, Enter open modal, y copy, p path, c clear, q quit", "info")
+        setTimedStatus("Browse: j/k -> Move  h/l -> Back/Open  Enter -> Open selection  Space -> Toggle selection  y -> Copy  q -> Quit", "info")
       }
     })
   }
 
-  const initialRenderer = await createCliRenderer({ exitOnCtrlC: true })
+  const initialRenderer = await createCliRenderer({ exitOnCtrlC: false })
   mountRenderer(initialRenderer)
   bindKeyHandler()
 
@@ -1137,7 +941,7 @@ async function main(): Promise<void> {
   }
 
   function bufferStatusMessage(): string {
-    return state.bufferedConcepts.length > 0 ? `Buffer updated (${state.bufferedConcepts.length} concept${state.bufferedConcepts.length === 1 ? "" : "s"})` : ""
+    return state.bufferedConcepts.length > 0 ? `Selection: ${state.bufferedConcepts.length} concept${state.bufferedConcepts.length === 1 ? "" : "s"}` : ""
   }
 
   function bufferModalStatusMessage(): string {
@@ -1146,32 +950,19 @@ async function main(): Promise<void> {
       const summary = state.nodes.get(target.path)?.summary?.trim()
       return `Summary: ${summary || "(none)"}`
     }
-    return "Prompt Editor selected"
+    return "Prompt selected"
   }
 
     function defaultStatusMessage(): string {
     const fallback = bufferStatusMessage()
-    return fallback || "Browse concepts. n creates. space buffers. d marks deleted. y copies context."
+    return fallback || "Browse concepts. n adds a draft. Space toggles selection. y copies context."
   }
 
   function closeBufferModal(): void {
     state.showBufferModal = false
-    state.bufferModal.mode = "displaying"
-    state.bufferModal.retypeTargetCategory = null
     state.editorModal?.renderable.blur()
     state.editorModal = null
     clampBufferModalState(state)
-  }
-
-  function applyEditorText(editor: EditorModalState): void {
-    const text = editor.renderable.plainText
-    if (editor.target.kind === "prompt") {
-      state.promptText = text
-      return
-    }
-    if (editor.target.path) {
-      state.conceptNotes[editor.target.path] = text
-    }
   }
 
   async function openExternalEditor(initialText: string): Promise<string> {
@@ -1199,20 +990,42 @@ async function main(): Promise<void> {
     return nextText
   }
 
-  async function handleCopyChoice(mode: CopyMode): Promise<void> {
-    const selection = clipboardSelection(state, currentPath(state))
-    await copyWithStatus(
-      buildClipboardPayload({ ...state, bufferedConcepts: state.bufferedConcepts.length > 0 ? state.bufferedConcepts.filter((item) => selection.paths.includes(item.path)) : [{ path: currentPath(state) }] }, mode === "compact", currentPath(state)),
-      `Copied ${mode} context for ${selection.count} concept${selection.count === 1 ? "" : "s"}`,
-    )
-  }
-
   function clearStatusTimeout(): void {
     if (state.statusTimeout) {
       debugStatus("clear-timeout", { status: state.status.message })
       clearTimeout(state.statusTimeout)
       state.statusTimeout = null
     }
+  }
+
+  function clearCtrlCExitState(): void {
+    state.pendingCtrlCExit = false
+    state.preserveStatusAboveModal = false
+    if (state.ctrlCExitTimeout) {
+      clearTimeout(state.ctrlCExitTimeout)
+      state.ctrlCExitTimeout = null
+    }
+  }
+
+  function clearCtrlCExitStateIfNeeded(): void {
+    if (!state.pendingCtrlCExit && !state.preserveStatusAboveModal && !state.ctrlCExitTimeout) {
+      return
+    }
+    clearCtrlCExitState()
+    draw()
+  }
+
+  function armCtrlCExit(): void {
+    clearCtrlCExitState()
+    state.pendingCtrlCExit = true
+    state.preserveStatusAboveModal = true
+    setTimedStatus("Press Ctrl+C again to quit, or Esc to stay", "warning", 2000)
+    state.ctrlCExitTimeout = setTimeout(() => {
+      state.ctrlCExitTimeout = null
+      state.pendingCtrlCExit = false
+      state.preserveStatusAboveModal = false
+      draw()
+    }, 2000)
   }
 
   function setStatusNow(message: string, tone: AppState["status"]["tone"]): void {

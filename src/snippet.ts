@@ -123,16 +123,133 @@ type SnippetLine = {
   chunks: TextChunk[]
 }
 
-export type SnippetPreview = {
-  title: string
-  lines: SnippetLine[]
+export type PreviewLegendItem = {
+  kindLabel: string
+  color: RGBA
 }
 
-export async function buildSnippetPreview(state: AppState, node: ConceptNode): Promise<SnippetPreview> {
+export type ContextPreview = {
+  title: string
+  lines: SnippetLine[]
+  legendItems?: PreviewLegendItem[]
+  useSyntaxStyle?: boolean
+}
+
+const TREE_CONNECTOR_FG = RGBA.fromHex("#6a7b8a")
+const NO_KIND_FG = RGBA.fromHex("#9aa7b0")
+const KIND_PALETTE = [
+  RGBA.fromHex("#88c0d0"),
+  RGBA.fromHex("#a3be8c"),
+  RGBA.fromHex("#ebcb8b"),
+  RGBA.fromHex("#d08770"),
+  RGBA.fromHex("#b48ead"),
+  RGBA.fromHex("#8fbcbb"),
+  RGBA.fromHex("#81a1c1"),
+  RGBA.fromHex("#bf616a"),
+]
+
+function hashKind(kind: string): number {
+  let hash = 0
+  for (let index = 0; index < kind.length; index += 1) {
+    hash = (hash * 31 + kind.charCodeAt(index)) >>> 0
+  }
+  return hash
+}
+
+function colorForKind(kind: string | null): RGBA {
+  if (!kind) {
+    return NO_KIND_FG
+  }
+  return KIND_PALETTE[hashKind(kind) % KIND_PALETTE.length] ?? NO_KIND_FG
+}
+
+function treeLine(label: string, indent: string, connector: string, color: RGBA, bold = false): SnippetLine {
+  return {
+    chunks: [
+      ...(indent ? [createChunk(indent, TREE_CONNECTOR_FG)] : []),
+      ...(connector ? [createChunk(connector, TREE_CONNECTOR_FG)] : []),
+      createChunk(label, color, bold ? TextAttributes.BOLD : 0),
+    ],
+  }
+}
+
+function spacerLine(): SnippetLine {
+  return { chunks: [createChunk("", MUTED_FG)] }
+}
+
+function appendTreeLines(lines: SnippetLine[], state: AppState, path: string, prefix: string, isLast: boolean, depth: number, maxDepth: number): number {
+  const node = state.nodes.get(path)
+  if (!node) {
+    return 0
+  }
+
+  const connector = depth === 0 ? "" : isLast ? "└─ " : "├─ "
+  lines.push(treeLine(node.title, prefix, connector, colorForKind(node.kind), depth === 0))
+  if (depth === 0 && node.childPaths.length > 0) {
+    lines.push(spacerLine())
+  }
+
+  if (depth >= maxDepth) {
+    const hiddenCount = node.childPaths.length
+    if (hiddenCount > 0) {
+      const childPrefix = prefix + (depth === 0 ? "" : isLast ? "   " : "│  ")
+      lines.push(treeLine(`… ${hiddenCount} more`, childPrefix, "", MUTED_FG))
+      return hiddenCount
+    }
+    return 0
+  }
+
+  let hiddenCount = 0
+  const childPrefix = prefix + (depth === 0 ? "" : isLast ? "   " : "│  ")
+  node.childPaths.forEach((childPath, index) => {
+    hiddenCount += appendTreeLines(lines, state, childPath, childPrefix, index === node.childPaths.length - 1, depth + 1, maxDepth)
+  })
+  return hiddenCount
+}
+
+function legendItemsForLines(state: AppState, node: ConceptNode): PreviewLegendItem[] {
+  const seen = new Set<string>()
+  const items: PreviewLegendItem[] = []
+  const stack = [node.path]
+  while (stack.length > 0) {
+    const path = stack.pop()!
+    const current = state.nodes.get(path)
+    if (!current) {
+      continue
+    }
+    const kindLabel = current.kind ?? "(no kind)"
+    if (!seen.has(kindLabel)) {
+      seen.add(kindLabel)
+      items.push({ kindLabel, color: colorForKind(current.kind) })
+    }
+    for (let index = current.childPaths.length - 1; index >= 0; index -= 1) {
+      stack.push(current.childPaths[index]!)
+    }
+  }
+  return items.sort((left, right) => left.kindLabel.localeCompare(right.kindLabel))
+}
+
+export async function buildContextPreview(state: AppState, node: ConceptNode): Promise<ContextPreview> {
+  if (node.childPaths.length > 0) {
+    const lines: SnippetLine[] = []
+    const maxDepth = state.layoutMode === "wide" ? 5 : 3
+    appendTreeLines(lines, state, node.path, "", true, 0, maxDepth)
+    return {
+      title: `Concept Tree ${node.title}`,
+      lines,
+      legendItems: legendItemsForLines(state, node),
+      useSyntaxStyle: false,
+    }
+  }
+  return buildSnippetPreview(state, node)
+}
+
+export async function buildSnippetPreview(state: AppState, node: ConceptNode): Promise<ContextPreview> {
   if (!node.loc) {
     return {
       title: "Context",
       lines: [{ chunks: [createChunk("No source preview for this concept.", MUTED_FG)] }],
+      useSyntaxStyle: true,
     }
   }
 
@@ -141,6 +258,7 @@ export async function buildSnippetPreview(state: AppState, node: ConceptNode): P
     return {
       title: "Context",
       lines: [{ chunks: [createChunk("Source location is missing a file path.", ERROR_FG)] }],
+      useSyntaxStyle: true,
     }
   }
 
@@ -152,6 +270,7 @@ export async function buildSnippetPreview(state: AppState, node: ConceptNode): P
     return {
       title: `Context ${node.loc.file}:${node.loc.startLine}-${node.loc.endLine}`,
       lines: [{ chunks: [createChunk(`Unable to load source: ${message}`, ERROR_FG)] }],
+      useSyntaxStyle: true,
     }
   }
 
@@ -184,5 +303,6 @@ export async function buildSnippetPreview(state: AppState, node: ConceptNode): P
   return {
     title: `Context ${node.loc.file}:${node.loc.startLine}-${node.loc.endLine}`,
     lines: renderedLines,
+    useSyntaxStyle: true,
   }
 }

@@ -1,5 +1,7 @@
 import type { TextareaRenderable } from "@opentui/core"
 
+import type { RGBA } from "@opentui/core"
+
 export type JsonPrimitive = null | boolean | number | string
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 
@@ -45,11 +47,8 @@ export type BufferSummary = {
   hiddenCount: number
 }
 
-export type ConceptAction = "delete"
-
 export type BufferedConcept = {
   path: string
-  action?: ConceptAction
 }
 
 export type ListLine = {
@@ -58,7 +57,7 @@ export type ListLine = {
   stateLabel?: string
   selected: boolean
   buffered: boolean
-  tone?: "draft" | "delete"
+  tone?: "draft"
   empty?: boolean
 }
 
@@ -67,14 +66,9 @@ export type BufferModalTarget = {
   path?: string
 }
 
-export type BufferModalCategory = "buffered" | "deleted" | "created"
-
 export type BufferModalState = {
   focus: "prompt" | "categories"
-  activeCategory: BufferModalCategory
-  cursors: Record<BufferModalCategory, number>
-  mode: "displaying" | "retyping"
-  retypeTargetCategory: Exclude<BufferModalCategory, "created"> | null
+  conceptCursor: number
 }
 
 export type AliasSuggestionState = {
@@ -89,13 +83,7 @@ export type EditorModalState = {
   target: BufferModalTarget
   renderable: TextareaRenderable
   aliasSuggestion: AliasSuggestionState | null
-}
-
-export type CopyMode = "full" | "compact"
-
-export type PendingCopyChoiceState = {
-  previousMessage: string
-  previousTone: StatusTone
+  visibleLineCount: number
 }
 
 export type KindDefinition = {
@@ -141,6 +129,8 @@ export type AppState = {
   layoutMode: LayoutMode
   mainScrollTop: number
   mainViewportHeight: number
+  contextTitle: string
+  contextLegendItems: Array<{ kindLabel: string; color: RGBA }>
   showBufferModal: boolean
   bufferModal: BufferModalState
   promptText: string
@@ -148,7 +138,9 @@ export type AppState = {
   conceptAliases: Record<string, string>
   aliasPaths: Record<string, string>
   editorModal: EditorModalState | null
-  pendingCopyChoice: PendingCopyChoiceState | null
+  pendingCtrlCExit: boolean
+  ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
+  preserveStatusAboveModal: boolean
   statusTimeout: ReturnType<typeof setTimeout> | null
   statusVersion: number
 }
