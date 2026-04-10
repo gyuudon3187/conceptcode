@@ -231,6 +231,13 @@ function legendItemsForLines(state: AppState, node: ConceptNode): PreviewLegendI
 
 export async function buildContextPreview(state: AppState, node: ConceptNode): Promise<ContextPreview> {
   if (node.childPaths.length > 0) {
+    return buildSubtreePreview(state, node)
+  }
+  return buildSnippetPreview(state, node)
+}
+
+export async function buildSubtreePreview(state: AppState, node: ConceptNode): Promise<ContextPreview> {
+  if (node.childPaths.length > 0) {
     const lines: SnippetLine[] = []
     const maxDepth = state.layoutMode === "wide" ? 5 : 3
     appendTreeLines(lines, state, node.path, "", true, 0, maxDepth)
@@ -241,7 +248,39 @@ export async function buildContextPreview(state: AppState, node: ConceptNode): P
       useSyntaxStyle: false,
     }
   }
-  return buildSnippetPreview(state, node)
+  return {
+    title: `Subtree ${node.title}`,
+    lines: [{ chunks: [createChunk("This concept does not have child concepts.", MUTED_FG)] }],
+    useSyntaxStyle: false,
+  }
+}
+
+export async function buildMetadataPreview(_state: AppState, node: ConceptNode): Promise<ContextPreview> {
+  const lines: SnippetLine[] = [
+    { chunks: [createChunk(`path: ${node.path}`, DEFAULT_CODE_FG)] },
+    { chunks: [createChunk(`title: ${node.title}`, DEFAULT_CODE_FG)] },
+    { chunks: [createChunk(`kind: ${node.kind ?? "(no kind)"}`, DEFAULT_CODE_FG)] },
+    { chunks: [createChunk(`parent_path: ${node.parentPath ?? "-"}`, DEFAULT_CODE_FG)] },
+    { chunks: [createChunk(`children: ${node.childPaths.length}`, DEFAULT_CODE_FG)] },
+  ]
+  if (node.loc) {
+    lines.push({ chunks: [createChunk(`loc.file: ${node.loc.file}`, DEFAULT_CODE_FG)] })
+    lines.push({ chunks: [createChunk(`loc.start_line: ${node.loc.startLine}`, DEFAULT_CODE_FG)] })
+    lines.push({ chunks: [createChunk(`loc.end_line: ${node.loc.endLine}`, DEFAULT_CODE_FG)] })
+  }
+  const metadataEntries = Object.entries(node.metadata)
+  if (metadataEntries.length > 0) {
+    lines.push({ chunks: [createChunk("", MUTED_FG)] })
+    lines.push({ chunks: [createChunk("metadata:", DEFAULT_CODE_FG, TextAttributes.BOLD)] })
+    for (const [key, value] of metadataEntries) {
+      lines.push({ chunks: [createChunk(`- ${key}: ${JSON.stringify(value)}`, DEFAULT_CODE_FG)] })
+    }
+  }
+  return {
+    title: `Metadata ${node.title}`,
+    lines,
+    useSyntaxStyle: false,
+  }
 }
 
 export async function buildSnippetPreview(state: AppState, node: ConceptNode): Promise<ContextPreview> {

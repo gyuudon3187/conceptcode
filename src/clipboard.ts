@@ -1,24 +1,29 @@
 import { spawn } from "node:child_process"
 import { readFileSync } from "node:fs"
+import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
+
+import { encodingForModel } from "js-tiktoken"
 
 import { asMetadataObject, bulletList } from "./model"
 import type { AppState, ConceptNode, JsonValue } from "./types"
 
 const CLIPBOARD_PREAMBLE = `${readFileSync(resolve(import.meta.dir, "../prompts/clipboard_preamble.md"), "utf8").trim()}\n`
+const TOKEN_ENCODING = encodingForModel("gpt-4o")
 
-function expandAliases(text: string, aliasPaths: Record<string, string>): string {
-  return text.replace(/(^|\s)(@[a-zA-Z0-9_.-]+)/g, (match, prefix: string, alias: string) => {
-    const resolved = aliasPaths[alias]
-    return resolved ? `${prefix}${resolved}` : match
-  })
+function referencedPaths(text: string): string[] {
+  const matches = [...text.matchAll(/@([a-zA-Z0-9_.-]+)/g)]
+  return [...new Set(matches.map((match) => {
+    const raw = match[1]
+    if (raw === "root" || raw.startsWith("root.")) {
+      return raw
+    }
+    return `root.${raw}`
+  }))]
 }
 
-function withConceptNote(lines: string[], note: string | undefined): string[] {
-  if (!note?.trim()) {
-    return lines
-  }
-  return [...lines, "- note:", ...note.trim().split("\n").map((line) => `  ${line}`)]
+export function referencedConceptPaths(text: string, nodes: Map<string, ConceptNode>): string[] {
+  return referencedPaths(text).filter((path) => nodes.has(path))
 }
 
 function pushListSection(lines: string[], label: string, values: string[]): void {
@@ -72,9 +77,54 @@ function renderSystemOverviewBlock(rootNode: ConceptNode | undefined): string | 
   return lines.length > 1 ? `${lines.join("\n")}\n` : null
 }
 
-export function renderClipboardBlockWithContext(node: ConceptNode, note: string | undefined): string {
-  const base = renderClipboardBlock(node).trimEnd().split("\n")
-  return `${withConceptNote(base, note).join("\n")}\n`
+export type EffectivePromptTokenBreakdown = {
+  staticTokenCount: number
+  promptTextTokenCount: number
+  referencedConceptTokenCount: number
+  referencedFileTokenCount: number
+  totalTokenCount: number
+  referencedConcepts: Array<{ path: string; alias: string; tokenCount: number }>
+  referencedFiles: Array<{ path: string; alias: string; tokenCount: number; kind: "file" | "directory" }>
+}
+
+export const EMPTY_PROMPT_TOKEN_BREAKDOWN: EffectivePromptTokenBreakdown = {
+  staticTokenCount: 0,
+  promptTextTokenCount: 0,
+  referencedConceptTokenCount: 0,
+  referencedFileTokenCount: 0,
+  totalTokenCount: 0,
+  referencedConcepts: [],
+  referencedFiles: [],
+}
+
+function referencedFilePaths(text: string): string[] {
+  return [...new Set([...text.matchAll(/&([^\s@&]+)/g)].map((match) => match[1]))]
+}
+
+function renderFileReferenceBlock(path: string, content: string): string {
+  return ["## File", `- path: \`${path}\``, "```", content.trimEnd(), "```", ""].join("\n")
+}
+
+function renderDirectoryReferenceBlock(path: string): string {
+  return ["## Directory", `- path: \`${path}\``, ""].join("\n")
+}
+
+async function referencedFileEntries(state: AppState): Promise<Array<{ path: string; kind: "file" | "directory"; block: string }>> {
+  const paths = referencedFilePaths(state.promptText.trim())
+    .filter((path) => state.projectFiles.includes(path) || state.projectDirectories.includes(path))
+    .sort((left, right) => left.localeCompare(right))
+  return Promise.all(paths.map(async (path) => {
+    if (state.projectDirectories.includes(path)) {
+      return { path, kind: "directory" as const, block: renderDirectoryReferenceBlock(path) }
+    }
+    const absolutePath = resolve(process.cwd(), path)
+    const content = await readFile(absolutePath, "utf8").catch(() => "")
+    return { path, kind: "file" as const, block: renderFileReferenceBlock(path, content) }
+  }))
+}
+
+export function renderClipboardBlockWithContext(node: ConceptNode): string {
+  return renderClipboardBlock(node)
 }
 
 function flattenInterpretationHints(value: JsonValue, prefix = ""): string[] {
@@ -116,15 +166,13 @@ function normalizedInterpretationHint(state: AppState): Record<string, JsonValue
   return nextHint
 }
 
-export function buildClipboardPayload(state: AppState, currentPath: string): string {
-  const bufferedConcepts = state.bufferedConcepts.length > 0 ? state.bufferedConcepts : [{ path: currentPath }]
-  const concepts = bufferedConcepts
-    .map((item) => {
-      const node = state.nodes.get(item.path)!
-      return renderClipboardBlockWithContext(node, expandAliases(state.conceptNotes[item.path] ?? "", state.aliasPaths))
-    })
+export async function buildEffectivePrompt(state: AppState, _currentPath: string): Promise<string> {
+  const promptText = state.promptText.trim()
+  const conceptPaths = referencedConceptPaths(promptText, state.nodes)
+  const fileEntries = await referencedFileEntries(state)
+  const concepts = conceptPaths
+    .map((path) => renderClipboardBlockWithContext(state.nodes.get(path)!))
     .join("\n")
-  const promptText = expandAliases(state.promptText.trim(), state.aliasPaths)
   const interpretationHint = normalizedInterpretationHint(state)
   const hintLines = flattenInterpretationHints(interpretationHint)
   const sections = [CLIPBOARD_PREAMBLE]
@@ -135,15 +183,71 @@ export function buildClipboardPayload(state: AppState, currentPath: string): str
   if (promptText) {
     sections.push(["# Main Instructions", promptText].join("\n\n"))
   }
-  sections.push("# Concepts", concepts.trimEnd())
+  if (conceptPaths.length > 0) {
+    sections.push("# Concepts", concepts.trimEnd())
+  }
+  if (fileEntries.length > 0) {
+    sections.push("# Files", fileEntries.map((entry) => entry.block).join("\n").trimEnd())
+  }
   if (hintLines.length > 0) {
     sections.push(["# Shared Interpretation Hints", ...hintLines].join("\n"))
   }
   return `${sections.join("\n\n")}\n`
 }
 
-export function clipboardSelection(state: AppState, currentPath: string): { paths: string[]; count: number } {
-  const paths = state.bufferedConcepts.length > 0 ? state.bufferedConcepts.map((item) => item.path) : [currentPath]
+export async function effectivePromptTokenBreakdown(state: AppState, _currentPath: string): Promise<EffectivePromptTokenBreakdown> {
+  const promptText = state.promptText.trim()
+  const conceptPaths = referencedConceptPaths(promptText, state.nodes)
+  const fileEntries = await referencedFileEntries(state)
+  const interpretationHint = normalizedInterpretationHint(state)
+  const hintLines = flattenInterpretationHints(interpretationHint)
+  const staticSections = [CLIPBOARD_PREAMBLE]
+  const systemOverview = renderSystemOverviewBlock(state.nodes.get("root"))
+  if (systemOverview) {
+    staticSections.push(systemOverview.trimEnd())
+  }
+  if (hintLines.length > 0) {
+    staticSections.push(["# Shared Interpretation Hints", ...hintLines].join("\n"))
+  }
+  const staticPrompt = `${staticSections.join("\n\n")}\n`
+  const promptTextSection = promptText ? `${["# Main Instructions", promptText].join("\n\n")}\n` : ""
+  const referencedConcepts = conceptPaths.map((path) => {
+    const block = renderClipboardBlockWithContext(state.nodes.get(path)!)
+    return { path, alias: `@${path}`, tokenCount: TOKEN_ENCODING.encode(block).length }
+  })
+  const referencedFiles = fileEntries.map((entry) => ({ path: entry.path, alias: `&${entry.path}`, tokenCount: TOKEN_ENCODING.encode(entry.block).length, kind: entry.kind }))
+  const conceptsSection = conceptPaths.length > 0
+    ? `${["# Concepts", conceptPaths.map((path) => renderClipboardBlockWithContext(state.nodes.get(path)!)).join("\n")].join("\n\n")}\n`
+    : ""
+  const filesSection = fileEntries.length > 0
+    ? `${["# Files", fileEntries.map((entry) => entry.block).join("\n")].join("\n\n")}\n`
+    : ""
+  const staticTokenCount = TOKEN_ENCODING.encode(staticPrompt).length
+  const promptTextTokenCount = TOKEN_ENCODING.encode(promptTextSection).length
+  const referencedConceptTokenCount = TOKEN_ENCODING.encode(conceptsSection).length
+  const referencedFileTokenCount = TOKEN_ENCODING.encode(filesSection).length
+  return {
+    staticTokenCount,
+    promptTextTokenCount,
+    referencedConceptTokenCount,
+    referencedFileTokenCount,
+    totalTokenCount: staticTokenCount + promptTextTokenCount + referencedConceptTokenCount + referencedFileTokenCount,
+    referencedConcepts,
+    referencedFiles,
+  }
+}
+
+export async function countEffectivePromptTokens(state: AppState, currentPath: string): Promise<number> {
+  return TOKEN_ENCODING.encode(await buildEffectivePrompt(state, currentPath)).length
+}
+
+export async function buildClipboardPayload(state: AppState, currentPath: string): Promise<string> {
+  return buildEffectivePrompt(state, currentPath)
+}
+
+export function clipboardSelection(state: AppState, _currentPath: string): { paths: string[]; count: number } {
+  const promptText = state.promptText.trim()
+  const paths = [...referencedConceptPaths(promptText, state.nodes), ...referencedFilePaths(promptText).filter((path) => state.projectFiles.includes(path) || state.projectDirectories.includes(path))]
   return { paths, count: paths.length }
 }
 

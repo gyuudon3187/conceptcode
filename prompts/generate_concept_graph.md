@@ -5,7 +5,7 @@ Use this prompt when you want an LLM to create the main `setsumei` concept graph
 ## Prompt template
 
 ```text
-Analyze the target code and produce a JSON concept graph for use with the `setsumei` browser.
+Analyze the target code and produce a JSON concept graph for use with the `setsumei` concept-aware interface.
 
 Requirements:
 - Output valid JSON only.
@@ -34,7 +34,7 @@ The concept graph should help a human or LLM refer to parts of the program by pa
 - Keep sibling counts manageable.
 - Split large topics into child concepts rather than giant summaries.
 - Favor conceptual names over UI label text when the concept is broader than the label.
-- Keep browser-oriented metadata compact so it supports browsing without overwhelming the concept hierarchy.
+- Keep interface-oriented metadata compact so it supports browsing and prompt composition without overwhelming the concept hierarchy.
 - Use `related_paths` sparingly and only when they add navigational value.
 
 ## When to split the work

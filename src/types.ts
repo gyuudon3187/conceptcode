@@ -1,6 +1,7 @@
 import type { TextareaRenderable } from "@opentui/core"
 
 import type { RGBA } from "@opentui/core"
+import type { EffectivePromptTokenBreakdown } from "./clipboard"
 
 export type JsonPrimitive = null | boolean | number | string
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
@@ -28,50 +29,39 @@ export type GraphPayload = {
   root?: Record<string, JsonValue>
 }
 
-export type StatusTone = "info" | "success" | "warning" | "error"
-
-export type StatusState = {
-  message: string
-  tone: StatusTone
-}
-
 export type LayoutMode = "wide" | "narrow"
+
+export type UiMode = "plan" | "build"
+
+export type InspectorKind = "snippet" | "subtree" | "metadata"
 
 export type MainLine = {
   content: string
   role: "title" | "section" | "body" | "muted"
 }
 
-export type BufferSummary = {
-  visiblePaths: string[]
-  hiddenCount: number
-}
-
-export type BufferedConcept = {
-  path: string
-}
-
 export type ListLine = {
   title: string
   kindLabel: string
-  stateLabel?: string
+  leftMarker: string
+  rightMarker: string
   selected: boolean
-  buffered: boolean
   tone?: "draft"
   empty?: boolean
 }
 
 export type BufferModalTarget = {
-  kind: "prompt" | "concept"
+  kind: "prompt" | "concept-summary"
   path?: string
 }
 
-export type BufferModalState = {
-  focus: "prompt" | "categories"
-  conceptCursor: number
+export type InspectorState = {
+  kind: InspectorKind
 }
 
 export type AliasSuggestionState = {
+  prefix: "@" | "&"
+  mode: "search" | "resolved"
   query: string
   start: number
   end: number
@@ -84,6 +74,12 @@ export type EditorModalState = {
   renderable: TextareaRenderable
   aliasSuggestion: AliasSuggestionState | null
   visibleLineCount: number
+  promptDraftIndex?: number
+}
+
+export type PromptMessage = {
+  text: string
+  role: "user" | "assistant"
 }
 
 export type KindDefinition = {
@@ -118,29 +114,33 @@ export type AppState = {
   jsonPath: string
   graphPayload: GraphPayload
   nodes: Map<string, ConceptNode>
+  projectFiles: string[]
+  projectDirectories: string[]
   sourceFileCache: Map<string, string[]>
   currentParentPath: string
   cursor: number
-  bufferedConcepts: BufferedConcept[]
   kindDefinitions: KindDefinition[]
   createConceptModal: CreateConceptModalState | null
   confirmModal: ConfirmModalState | null
-  status: StatusState
   layoutMode: LayoutMode
+  uiMode: UiMode
+  inspector: InspectorState | null
   mainScrollTop: number
   mainViewportHeight: number
   contextTitle: string
   contextLegendItems: Array<{ kindLabel: string; color: RGBA }>
-  showBufferModal: boolean
-  bufferModal: BufferModalState
+  promptMessages: PromptMessage[]
   promptText: string
-  conceptNotes: Record<string, string>
-  conceptAliases: Record<string, string>
-  aliasPaths: Record<string, string>
+  promptPaneRatio: number
+  promptPaneTargetRatio: number
+  promptPaneMode: "collapsed" | "expanded"
+  promptScrollTop: number
+  promptViewportHeight: number
+  conceptNavigationFocused: boolean
+  startupDrawComplete: boolean
   editorModal: EditorModalState | null
   pendingCtrlCExit: boolean
   ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
-  preserveStatusAboveModal: boolean
-  statusTimeout: ReturnType<typeof setTimeout> | null
-  statusVersion: number
+  promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
+  promptTokenBreakdown: EffectivePromptTokenBreakdown
 }

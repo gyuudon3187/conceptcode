@@ -9,8 +9,8 @@ These instructions apply when working in this directory and its subdirectories.
 - Prefer changes that make the tool more generic rather than more tied to one codebase.
 - Preserve stable child keys and derived paths when changing model or editing behavior.
 - Treat the JSON schema as user-facing and long-lived; avoid breaking changes unless clearly necessary.
-- Keep clipboard payloads compact by default, with richer context available on demand.
-- Keep the browser responsive; avoid blocking subprocess behavior.
+- Keep current clipboard export payloads compact by default, with concept context driven by prompt references rather than broad selection state.
+- Keep the concept-aware interface responsive; avoid blocking subprocess behavior.
 - Favor plain text formats that paste cleanly into LLM chats.
 
 ## Architecture reminders
@@ -18,8 +18,8 @@ These instructions apply when working in this directory and its subdirectories.
 - `src/index.ts` boots the OpenTUI app and wires keyboard input to state transitions.
 - `src/model.ts` loads and normalizes concept graphs.
 - `src/state.ts` manages navigation, status, layout mode, and scroll state.
-- `src/view.ts` renders the interface and pane layouts.
-- `src/clipboard.ts` builds clipboard export payloads and integrates with `wl-copy`.
+- `src/view.ts` renders the prompt-first interface, concept summary surfaces, and inspector overlays.
+- `src/clipboard.ts` builds the current clipboard export payload from prompt-referenced concept aliases and integrates with `wl-copy`.
 - `src/types.ts` defines shared application and schema types.
 
 ## Development environment

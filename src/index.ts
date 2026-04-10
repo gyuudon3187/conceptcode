@@ -3,22 +3,19 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawn } from "node:child_process"
 
-import { ScrollBoxRenderable, TextareaRenderable, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
+import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, type Highlight, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
-import { buildClipboardPayload, clipboardSelection, copyToClipboard } from "./clipboard"
+import { buildClipboardPayload, clipboardSelection, copyToClipboard, effectivePromptTokenBreakdown, EMPTY_PROMPT_TOKEN_BREAKDOWN } from "./clipboard"
 import { loadConceptGraph } from "./model"
-import { applySelectionChange, bufferedConceptForPath, bufferModalItems, clampBufferModalState, clampCursor, currentNode, currentPath, handleResize, moveBufferModalCursor, moveCursor, pageSize, rebuildConceptAliases, resetBufferModal, scrollMain, selectedBufferModalTarget, setStatus, visiblePaths } from "./state"
-import type { AppState, ConceptNode, CreateConceptDraft, EditorModalState, KindDefinition } from "./types"
-import { repaint, renderFrame, renderStatusPane, replaceChildren, scrollListForCursor } from "./view"
+import { applySelectionChange, clampCursor, currentNode, currentPath, handleResize, moveCursor, pageSize, scrollMain, visiblePaths } from "./state"
+import type { AppState, ConceptNode, CreateConceptDraft, EditorModalState, InspectorKind, KindDefinition, PromptMessage } from "./types"
+import { repaint, renderPromptThreadContent, replaceChildren, scrollListForCursor } from "./view"
 
-const DEBUG_STATUS = process.env.SETSUMEI_DEBUG_STATUS === "1"
+const FILE_REFERENCE_TOKEN = /&[^\s&]+/g
+const CONCEPT_REFERENCE_TOKEN = /@[a-zA-Z0-9_.-]+/g
 
-function debugStatus(event: string, details: Record<string, unknown>): void {
-  if (!DEBUG_STATUS) {
-    return
-  }
-  console.error(`[setsumei-debug] ${event} ${JSON.stringify(details)}`)
-}
+type PromptReferenceToken = { token: string; start: number; end: number }
+type ActivePromptSuggestion = { prefix: "@" | "&"; query: string; start: number; end: number; suggestions: string[] }
 
 function parseArgs(argv: string[]): { conceptsPath: string; optionsPath?: string } {
   let conceptsPath: string | null = null
@@ -26,50 +23,83 @@ function parseArgs(argv: string[]): { conceptsPath: string; optionsPath?: string
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--concepts-path") {
       const value = argv[index + 1]
-      if (!value) {
-        throw new Error("Missing value for --concepts-path")
-      }
+      if (!value) throw new Error("Missing value for --concepts-path")
       conceptsPath = value
     }
     if (argv[index] === "--options-path") {
       const value = argv[index + 1]
-      if (!value) {
-        throw new Error("Missing value for --options-path")
-      }
+      if (!value) throw new Error("Missing value for --options-path")
       optionsPath = value
     }
   }
-  if (!conceptsPath) {
-    throw new Error("Expected --concepts-path <path>")
-  }
+  if (!conceptsPath) throw new Error("Expected --concepts-path <path>")
   return { conceptsPath, optionsPath }
 }
 
 function emptyCreateDraft(): CreateConceptDraft {
-  return {
-    title: "",
-    summary: "",
-  }
+  return { title: "", summary: "" }
 }
 
 function slugifyTitle(title: string): string {
-  const normalized = title
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
+  const normalized = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
   return normalized || "new_concept"
 }
 
-function aliasSuggestions(state: AppState, query: string): string[] {
-  const aliases = Object.keys(state.aliasPaths).sort((left, right) => left.localeCompare(right))
+function allAliasSuggestions(state: AppState, query: string): string[] {
+  const paths = [...state.nodes.keys()].sort((left, right) => left.localeCompare(right))
+  const aliases = paths.map((path) => `@${path}`)
   if (!query) {
     return aliases
   }
-  const normalizedQuery = query.toLowerCase()
-  const prefixMatches = aliases.filter((alias) => alias.slice(1).toLowerCase().startsWith(normalizedQuery))
-  const substringMatches = aliases.filter((alias) => !prefixMatches.includes(alias) && alias.slice(1).toLowerCase().includes(normalizedQuery))
-  return [...prefixMatches, ...substringMatches]
+  const normalized = query.toLowerCase()
+  const score = (alias: string): number => {
+    const path = alias.slice(1).toLowerCase()
+    const lastSegment = path.split(".").at(-1) ?? path
+    if (lastSegment === normalized) return 400
+    if (lastSegment.startsWith(normalized)) return 300 - lastSegment.indexOf(normalized)
+    if (path.startsWith(normalized)) return 220 - path.indexOf(normalized)
+    if (path.includes(normalized)) return 120 - path.indexOf(normalized)
+    return 0
+  }
+  return aliases
+    .map((alias) => ({ alias, score: score(alias) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.alias.length - right.alias.length || left.alias.localeCompare(right.alias))
+    .map((entry) => entry.alias)
+}
+
+function allFileSuggestions(state: AppState, query: string): string[] {
+  const files = [...new Set([...(state.projectFiles ?? []), ...(state.projectDirectories ?? [])])].sort((left, right) => left.localeCompare(right))
+  const references = files.map((path) => `&${path}`)
+  if (!query) {
+    return references
+  }
+  const normalized = query.toLowerCase()
+  const score = (reference: string): number => {
+    const path = reference.slice(1).toLowerCase()
+    const lastSegment = path.split("/").filter(Boolean).at(-1) ?? path
+    if (lastSegment === normalized) return 500
+    if (path === normalized) return 460
+    if (lastSegment.startsWith(normalized)) return 360 - lastSegment.indexOf(normalized)
+    if (path.startsWith(normalized)) return 280 - path.indexOf(normalized)
+    if (path.includes(`/${normalized}`)) return 220 - path.indexOf(`/${normalized}`)
+    if (path.includes(normalized)) return 140 - path.indexOf(normalized)
+    return 0
+  }
+  return references
+    .map((reference) => ({ reference, score: score(reference) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.reference.length - right.reference.length || left.reference.localeCompare(right.reference))
+    .map((entry) => entry.reference)
+}
+
+export function visibleAliasSuggestions(state: AppState, aliasSuggestion: NonNullable<EditorModalState["aliasSuggestion"]>): { full: string[]; visible: string[]; selectedAlias: string | null } {
+  const full = aliasSuggestion.mode === "resolved"
+    ? [`${aliasSuggestion.prefix}${aliasSuggestion.query}`]
+    : (aliasSuggestion.prefix === "@" ? allAliasSuggestions(state, aliasSuggestion.query) : allFileSuggestions(state, aliasSuggestion.query))
+  const visible = full.slice(aliasSuggestion.visibleStartIndex, aliasSuggestion.visibleStartIndex + maxVisibleAliasSuggestions())
+  const selectedAlias = full[aliasSuggestion.selectedIndex] ?? null
+  return { full, visible, selectedAlias }
 }
 
 function maxVisibleAliasSuggestions(): number {
@@ -82,41 +112,125 @@ function editorCursorOffset(editor: EditorModalState): number {
   return typeof cursorOffset === "number" ? cursorOffset : editor.renderable.plainText.length
 }
 
-function activeAliasSuggestion(state: AppState, editor: EditorModalState): { query: string; start: number; end: number; suggestions: string[] } | null {
+function tokenAtCursor(text: string, cursor: number, pattern: RegExp): PromptReferenceToken | null {
+  const matches = [...text.matchAll(pattern)]
+  for (const match of matches) {
+    const token = match[0]
+    const start = match.index ?? 0
+    const end = start + token.length
+    if (cursor >= start && cursor <= end) {
+      return { token, start, end }
+    }
+  }
+  return null
+}
+
+function tokenEndingAtCursor(text: string, cursor: number, pattern: RegExp): PromptReferenceToken | null {
+  const matches = [...text.matchAll(pattern)]
+  for (const match of matches) {
+    const token = match[0]
+    const start = match.index ?? 0
+    const end = start + token.length
+    if (cursor === end) {
+      return { token, start, end }
+    }
+  }
+  return null
+}
+
+function tokenStartingAtCursor(text: string, cursor: number, pattern: RegExp): PromptReferenceToken | null {
+  const matches = [...text.matchAll(pattern)]
+  for (const match of matches) {
+    const token = match[0]
+    const start = match.index ?? 0
+    const end = start + token.length
+    if (cursor === start) {
+      return { token, start, end }
+    }
+  }
+  return null
+}
+
+function promptAliasStyle(): SyntaxStyle {
+  const style = SyntaxStyle.create()
+  style.registerStyle("prompt.alias", { fg: RGBA.fromHex("#ebcb8b"), bold: true })
+  style.registerStyle("prompt.file", { fg: RGBA.fromHex("#88c0d0"), bold: true })
+  return style
+}
+
+function applyPromptAliasHighlights(editor: TextareaRenderable): void {
+  editor.clearAllHighlights()
+  const styleId = editor.syntaxStyle?.getStyleId("prompt.alias")
+  if (styleId == null) {
+    return
+  }
+  const fileStyleId = editor.syntaxStyle?.getStyleId("prompt.file")
+  const matches = [...editor.plainText.matchAll(CONCEPT_REFERENCE_TOKEN)]
+  for (const match of matches) {
+    const token = match[0]
+    const start = match.index ?? 0
+    const highlight: Highlight = { start, end: start + token.length, styleId }
+    editor.addHighlightByCharRange(highlight)
+  }
+  if (fileStyleId == null) {
+    return
+  }
+  for (const match of editor.plainText.matchAll(FILE_REFERENCE_TOKEN)) {
+    const token = match[0]
+    const start = match.index ?? 0
+    const highlight: Highlight = { start, end: start + token.length, styleId: fileStyleId }
+    editor.addHighlightByCharRange(highlight)
+  }
+}
+
+function activeAliasSuggestion(state: AppState, editor: EditorModalState): ActivePromptSuggestion | null {
+  if (editor.target.kind !== "prompt") {
+    return null
+  }
   const text = editor.renderable.plainText
   const cursor = editorCursorOffset(editor)
+  const exactAliasToken = tokenAtCursor(text, cursor, CONCEPT_REFERENCE_TOKEN)
+  if (exactAliasToken) {
+    const exactPath = exactAliasToken.token.slice(1)
+    if (state.nodes.has(exactPath)) {
+      return { prefix: "@", query: exactPath, start: exactAliasToken.start, end: exactAliasToken.end, suggestions: [exactAliasToken.token] }
+    }
+  }
+  const exactFileToken = tokenAtCursor(text, cursor, FILE_REFERENCE_TOKEN)
+  if (exactFileToken) {
+    const exactPath = exactFileToken.token.slice(1)
+    if ((state.projectFiles ?? []).includes(exactPath) || (state.projectDirectories ?? []).includes(exactPath)) {
+      return { prefix: "&", query: exactPath, start: exactFileToken.start, end: exactFileToken.end, suggestions: [exactFileToken.token] }
+    }
+  }
   const beforeCursor = text.slice(0, cursor)
-  const match = beforeCursor.match(/(?:^|\s)(@([a-zA-Z0-9_.-]*))$/)
+  const match = beforeCursor.match(/(?:^|\s)([@&]([^\s@&]*))$/)
   if (!match) {
     return null
   }
   const token = match[1]
+  const prefix = token[0] as "@" | "&"
   const query = match[2] ?? ""
   const start = cursor - token.length
   const afterCursor = text.slice(cursor)
-  const suffixMatch = afterCursor.match(/^([a-zA-Z0-9_.-]*)/)
+  const suffixMatch = afterCursor.match(prefix === "@" ? /^([a-zA-Z0-9_.-]*)/ : /^([^\s@&]*)/)
   const end = cursor + (suffixMatch?.[1]?.length ?? 0)
-  return {
-    query,
-    start,
-    end,
-    suggestions: aliasSuggestions(state, query),
-  }
+  return { prefix, query, start, end, suggestions: prefix === "@" ? allAliasSuggestions(state, query) : allFileSuggestions(state, query) }
 }
 
 function refreshAliasSuggestion(state: AppState): void {
   const editor = state.editorModal
-  const maxVisibleSuggestions = maxVisibleAliasSuggestions()
-  if (!editor) {
-    return
-  }
+  if (!editor) return
   const next = activeAliasSuggestion(state, editor)
   if (!next || next.suggestions.length === 0) {
     editor.aliasSuggestion = null
     return
   }
   const previousIndex = editor.aliasSuggestion?.selectedIndex ?? 0
+  const maxVisibleSuggestions = maxVisibleAliasSuggestions()
   editor.aliasSuggestion = {
+    prefix: next.prefix,
+    mode: next.suggestions.length === 1 && next.suggestions[0] === `${next.prefix}${next.query}` ? "resolved" : "search",
     query: next.query,
     start: next.start,
     end: next.end,
@@ -124,26 +238,18 @@ function refreshAliasSuggestion(state: AppState): void {
     visibleStartIndex: 0,
   }
   const maxStart = Math.max(0, next.suggestions.length - maxVisibleSuggestions)
-  editor.aliasSuggestion.visibleStartIndex = Math.max(
-    0,
-    Math.min(editor.aliasSuggestion.selectedIndex - Math.floor(maxVisibleSuggestions / 2), maxStart),
-  )
+  editor.aliasSuggestion.visibleStartIndex = Math.max(0, Math.min(editor.aliasSuggestion.selectedIndex - Math.floor(maxVisibleSuggestions / 2), maxStart))
 }
 
 function editorVisibleLineCount(text: string): number {
-  const lineCount = text.split("\n").length
-  return Math.max(1, Math.min(4, lineCount))
+  return Math.max(1, Math.min(6, text.split("\n").length))
 }
 
 function refreshEditorModalHeight(state: AppState): boolean {
   const editor = state.editorModal
-  if (!editor) {
-    return false
-  }
+  if (!editor) return false
   const nextVisibleLineCount = editorVisibleLineCount(editor.renderable.plainText)
-  if (editor.visibleLineCount === nextVisibleLineCount) {
-    return false
-  }
+  if (editor.visibleLineCount === nextVisibleLineCount) return false
   editor.visibleLineCount = nextVisibleLineCount
   editor.renderable.minHeight = nextVisibleLineCount + 2
   editor.renderable.maxHeight = nextVisibleLineCount + 2
@@ -153,14 +259,7 @@ function refreshEditorModalHeight(state: AppState): boolean {
 function refreshAliasSuggestionSoon(state: AppState, redraw: () => void): void {
   setTimeout(() => {
     const editor = state.editorModal
-    if (!editor) {
-      return
-    }
-    try {
-      editor.renderable.plainText
-    } catch {
-      return
-    }
+    if (!editor) return
     refreshEditorModalHeight(state)
     refreshAliasSuggestion(state)
     redraw()
@@ -169,17 +268,17 @@ function refreshAliasSuggestionSoon(state: AppState, redraw: () => void): void {
 
 function moveAliasSuggestionSelection(state: AppState, delta: number): boolean {
   const editor = state.editorModal
-  const maxVisibleSuggestions = maxVisibleAliasSuggestions()
-  if (!editor?.aliasSuggestion) {
-    return false
-  }
-  const suggestions = aliasSuggestions(state, editor.aliasSuggestion.query)
+  if (!editor?.aliasSuggestion) return false
+  const suggestions = editor.aliasSuggestion.prefix === "@"
+    ? allAliasSuggestions(state, editor.aliasSuggestion.query)
+    : allFileSuggestions(state, editor.aliasSuggestion.query)
   if (suggestions.length === 0) {
     editor.aliasSuggestion = null
     return false
   }
   const previous = editor.aliasSuggestion.selectedIndex
   const suggestionCount = suggestions.length
+  const maxVisibleSuggestions = maxVisibleAliasSuggestions()
   editor.aliasSuggestion.selectedIndex = ((previous + delta) % suggestionCount + suggestionCount) % suggestionCount
   if (editor.aliasSuggestion.selectedIndex < editor.aliasSuggestion.visibleStartIndex) {
     editor.aliasSuggestion.visibleStartIndex = editor.aliasSuggestion.selectedIndex
@@ -191,10 +290,10 @@ function moveAliasSuggestionSelection(state: AppState, delta: number): boolean {
 
 function acceptAliasSuggestion(state: AppState): boolean {
   const editor = state.editorModal
-  if (!editor?.aliasSuggestion) {
-    return false
-  }
-  const suggestions = aliasSuggestions(state, editor.aliasSuggestion.query)
+  if (!editor?.aliasSuggestion) return false
+  const suggestions = editor.aliasSuggestion.prefix === "@"
+    ? allAliasSuggestions(state, editor.aliasSuggestion.query)
+    : allFileSuggestions(state, editor.aliasSuggestion.query)
   const alias = suggestions[editor.aliasSuggestion.selectedIndex]
   if (!alias) {
     editor.aliasSuggestion = null
@@ -202,25 +301,223 @@ function acceptAliasSuggestion(state: AppState): boolean {
   }
   const text = editor.renderable.plainText
   const suffix = text.slice(editor.aliasSuggestion.end)
-  const needsTrailingSpace = suffix.length === 0 || !/^[\s.,;:!?)}\]]/.test(suffix)
-  const nextText = `${text.slice(0, editor.aliasSuggestion.start)}${alias}${needsTrailingSpace ? " " : ""}${suffix}`
+  const isDirectoryReference = editor.aliasSuggestion.prefix === "&" && state.projectDirectories.includes(alias.slice(1))
+  const trailingText = isDirectoryReference ? "/" : ((suffix.length === 0 || !/^[\s.,;:!?)}\]]/.test(suffix)) ? " " : "")
+  const nextText = `${text.slice(0, editor.aliasSuggestion.start)}${alias}${trailingText}${suffix}`
   editor.renderable.setText(nextText)
-  editor.renderable.gotoBufferEnd()
+  editor.renderable.cursorOffset = editor.aliasSuggestion.start + alias.length + trailingText.length
   editor.renderable.focus()
   applyEditorText(state, editor)
-  editor.aliasSuggestion = null
+  editor.aliasSuggestion = isDirectoryReference ? editor.aliasSuggestion : null
   return true
 }
+
+function syncPromptEditorAfterProgrammaticChange(state: AppState, redraw: () => void): void {
+  const editor = state.editorModal
+  if (!editor || editor.target.kind !== "prompt") return
+  applyEditorText(state, editor)
+  applyPromptAliasHighlights(editor.renderable)
+  refreshEditorModalHeight(state)
+  refreshAliasSuggestion(state)
+  redraw()
+}
+
+function refreshPromptTokenBreakdown(state: AppState, redraw: () => void): void {
+  void effectivePromptTokenBreakdown(state, currentPath(state)).then((breakdown) => {
+    state.promptTokenBreakdown = breakdown
+    refreshPromptScroll(state)
+    redraw()
+  })
+}
+
+let promptScrollRef: ScrollBoxRenderable | null = null
+
+function refreshPromptScroll(state: AppState): void {
+  const editor = state.editorModal?.target.kind === "prompt" ? state.editorModal : null
+  if (!promptScrollRef || !editor) return
+  const shouldStickToBottom = state.promptScrollTop === Number.MAX_SAFE_INTEGER
+  replaceChildren(promptScrollRef, renderPromptThreadContent(state, editor))
+  state.promptViewportHeight = Math.max(8, promptScrollRef.viewport.height || (state.layoutMode === "wide" ? 16 : 10))
+  if (shouldStickToBottom) {
+    promptScrollRef.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
+  } else {
+    promptScrollRef.scrollTo({ x: 0, y: state.promptScrollTop })
+  }
+  state.promptScrollTop = shouldStickToBottom ? Number.MAX_SAFE_INTEGER : Math.max(0, promptScrollRef.scrollTop)
+}
+
+function syncPromptDraft(state: AppState, editor: EditorModalState): void {
+  if (editor.target.kind !== "prompt") return
+  const promptDraftIndex = editor.promptDraftIndex ?? Math.max(0, state.promptMessages.length - 1)
+  if (!state.promptMessages[promptDraftIndex]) {
+    state.promptMessages[promptDraftIndex] = { text: "", role: "user" }
+  }
+  state.promptMessages[promptDraftIndex].text = editor.renderable.plainText
+  state.promptText = editor.renderable.plainText
+}
+
+function submitPromptMessage(state: AppState, renderer: CliRenderer, redraw: () => void): void {
+  const editor = state.editorModal
+  if (!editor || editor.target.kind !== "prompt") return
+  syncPromptDraft(state, editor)
+  const currentDraftIndex = editor.promptDraftIndex ?? Math.max(0, state.promptMessages.length - 1)
+  const currentText = state.promptMessages[currentDraftIndex]?.text ?? ""
+  if (!currentText.trim()) return
+  state.promptMessages[currentDraftIndex] = { text: currentText, role: "user" }
+  const nextMessages: PromptMessage[] = [...state.promptMessages, { text: "Dummy LLM response placeholder.", role: "assistant" }, { text: "", role: "user" }]
+  state.promptMessages = nextMessages
+  state.promptText = ""
+  openEditor(state, renderer, redraw, { kind: "prompt" }, "", nextMessages.length - 1)
+  state.promptScrollTop = Number.MAX_SAFE_INTEGER
+  refreshPromptTokenBreakdown(state, redraw)
+}
+
+function handlePromptAliasBoundaryKey(state: AppState, key: KeyEvent, redraw: () => void): boolean {
+  const editor = state.editorModal
+  if (!editor || editor.target.kind !== "prompt") return false
+  const renderable = editor.renderable as TextareaRenderable & { cursorOffset: number }
+  const text = renderable.plainText
+  const cursor = editorCursorOffset(editor)
+
+  if (key.name === "backspace") {
+    const token = tokenEndingAtCursor(text, cursor, /[@&][^\s@&]+/g)
+    if (!token) return false
+    key.preventDefault()
+    key.stopPropagation()
+    renderable.setText(`${text.slice(0, token.start)}${text.slice(token.end)}`)
+    renderable.cursorOffset = token.start
+    syncPromptEditorAfterProgrammaticChange(state, redraw)
+    return true
+  }
+
+  if (key.name === "left") {
+    const token = tokenEndingAtCursor(text, cursor, /[@&][^\s@&]+/g)
+    if (!token) return false
+    key.preventDefault()
+    key.stopPropagation()
+    renderable.cursorOffset = token.start
+    syncPromptEditorAfterProgrammaticChange(state, redraw)
+    return true
+  }
+
+  if (key.name === "right") {
+    const token = tokenStartingAtCursor(text, cursor, /[@&][^\s@&]+/g)
+    if (!token) return false
+    key.preventDefault()
+    key.stopPropagation()
+    renderable.cursorOffset = token.end
+    syncPromptEditorAfterProgrammaticChange(state, redraw)
+    return true
+  }
+
+  return false
+}
+
+let refreshPromptPaneTarget: () => void = () => {}
 
 function applyEditorText(state: AppState, editor: EditorModalState): void {
   const text = editor.renderable.plainText
   if (editor.target.kind === "prompt") {
-    state.promptText = text
+    syncPromptDraft(state, editor)
     return
   }
   if (editor.target.path) {
-    state.conceptNotes[editor.target.path] = text
+    const node = state.nodes.get(editor.target.path)
+    if (node) {
+      node.summary = text
+    }
   }
+}
+
+function togglePromptMode(state: AppState): void {
+  state.uiMode = state.uiMode === "plan" ? "build" : "plan"
+}
+
+  function openEditor(state: AppState, renderer: CliRenderer, redraw: () => void, target: EditorModalState["target"], initialText: string, promptDraftIndex?: number): void {
+  const visibleLineCount = editorVisibleLineCount(initialText)
+  const renderable = new TextareaRenderable(renderer, {
+    initialValue: initialText,
+    width: "100%",
+    minHeight: visibleLineCount + 2,
+    maxHeight: visibleLineCount + 2,
+    paddingX: 1,
+    paddingY: 1,
+    backgroundColor: "#202930",
+    focusedBackgroundColor: "#202930",
+    textColor: "#e5e9f0",
+    focusedTextColor: "#e5e9f0",
+    cursorColor: "#f2cc8f",
+    cursorStyle: { style: "block", blinking: true },
+    wrapMode: "word",
+    showCursor: true,
+    keyBindings: [
+      { name: "j", ctrl: true, action: "newline" },
+      { name: "return", shift: true, action: "newline" },
+    ],
+    onContentChange: () => {
+  if (state.editorModal?.renderable === renderable) {
+    applyEditorText(state, state.editorModal)
+        if (target.kind === "prompt") {
+          refreshPromptTokenBreakdown(state, redraw)
+          refreshPromptScroll(state)
+        }
+      }
+      if (target.kind === "prompt") {
+        applyPromptAliasHighlights(renderable)
+      }
+      if (refreshEditorModalHeight(state)) {
+        redraw()
+      }
+    },
+  })
+  if (target.kind === "prompt") {
+    if (typeof promptDraftIndex === "number") {
+      state.promptMessages[promptDraftIndex] = { text: initialText, role: "user" }
+    }
+    renderable.syntaxStyle = promptAliasStyle()
+    renderable.focus()
+    renderable.onCursorChange = () => {
+      applyPromptAliasHighlights(renderable)
+      refreshAliasSuggestion(state)
+      refreshPromptScroll(state)
+      redraw()
+    }
+    applyPromptAliasHighlights(renderable)
+  }
+  renderable.gotoBufferEnd()
+  state.editorModal = { target, renderable, aliasSuggestion: null, visibleLineCount, promptDraftIndex }
+  refreshAliasSuggestion(state)
+  if (target.kind === "prompt") {
+    state.conceptNavigationFocused = false
+    state.promptPaneMode = "expanded"
+    refreshPromptPaneTarget()
+    refreshPromptScroll(state)
+  }
+  setTimeout(() => {
+    if (state.editorModal?.renderable === renderable) {
+      renderable.focus()
+      redraw()
+    }
+  }, 0)
+}
+
+function openPromptEditor(state: AppState, renderer: CliRenderer, redraw: () => void): void {
+  const promptDraftIndex = Math.max(0, state.promptMessages.length - 1)
+  const initialText = state.promptMessages[promptDraftIndex]?.text ?? state.promptText
+  openEditor(state, renderer, redraw, { kind: "prompt" }, initialText, promptDraftIndex)
+}
+
+function openSummaryEditor(state: AppState, renderer: CliRenderer, redraw: () => void): void {
+  const node = currentNode(state)
+  openEditor(state, renderer, redraw, { kind: "concept-summary", path: node.path }, node.summary)
+}
+
+function openInspector(state: AppState, kind: InspectorKind): void {
+  state.inspector = { kind }
+}
+
+function closeInspector(state: AppState): void {
+  state.inspector = null
 }
 
 function uniqueChildPath(state: AppState, parentPath: string, title: string): string {
@@ -240,9 +537,7 @@ function isDraftConcept(state: AppState, path: string): boolean {
 
 function insertDraftConcept(state: AppState, draft: CreateConceptDraft, kindDefinition: KindDefinition | null): string {
   const parent = state.nodes.get(state.currentParentPath)
-  if (!parent) {
-    throw new Error("Current parent concept not found")
-  }
+  if (!parent) throw new Error("Current parent concept not found")
   const path = uniqueChildPath(state, state.currentParentPath, draft.title)
   const metadata: ConceptNode["metadata"] = kindDefinition?.description ? { kind_description: kindDefinition.description } : {}
   const node: ConceptNode = {
@@ -263,17 +558,12 @@ function insertDraftConcept(state: AppState, draft: CreateConceptDraft, kindDefi
   if (kindDefinition && !state.kindDefinitions.some((item) => item.kind === kindDefinition.kind)) {
     state.kindDefinitions = [...state.kindDefinitions, kindDefinition].sort((left, right) => left.kind.localeCompare(right.kind))
   }
-  if (!state.bufferedConcepts.some((item) => item.path === path)) {
-    state.bufferedConcepts = [...state.bufferedConcepts, { path }]
-  }
   return path
 }
 
 function removeDraftConcept(state: AppState, path: string): void {
   const node = state.nodes.get(path)
-  if (!node?.isDraft) {
-    return
-  }
+  if (!node?.isDraft) return
   if (node.parentPath) {
     const parent = state.nodes.get(node.parentPath)
     if (parent) {
@@ -281,86 +571,95 @@ function removeDraftConcept(state: AppState, path: string): void {
     }
   }
   state.nodes.delete(path)
-  state.bufferedConcepts = state.bufferedConcepts.filter((item) => item.path !== path)
-  delete state.conceptNotes[path]
   clampCursor(state)
   applySelectionChange(state)
 }
 
 async function main(): Promise<void> {
+  const COLLAPSED_PROMPT_RATIO = 0.34
+  const EXPANDED_PROMPT_RATIO = 0.58
+  const PROMPT_ANIMATION_EPSILON = 0.015
+  const PROMPT_ANIMATION_STEP_MS = 16
   const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
   const { graphPayload, nodes, kindDefinitions } = loadConceptGraph(conceptsPath, optionsPath)
+  const trackedPaths = (await readFile(join(process.cwd(), ".gitignore"), "utf8").catch(() => ""), await Bun.$`git ls-files -co --exclude-standard`.text())
+  const projectFiles = trackedPaths.replace(/\r\n/g, "\n").split("\n").map((line) => line.trim()).filter(Boolean)
+  const projectDirectories = [...new Set(projectFiles.flatMap((file) => {
+    const parts = file.split("/")
+    const directories: string[] = []
+    for (let index = 1; index < parts.length; index += 1) {
+      directories.push(parts.slice(0, index).join("/"))
+    }
+    return directories
+  }))].sort((left, right) => left.localeCompare(right))
   const state: AppState = {
     jsonPath: conceptsPath,
     graphPayload,
     nodes,
+    projectFiles,
+    projectDirectories,
     sourceFileCache: new Map(),
     currentParentPath: "root",
     cursor: 0,
-    bufferedConcepts: [],
     kindDefinitions,
     createConceptModal: null,
-      confirmModal: null,
-      status: {
-      message: "Browse concepts. n adds a draft. Space toggles selection. y copies context.",
-      tone: "info",
-    },
+    confirmModal: null,
     layoutMode: "wide",
+    uiMode: "plan",
+    inspector: null,
     mainScrollTop: 0,
     mainViewportHeight: 18,
-    contextTitle: "Context",
+    contextTitle: "Inspector",
     contextLegendItems: [],
-    showBufferModal: false,
-    bufferModal: {
-      focus: "prompt",
-      conceptCursor: 0,
-    },
+    promptMessages: [{ text: "", role: "user" }],
     promptText: "",
-    conceptNotes: {},
-    conceptAliases: {},
-    aliasPaths: {},
+    promptPaneRatio: COLLAPSED_PROMPT_RATIO,
+    promptPaneTargetRatio: COLLAPSED_PROMPT_RATIO,
+    promptPaneMode: "collapsed",
+    promptScrollTop: 0,
+    promptViewportHeight: 12,
+    conceptNavigationFocused: true,
+    startupDrawComplete: false,
     editorModal: null,
     pendingCtrlCExit: false,
     ctrlCExitTimeout: null,
-    preserveStatusAboveModal: false,
-    statusTimeout: null,
-    statusVersion: 0,
+    promptPaneAnimationTimeout: null,
+    promptTokenBreakdown: EMPTY_PROMPT_TOKEN_BREAKDOWN,
   }
 
   let renderer: CliRenderer
-  let listScroll: ScrollBoxRenderable
-  let mainScroll: ScrollBoxRenderable
-
-  rebuildConceptAliases(state)
+  let listScroll!: ScrollBoxRenderable
+  let mainScroll!: ScrollBoxRenderable
+  let promptScroll!: ScrollBoxRenderable
 
   function mountRenderer(nextRenderer: CliRenderer): void {
     renderer = nextRenderer
-    listScroll = new ScrollBoxRenderable(renderer, {
-      width: "100%",
-      height: "100%",
-      viewportCulling: false,
-      scrollbarOptions: { showArrows: true },
-    })
-    mainScroll = new ScrollBoxRenderable(renderer, {
-      width: "100%",
-      height: "100%",
-      viewportCulling: false,
-      scrollbarOptions: { showArrows: true },
-    })
+    listScroll = new ScrollBoxRenderable(renderer, { width: "100%", height: "100%", viewportCulling: false, scrollbarOptions: { showArrows: false } })
+    mainScroll = new ScrollBoxRenderable(renderer, { width: "100%", height: "100%", viewportCulling: false, scrollbarOptions: { showArrows: false } })
+    promptScroll = new ScrollBoxRenderable(renderer, { width: "100%", height: "100%", viewportCulling: false, scrollbarOptions: { showArrows: false } })
+    promptScrollRef = promptScroll
+    listScroll.verticalScrollBar.visible = false
+    listScroll.horizontalScrollBar.visible = false
+    mainScroll.verticalScrollBar.visible = false
+    mainScroll.horizontalScrollBar.visible = false
+    promptScroll.verticalScrollBar.visible = false
+    promptScroll.horizontalScrollBar.visible = false
     renderer.on("resize", (width) => {
       handleResize(state, width)
+      if (!state.startupDrawComplete) {
+        state.promptPaneTargetRatio = desiredPromptPaneRatio()
+        state.promptPaneRatio = state.promptPaneTargetRatio
+        draw()
+        state.startupDrawComplete = true
+        return
+      }
+      refreshPromptPaneTarget()
       draw()
     })
   }
 
   function openCreateConceptModal(): void {
-    state.createConceptModal = {
-      draft: emptyCreateDraft(),
-      fieldIndex: 0,
-      kindExpanded: false,
-      kindCursor: 0,
-      kindQuery: "",
-    }
+    state.createConceptModal = { draft: emptyCreateDraft(), fieldIndex: 0, kindExpanded: false, kindCursor: 0, kindQuery: "" }
   }
 
   function closeCreateConceptModal(): void {
@@ -371,11 +670,67 @@ async function main(): Promise<void> {
     state.confirmModal = null
   }
 
+  function desiredPromptPaneRatio(): number {
+    if (state.layoutMode !== "wide") return 1
+    return state.promptPaneMode === "expanded" ? EXPANDED_PROMPT_RATIO : COLLAPSED_PROMPT_RATIO
+  }
+
+  function stopPromptPaneAnimation(): void {
+    if (state.promptPaneAnimationTimeout) {
+      clearTimeout(state.promptPaneAnimationTimeout)
+      state.promptPaneAnimationTimeout = null
+    }
+  }
+
+  function animatePromptPane(): void {
+    stopPromptPaneAnimation()
+    if (state.layoutMode !== "wide") {
+      state.promptPaneRatio = 1
+      state.promptPaneTargetRatio = 1
+      draw()
+      return
+    }
+    const step = () => {
+      const delta = state.promptPaneTargetRatio - state.promptPaneRatio
+      if (Math.abs(delta) <= PROMPT_ANIMATION_EPSILON) {
+        state.promptPaneRatio = state.promptPaneTargetRatio
+        state.promptPaneAnimationTimeout = null
+        draw()
+        return
+      }
+      state.promptPaneRatio += delta * 0.28
+      draw()
+      state.promptPaneAnimationTimeout = setTimeout(step, PROMPT_ANIMATION_STEP_MS)
+    }
+    draw()
+    state.promptPaneAnimationTimeout = setTimeout(step, PROMPT_ANIMATION_STEP_MS)
+  }
+
+  refreshPromptPaneTarget = (): void => {
+    const nextTarget = desiredPromptPaneRatio()
+    if (state.layoutMode !== "wide") {
+      stopPromptPaneAnimation()
+      state.promptPaneTargetRatio = 1
+      state.promptPaneRatio = 1
+      return
+    }
+    if (Math.abs(nextTarget - state.promptPaneRatio) <= PROMPT_ANIMATION_EPSILON) {
+      stopPromptPaneAnimation()
+      state.promptPaneTargetRatio = nextTarget
+      state.promptPaneRatio = nextTarget
+      return
+    }
+    if (Math.abs(nextTarget - state.promptPaneTargetRatio) <= PROMPT_ANIMATION_EPSILON) {
+      state.promptPaneTargetRatio = nextTarget
+      return
+    }
+    state.promptPaneTargetRatio = nextTarget
+    animatePromptPane()
+  }
+
   function updateCreateDraftText(key: KeyEvent): boolean {
     const modal = state.createConceptModal
-    if (!modal) {
-      return false
-    }
+    if (!modal) return false
     const field = modal.fieldIndex === 0 ? "title" : "summary"
     if (key.name === "backspace") {
       modal.draft[field] = modal.draft[field].slice(0, -1)
@@ -396,13 +751,9 @@ async function main(): Promise<void> {
   }
 
   function fuzzyKindScore(candidate: string, query: string): number {
-    if (!query) {
-      return 1
-    }
+    if (!query) return 1
     const normalizedCandidate = candidate.toLowerCase()
-    if (normalizedCandidate.includes(query)) {
-      return 100 - normalizedCandidate.indexOf(query)
-    }
+    if (normalizedCandidate.includes(query)) return 100 - normalizedCandidate.indexOf(query)
     let queryIndex = 0
     let score = 0
     for (let index = 0; index < normalizedCandidate.length && queryIndex < query.length; index += 1) {
@@ -427,19 +778,21 @@ async function main(): Promise<void> {
 
   function exactKindMatch(query: string): KindDefinition | null {
     const normalizedQuery = query.trim().toLowerCase()
-    if (!normalizedQuery) {
-      return null
-    }
+    if (!normalizedQuery) return null
     return state.kindDefinitions.find((item) => item.kind.toLowerCase() === normalizedQuery) ?? null
   }
 
   function submitCreateConceptModal(): boolean {
     const modal = state.createConceptModal
-    if (!modal) {
-      return false
-    }
+    if (!modal) return false
     if (!modal.draft.title.trim() || !modal.draft.summary.trim()) {
-      setTimedStatus("Concept name and summary are required", "warning")
+      state.confirmModal = {
+        kind: "remove-draft",
+        title: "Missing Fields",
+        message: ["Concept name and summary are required"],
+        confirmLabel: "dismisses this message",
+        path: currentPath(state),
+      }
       return true
     }
     const options = createKindOptions(modal.kindQuery)
@@ -452,19 +805,15 @@ async function main(): Promise<void> {
     const createdPath = insertDraftConcept(state, modal.draft, resolvedKind)
     closeCreateConceptModal()
     clampCursor(state)
-    setStatusNow(resolvedKind ? `Added draft concept: ${createdPath}` : `Added draft concept without kind: ${createdPath}`, "success")
     draw()
     return true
   }
 
   function handleCreateConceptModalKey(key: KeyEvent): boolean {
     const modal = state.createConceptModal
-    if (!modal) {
-      return false
-    }
+    if (!modal) return false
     if (key.name === "escape" || (key.ctrl && key.name === "q")) {
       closeCreateConceptModal()
-      setStatusNow(defaultStatusMessage(), state.bufferedConcepts.length > 0 ? "success" : "info")
       draw()
       return true
     }
@@ -473,11 +822,6 @@ async function main(): Promise<void> {
     if (kindFieldSelected && modal.kindExpanded) {
       const options = createKindOptions(modal.kindQuery)
       modal.kindCursor = Math.min(modal.kindCursor, Math.max(0, options.length - 1))
-      if (key.name === "escape") {
-        modal.kindExpanded = false
-        draw()
-        return true
-      }
       if (key.name === "up") {
         modal.kindCursor = Math.max(0, modal.kindCursor - 1)
         draw()
@@ -499,20 +843,11 @@ async function main(): Promise<void> {
         draw()
         return true
       }
-      if (key.name === "space") {
-        modal.kindQuery += " "
+      if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) {
+        modal.kindQuery += key.sequence
         modal.kindCursor = 0
         draw()
         return true
-      }
-      if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) {
-        const code = key.sequence.charCodeAt(0)
-        if (code >= 32 && code <= 126) {
-          modal.kindQuery += key.sequence
-          modal.kindCursor = 0
-          draw()
-          return true
-        }
       }
       return true
     }
@@ -539,20 +874,15 @@ async function main(): Promise<void> {
         return true
       }
       if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) {
-        const code = key.sequence.charCodeAt(0)
-        if (code >= 32 && code <= 126) {
-          modal.kindExpanded = true
-          modal.kindQuery += key.sequence
-          modal.kindCursor = 0
-          draw()
-          return true
-        }
+        modal.kindExpanded = true
+        modal.kindQuery += key.sequence
+        modal.kindCursor = 0
+        draw()
+        return true
       }
       return true
     }
-    if (key.name === "return") {
-      return submitCreateConceptModal()
-    }
+    if (key.name === "return") return submitCreateConceptModal()
     if (updateCreateDraftText(key)) {
       draw()
       return true
@@ -562,9 +892,7 @@ async function main(): Promise<void> {
 
   function handleConfirmModalKey(key: KeyEvent): boolean {
     const modal = state.confirmModal
-    if (!modal) {
-      return false
-    }
+    if (!modal) return false
     if (key.name === "escape" || (key.ctrl && key.name === "q")) {
       closeConfirmModal()
       draw()
@@ -573,7 +901,6 @@ async function main(): Promise<void> {
     if (key.name === "return") {
       removeDraftConcept(state, modal.path)
       closeConfirmModal()
-      setStatusNow("Removed draft", "info")
       draw()
       return true
     }
@@ -584,29 +911,10 @@ async function main(): Promise<void> {
     state.confirmModal = {
       kind: "remove-draft",
       title: "Remove Draft",
-      message: [
-        `Remove draft ${path}?`,
-        "This removes the draft from the current TUI session.",
-      ],
+      message: [`Remove draft ${path}?`, "This removes the draft from the current TUI session."],
       confirmLabel: "removes this draft concept",
       path,
     }
-  }
-
-  function setConceptBuffered(path: string): void {
-    const existing = bufferedConceptForPath(state, path)
-    if (existing) {
-      state.bufferedConcepts = state.bufferedConcepts.filter((item) => item.path !== path)
-      clearStatusTimeout()
-      debugStatus("buffer-remove", { path, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-      setStatusNow(state.bufferedConcepts.length === 0 ? "Selection cleared" : bufferStatusMessage(), state.bufferedConcepts.length === 0 ? "info" : "success")
-    } else {
-      state.bufferedConcepts = [...state.bufferedConcepts, { path }]
-      clearStatusTimeout()
-      debugStatus("buffer-add", { path, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-      setStatusNow(bufferStatusMessage(), "success")
-    }
-    clampBufferModalState(state)
   }
 
   function bindKeyHandler(): void {
@@ -614,30 +922,57 @@ async function main(): Promise<void> {
       if (key.ctrl && key.name === "c") {
         key.preventDefault()
         key.stopPropagation()
-        if (state.editorModal) {
-          if (state.editorModal.renderable.plainText.length > 0) {
-            state.editorModal.renderable.setText("")
-            state.editorModal.renderable.focus()
-            applyEditorText(state, state.editorModal)
-            refreshAliasSuggestion(state)
-            refreshEditorModalHeight(state)
-            clearCtrlCExitState()
-            draw()
-            return
-          }
+        if (state.editorModal && state.editorModal.renderable.plainText.length > 0) {
+          state.editorModal.renderable.setText("")
+          state.editorModal.renderable.focus()
+          applyEditorText(state, state.editorModal)
+          refreshAliasSuggestion(state)
+          refreshEditorModalHeight(state)
+          clearCtrlCExitState()
+          draw()
+          return
         }
         if (state.pendingCtrlCExit) {
           renderer.destroy()
           process.exit(0)
         }
-        armCtrlCExit()
+        state.confirmModal = {
+          kind: "remove-draft",
+          title: "Quit",
+          message: ["Press Ctrl+C again to quit, or Esc to stay"],
+          confirmLabel: "dismisses this message",
+          path: currentPath(state),
+        }
+        state.pendingCtrlCExit = true
         draw()
         return
       }
-      clearCtrlCExitStateIfNeeded()
+
+      if (state.pendingCtrlCExit) {
+        state.pendingCtrlCExit = false
+      }
       const visible = visiblePaths(state)
+
       if (state.confirmModal) {
         handleConfirmModalKey(key)
+        return
+      }
+      if (state.inspector) {
+        if (key.name === "escape" || key.name === "q") {
+          closeInspector(state)
+          draw()
+          return
+        }
+        if (key.name === "pageup") {
+          scrollMain(state, -Math.max(1, state.mainViewportHeight - 2))
+          draw()
+          return
+        }
+        if (key.name === "pagedown") {
+          scrollMain(state, Math.max(1, state.mainViewportHeight - 2))
+          draw()
+          return
+        }
         return
       }
       if (state.createConceptModal) {
@@ -645,10 +980,44 @@ async function main(): Promise<void> {
         return
       }
       if (state.editorModal) {
+        if (state.editorModal.target.kind === "prompt" && key.name === "pagedown") {
+          state.promptScrollTop += Math.max(1, state.promptViewportHeight - 2)
+          refreshPromptScroll(state)
+          draw()
+          return
+        }
+        if (state.editorModal.target.kind === "prompt" && key.name === "pageup") {
+          state.promptScrollTop = Math.max(0, state.promptScrollTop - Math.max(1, state.promptViewportHeight - 2))
+          refreshPromptScroll(state)
+          draw()
+          return
+        }
+        if (state.editorModal.target.kind === "prompt" && key.name === "tab" && !key.shift) {
+          togglePromptMode(state)
+          draw()
+          return
+        }
+        if (state.editorModal.target.kind === "prompt" && key.name === "return" && !key.shift && !key.ctrl && !state.editorModal.aliasSuggestion) {
+          key.preventDefault()
+          key.stopPropagation()
+          submitPromptMessage(state, renderer, draw)
+          draw()
+          return
+        }
+        if (handlePromptAliasBoundaryKey(state, key, draw)) {
+          return
+        }
         if (key.name === "escape") {
+          key.preventDefault()
+          key.stopPropagation()
           applyEditorText(state, state.editorModal)
           state.editorModal.renderable.blur()
+          if (state.editorModal.target.kind === "prompt") {
+            state.conceptNavigationFocused = true
+            state.promptPaneMode = "collapsed"
+          }
           state.editorModal = null
+          refreshPromptPaneTarget()
           draw()
           return
         }
@@ -666,28 +1035,28 @@ async function main(): Promise<void> {
             try {
               renderer.resume()
             } catch {
-               mountRenderer(await createCliRenderer({ exitOnCtrlC: false }))
-               bindKeyHandler()
+              mountRenderer(await createCliRenderer({ exitOnCtrlC: false }))
+              bindKeyHandler()
             }
-            setTimedStatus(message, "error")
+            state.confirmModal = {
+              kind: "remove-draft",
+              title: "Editor Error",
+              message: [message],
+              confirmLabel: "dismisses this message",
+              path: currentPath(state),
+            }
           }
           draw()
           return
         }
         if (state.editorModal.aliasSuggestion && (key.name === "down" || (key.ctrl && key.name === "n"))) {
-          if (moveAliasSuggestionSelection(state, 1)) {
-            draw()
-          } else {
-            draw()
-          }
+          moveAliasSuggestionSelection(state, 1)
+          draw()
           return
         }
         if (state.editorModal.aliasSuggestion && (key.name === "up" || (key.ctrl && key.name === "p"))) {
-          if (moveAliasSuggestionSelection(state, -1)) {
-            draw()
-          } else {
-            draw()
-          }
+          moveAliasSuggestionSelection(state, -1)
+          draw()
           return
         }
         if (state.editorModal.aliasSuggestion && key.name === "return") {
@@ -695,7 +1064,6 @@ async function main(): Promise<void> {
           key.stopPropagation()
           if (acceptAliasSuggestion(state)) {
             draw()
-            return
           }
           return
         }
@@ -704,74 +1072,27 @@ async function main(): Promise<void> {
         draw()
         return
       }
-      if (state.showBufferModal) {
-        if (key.name === "escape") {
-          closeBufferModal()
-          const fallback = bufferStatusMessage()
-          clearStatusTimeout()
-          setStatusNow(defaultStatusMessage(), fallback ? "success" : "info")
-          draw()
-          return
-        }
 
-        if (key.name === "j" || key.name === "down") {
-          if (moveBufferModalCursor(state, 1)) {
-            setStatusNow(bufferModalStatusMessage(), "info")
-            draw()
-          }
-          return
-        }
-        if (key.name === "k" || key.name === "up") {
-          if (moveBufferModalCursor(state, -1)) {
-            setStatusNow(bufferModalStatusMessage(), "info")
-            draw()
-          }
-          return
-        }
-        if (key.name === "return") {
-          const target = selectedBufferModalTarget(state)
-          const text = target.kind === "prompt" ? state.promptText : state.conceptNotes[target.path ?? ""] ?? ""
-          const visibleLineCount = editorVisibleLineCount(text)
-          const renderable = new TextareaRenderable(renderer, {
-            initialValue: text,
-            width: "100%",
-            minHeight: visibleLineCount + 2,
-            maxHeight: visibleLineCount + 2,
-            paddingX: 1,
-            paddingY: 1,
-            backgroundColor: "#202930",
-            focusedBackgroundColor: "#202930",
-            textColor: "#e5e9f0",
-            focusedTextColor: "#e5e9f0",
-            cursorColor: "#f2cc8f",
-            cursorStyle: { style: "block", blinking: true },
-            wrapMode: "word",
-            showCursor: true,
-            keyBindings: [
-              { name: "j", ctrl: true, action: "newline" },
-              { name: "return", shift: true, action: "newline" },
-            ],
-            onContentChange: () => {
-              if (state.editorModal?.renderable === renderable) {
-                applyEditorText(state, state.editorModal)
-              }
-              if (refreshEditorModalHeight(state)) {
-                draw()
-              }
-            },
-          })
-          renderable.gotoBufferEnd()
-          state.editorModal = { target, renderable, aliasSuggestion: null, visibleLineCount }
-          refreshAliasSuggestion(state)
-          draw()
-          setTimeout(() => {
-            if (state.editorModal?.renderable === renderable) {
-              renderable.focus()
-              draw()
-            }
-          }, 0)
-          return
-        }
+      if (key.name === "i") {
+        key.preventDefault()
+        key.stopPropagation()
+        openPromptEditor(state, renderer, draw)
+        draw()
+        return
+      }
+      if (key.name === "s") {
+        openInspector(state, "snippet")
+        draw()
+        return
+      }
+      if (key.name === "t") {
+        openInspector(state, "subtree")
+        draw()
+        return
+      }
+      if (key.name === "m") {
+        openInspector(state, "metadata")
+        draw()
         return
       }
       if (key.name === "q") {
@@ -779,25 +1100,19 @@ async function main(): Promise<void> {
         process.exit(0)
       }
       if (key.name === "j" || key.name === "down") {
-        if (moveCursor(state, 1)) {
-          draw()
-        }
+        if (moveCursor(state, 1)) draw()
         return
       }
       if (key.name === "k" || key.name === "up") {
-        if (moveCursor(state, -1)) {
-          draw()
-        }
+        if (moveCursor(state, -1)) draw()
         return
       }
       if (key.name === "pagedown") {
         if (key.ctrl) {
           scrollMain(state, Math.max(1, state.mainViewportHeight - 2))
           draw()
-        } else {
-          if (moveCursor(state, pageSize(state.layoutMode))) {
-            draw()
-          }
+        } else if (moveCursor(state, pageSize(state.layoutMode))) {
+          draw()
         }
         return
       }
@@ -805,10 +1120,8 @@ async function main(): Promise<void> {
         if (key.ctrl) {
           scrollMain(state, -Math.max(1, state.mainViewportHeight - 2))
           draw()
-        } else {
-          if (moveCursor(state, -pageSize(state.layoutMode))) {
-            draw()
-          }
+        } else if (moveCursor(state, -pageSize(state.layoutMode))) {
+          draw()
         }
         return
       }
@@ -831,74 +1144,44 @@ async function main(): Promise<void> {
       }
       if (key.name === "l" || key.name === "right") {
         const node = currentNode(state)
-        if (node.childPaths.length === 0) {
-          setTimedStatus(`${node.path} has no children`, "warning")
-        } else {
-          clearStatusTimeout()
+        if (node.childPaths.length > 0) {
           state.currentParentPath = node.path
           state.cursor = 0
           applySelectionChange(state)
-          const fallback = bufferStatusMessage()
-          setStatusNow(defaultStatusMessage(), fallback ? "success" : "info")
-          draw()
+              draw()
         }
         return
       }
       if (key.name === "h" || key.name === "left") {
         const currentParent = state.nodes.get(state.currentParentPath)!
-        if (currentParent.parentPath === null) {
-          setTimedStatus("Already at the root", "warning")
-        } else {
-          clearStatusTimeout()
+        if (currentParent.parentPath !== null) {
           const oldParent = state.currentParentPath
           state.currentParentPath = currentParent.parentPath
           state.cursor = Math.max(0, visiblePaths(state).indexOf(oldParent))
           applySelectionChange(state)
-          const fallback = bufferStatusMessage()
-          setStatusNow(defaultStatusMessage(), fallback ? "success" : "info")
-          draw()
+              draw()
         }
         return
       }
       if (key.name === "space") {
-        const path = currentPath(state)
-        if (isDraftConcept(state, path)) {
-          promptToRemoveDraft(path)
+        if (isDraftConcept(state, currentPath(state))) {
+          promptToRemoveDraft(currentPath(state))
           draw()
-          return
         }
-        setConceptBuffered(path)
-        draw()
         return
       }
       if (key.name === "n") {
-        clearStatusTimeout()
         openCreateConceptModal()
         draw()
         return
       }
       if (key.name === "y") {
-        clearStatusTimeout()
         const selection = clipboardSelection(state, currentPath(state))
-        await copyWithStatus(
-          buildClipboardPayload(state, currentPath(state)),
-          `Copied context for ${selection.count} concept${selection.count === 1 ? "" : "s"}`,
-        )
-        return
-      }
-      if (key.name === "c") {
-        clearStatusTimeout()
-        state.bufferedConcepts = state.bufferedConcepts.filter((item) => isDraftConcept(state, item.path))
-        setStatusNow("Cleared selection", "info")
-        clampBufferModalState(state)
-        draw()
+        await copyWithStatus(await buildClipboardPayload(state, currentPath(state)), `Copied context for ${selection.count} reference${selection.count === 1 ? "" : "s"}`)
         return
       }
       if (key.name === "return") {
-        clearStatusTimeout()
-        state.showBufferModal = true
-        resetBufferModal(state)
-        setStatusNow(bufferModalStatusMessage(), "info")
+        openSummaryEditor(state, renderer, draw)
         draw()
         return
       }
@@ -908,7 +1191,14 @@ async function main(): Promise<void> {
         return
       }
       if (key.name === "?" || (key.shift && key.name === "/")) {
-        setTimedStatus("Browse: j/k -> Move  h/l -> Back/Open  Enter -> Open selection  Space -> Toggle selection  y -> Copy  q -> Quit", "info")
+        state.confirmModal = {
+          kind: "remove-draft",
+          title: "Help",
+          message: ["Browse: j/k move  h/l back/open  i prompt  Enter summary  s/t/m inspect  y copy  p path  q quit"],
+          confirmLabel: "dismisses help",
+          path: currentPath(state),
+        }
+        draw()
       }
     })
   }
@@ -919,19 +1209,7 @@ async function main(): Promise<void> {
 
   function draw(): void {
     clampCursor(state)
-    debugStatus("draw", {
-      status: state.status.message,
-      tone: state.status.tone,
-      bufferedConcepts: state.bufferedConcepts,
-      currentPath: currentPath(state),
-      currentParentPath: state.currentParentPath,
-    })
-    repaint(state, listScroll, mainScroll, renderer.root)
-  }
-
-  function drawStatus(): void {
-    replaceChildren(renderer.root, renderFrame(state, listScroll, mainScroll, renderStatusPane(state)))
-    scrollMainToState()
+    repaint(state, listScroll, mainScroll, promptScroll, renderer.root)
   }
 
   function scrollMainToState(): void {
@@ -940,36 +1218,9 @@ async function main(): Promise<void> {
     mainScroll.scrollTo({ x: 0, y: state.mainScrollTop })
   }
 
-  function bufferStatusMessage(): string {
-    return state.bufferedConcepts.length > 0 ? `Selection: ${state.bufferedConcepts.length} concept${state.bufferedConcepts.length === 1 ? "" : "s"}` : ""
-  }
-
-  function bufferModalStatusMessage(): string {
-    const target = selectedBufferModalTarget(state)
-    if (target.kind === "concept" && target.path) {
-      const summary = state.nodes.get(target.path)?.summary?.trim()
-      return `Summary: ${summary || "(none)"}`
-    }
-    return "Prompt selected"
-  }
-
-    function defaultStatusMessage(): string {
-    const fallback = bufferStatusMessage()
-    return fallback || "Browse concepts. n adds a draft. Space toggles selection. y copies context."
-  }
-
-  function closeBufferModal(): void {
-    state.showBufferModal = false
-    state.editorModal?.renderable.blur()
-    state.editorModal = null
-    clampBufferModalState(state)
-  }
-
   async function openExternalEditor(initialText: string): Promise<string> {
     const editor = process.env.EDITOR?.trim()
-    if (!editor) {
-      throw new Error("EDITOR is not set")
-    }
+    if (!editor) throw new Error("EDITOR is not set")
     const tempDir = await mkdtemp(join(tmpdir(), "setsumei-"))
     const tempFile = join(tempDir, "buffer-note.txt")
     await writeFile(tempFile, initialText, "utf8")
@@ -978,11 +1229,8 @@ async function main(): Promise<void> {
       const child = spawn(command, [...args, tempFile], { stdio: "inherit" })
       child.on("error", reject)
       child.on("close", (code) => {
-        if (code === 0 || code === null) {
-          resolve()
-        } else {
-          reject(new Error(`${editor} exited with code ${code}`))
-        }
+        if (code === 0 || code === null) resolve()
+        else reject(new Error(`${editor} exited with code ${code}`))
       })
     })
     const nextText = await readFile(tempFile, "utf8")
@@ -990,96 +1238,34 @@ async function main(): Promise<void> {
     return nextText
   }
 
-  function clearStatusTimeout(): void {
-    if (state.statusTimeout) {
-      debugStatus("clear-timeout", { status: state.status.message })
-      clearTimeout(state.statusTimeout)
-      state.statusTimeout = null
-    }
-  }
-
   function clearCtrlCExitState(): void {
     state.pendingCtrlCExit = false
-    state.preserveStatusAboveModal = false
     if (state.ctrlCExitTimeout) {
       clearTimeout(state.ctrlCExitTimeout)
       state.ctrlCExitTimeout = null
     }
   }
 
-  function clearCtrlCExitStateIfNeeded(): void {
-    if (!state.pendingCtrlCExit && !state.preserveStatusAboveModal && !state.ctrlCExitTimeout) {
-      return
-    }
-    clearCtrlCExitState()
-    draw()
-  }
-
-  function armCtrlCExit(): void {
-    clearCtrlCExitState()
-    state.pendingCtrlCExit = true
-    state.preserveStatusAboveModal = true
-    setTimedStatus("Press Ctrl+C again to quit, or Esc to stay", "warning", 2000)
-    state.ctrlCExitTimeout = setTimeout(() => {
-      state.ctrlCExitTimeout = null
-      state.pendingCtrlCExit = false
-      state.preserveStatusAboveModal = false
-      draw()
-    }, 2000)
-  }
-
-  function setStatusNow(message: string, tone: AppState["status"]["tone"]): void {
-    state.statusVersion += 1
-    setStatus(state, message, tone)
-  }
-
-  function setTimedStatus(message: string, tone: AppState["status"]["tone"], durationMs = 2000): void {
-    clearStatusTimeout()
-    debugStatus("set-timed-status", { message, tone, durationMs, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-    setStatusNow(message, tone)
-    drawStatus()
-    const version = state.statusVersion
-    state.statusTimeout = setTimeout(() => {
-      if (state.statusVersion !== version) {
-        debugStatus("timeout-skipped", { message, version, currentVersion: state.statusVersion })
-        return
-      }
-      state.statusTimeout = null
-      const fallback = bufferStatusMessage()
-      debugStatus("timeout-fired", { previousMessage: message, fallback, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-      setStatusNow(defaultStatusMessage(), fallback ? "success" : "info")
-      drawStatus()
-    }, durationMs)
-  }
-
-  async function copyWithStatus(payload: string, successMessage: string): Promise<void> {
-    clearStatusTimeout()
-    debugStatus("copy-start", { successMessage, payloadPreview: payload.slice(0, 120), bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-    setStatusNow(successMessage, "success")
-    draw()
+  async function copyWithStatus(payload: string, _successMessage: string): Promise<void> {
     const result = await copyToClipboard(payload)
-    debugStatus("copy-finished", { successMessage, result, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-    if (result.ok) {
-      clearStatusTimeout()
-      const version = state.statusVersion
-      state.statusTimeout = setTimeout(() => {
-        if (state.statusVersion !== version) {
-          debugStatus("copy-timeout-skipped", { successMessage, version, currentVersion: state.statusVersion })
-          return
-        }
-        state.statusTimeout = null
-        const fallback = bufferStatusMessage()
-        debugStatus("copy-timeout-fired", { successMessage, fallback, bufferedConcepts: state.bufferedConcepts, currentPath: currentPath(state) })
-        setStatusNow(defaultStatusMessage(), fallback ? "success" : "info")
-        draw()
-      }, 2000)
-    } else {
-      setTimedStatus(result.message, "error")
+    if (!result.ok) {
+      state.confirmModal = {
+        kind: "remove-draft",
+        title: "Clipboard Error",
+        message: [result.message],
+        confirmLabel: "dismisses this message",
+        path: currentPath(state),
+      }
+      draw()
     }
   }
 
-  handleResize(state, process.stdout.columns || 120)
+  handleResize(state, initialRenderer.terminalWidth || process.stdout.columns || 120)
+  state.promptPaneTargetRatio = desiredPromptPaneRatio()
+  state.promptPaneRatio = state.promptPaneTargetRatio
+  refreshPromptTokenBreakdown(state, draw)
   draw()
+  state.startupDrawComplete = true
 }
 
 main().catch((error) => {

@@ -1,15 +1,16 @@
 # setsumei
 
-`setsumei` is a tool for browsing hierarchical concept graphs.
+`setsumei` is a concept-aware interface for working with hierarchical concept graphs while composing prompts for coding agents.
 
-The current application is an OpenTUI browser that reads a JSON concept graph, lets you navigate by stable concept path, and copies LLM-ready concept context plus field-interpretation guidance to your clipboard.
+The current application is an OpenTUI workspace for concept-aware prompt composition. It reads a JSON concept graph, lets you navigate by stable concept path, edit concept summaries, mention concepts directly in a prompt with `@root...` aliases, and currently exports compact LLM-ready context plus interpretation guidance through the clipboard for use with external coding agents.
 
 ## Current goals
 
 - browse concepts by hierarchy rather than raw files
 - give each concept a stable derived path identifier
-- make it easy to refer to specific parts of a program in LLM prompts
+- make it easy to refer to specific parts of a program directly in coding-agent prompts
 - support code, UI, workflows, data models, and other conceptual structures
+- evolve toward a concept-aware coding-agent interface without losing the concept-graph-first workflow
 
 ## Development environment
 
@@ -35,7 +36,7 @@ The flake provides:
 - `bun`
 - `zig`
 
-Clipboard export uses your existing `wl-copy` installation.
+Current clipboard export uses your existing `wl-copy` installation.
 
 ## Run
 
@@ -70,9 +71,9 @@ Example options file:
 
 ## Useful scripts
 
-- `bun run example` - launch the bundled example browser
+- `bun run example` - launch the bundled example workspace
 - `bun run start` - alias for `example`
-- `bun run browse -- --concepts-path <file> [--options-path <file>]` - browse a specific graph
+- `bun run browse -- --concepts-path <file> [--options-path <file>]` - open the concept-aware prompt workspace for a specific graph
 - `bun run typecheck` - run TypeScript checks
 - `bun run check` - run the project validation command set
 
@@ -81,8 +82,8 @@ Example options file:
 - `src/index.ts` boots the OpenTUI app and wires keyboard input to state transitions
 - `src/model.ts` loads and normalizes concept graphs
 - `src/state.ts` manages navigation, status, layout mode, and scroll state
-- `src/view.ts` renders the interface and pane layouts
-- `src/clipboard.ts` builds export payloads, including selected concepts, concept-field guidance for LLMs, and `wl-copy` integration
+- `src/view.ts` renders the prompt-first interface, concept summary surfaces, and inspector overlays
+- `src/clipboard.ts` builds the current clipboard export payload from prompt-referenced concept aliases, adds concept-field guidance for LLMs, and integrates with `wl-copy`
 
 ## Prompt workflows
 
@@ -98,29 +99,27 @@ Example options file:
 
 ## Main controls
 
-- `j` / `k` or arrows: move
-- `page up` / `page down`: jump through the list
-- `ctrl+page up` / `ctrl+page down`: scroll the context pane
+- `j` / `k` or arrows: move through concepts
+- `page up` / `page down`: jump through the concept list
+- `ctrl+page up` / `ctrl+page down`: scroll inspector content
 - `g` / `home`: jump to top
 - `G` / `end`: jump to bottom
 - `l` / right: drill down
 - `h` / left: go back
-- `space`: select the highlighted concept, or confirm removal for draft concepts
-- `enter`: open the buffer and notes modal
-- `y`: copy context for the current or buffered concepts
+- `tab`: move focus between concepts and prompt
+- `i`: edit the prompt
+- `enter`: edit the highlighted concept summary or, when prompt-focused, edit the prompt
+- `@` while editing the prompt: fuzzy-search full concept paths and insert a stable alias such as `@root.views.layout.sidebar`
+- `ctrl+n` / `ctrl+p`: move through alias suggestions while editing the prompt
+- `s`: open snippet inspector for the highlighted concept
+- `t`: open subtree inspector for the highlighted concept
+- `m`: open metadata inspector for the highlighted concept
+- `y`: copy context for the concepts explicitly referenced in the prompt, or the highlighted concept when no alias is referenced
 - `p`: copy path only
-- `c`: clear buffer
 - `?`: show key help in the status bar
 - `q`: quit
 
-Inside the buffer modal:
-
-- add prompt text or per-concept notes that will be copied alongside the selected concepts
-- use the copied preamble to tell the LLM how to interpret concept fields and optional anchors
-- `enter`: edit the focused prompt or note
-- `esc`: close the modal or editor
-
-Every copied prompt includes a short instruction preamble loaded from `prompts/clipboard_preamble.md`, a compact `# System Overview` section derived from the root concept, a clearly labeled `# Main Instructions` section when prompt text is present, and the selected concept context. The preamble explains that stable paths come from `children` keys, that the graph models conceptual structure first, that fields such as `summary`, `related_paths`, `why_it_exists`, `aliases`, and `loc` are optional and should be used opportunistically, that missing anchors are preferable to guessed ones, and that if the agent's work changes the represented system it should update the concept graph only as its very last step.
+Current clipboard exports include a short instruction preamble loaded from `prompts/clipboard_preamble.md`, a compact `# System Overview` section derived from the root concept, a clearly labeled `# Main Instructions` section when prompt text is present, and concept blocks for the concepts explicitly referenced in the prompt by alias. If no concept alias is referenced, the highlighted concept is used as the fallback context. The preamble explains that stable paths come from `children` keys, that the graph models conceptual structure first, that fields such as `summary`, `related_paths`, `why_it_exists`, `aliases`, and `loc` are optional and should be used opportunistically, that missing anchors are preferable to guessed ones, and that if the agent's work changes the represented system it should update the concept graph only as its very last step.
 
 ## Included example
 

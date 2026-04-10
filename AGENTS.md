@@ -6,7 +6,7 @@ These instructions apply repo-wide unless a deeper `AGENTS.md` overrides them.
 
 ## Project purpose
 
-`setsumei` is a tool for representing software and related systems as hierarchical concept graphs and browsing those graphs in a TUI.
+`setsumei` is a tool for representing software and related systems as hierarchical concept graphs and working with those graphs through a concept-aware interface for coding agents.
 
 The project is not limited to TUIs or to source code modules. It should work well for:
 
@@ -19,7 +19,7 @@ The project is not limited to TUIs or to source code modules. It should work wel
 - state machines
 - data models
 
-The core idea is that a human or LLM can refer to a concept by a stable derived path like `root.views.merge_view.pending_selection` instead of relying on vague natural-language descriptions.
+The core idea is that a human or LLM can refer to a concept by a stable derived path like `root.views.merge_view.pending_selection` instead of relying on vague natural-language descriptions, and can mention those paths directly while composing prompts for an agent.
 
 ## Product invariants
 
@@ -27,7 +27,7 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 - Stable concept paths come from object keys under `children`, so those keys are user-facing and should stay stable when possible.
 - Treat the JSON schema as user-facing and long-lived; avoid breaking changes unless clearly necessary.
 - Concepts may describe views, workflows, controls, regions, data models, behaviors, transitions, or any other useful abstraction.
-- Clipboard export should favor a low-friction agent-inference workflow, with the copied prompt explaining how to interpret available concept fields and optional anchors.
+- Current clipboard export should favor a low-friction agent-inference workflow, with copied context staying compact and centered on the concepts explicitly referenced in the user's prompt.
 
 ## Guidance for agents working here
 
