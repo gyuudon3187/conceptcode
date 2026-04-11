@@ -333,10 +333,11 @@ function refreshPromptTokenBreakdown(state: AppState, redraw: () => void): void 
 let promptScrollRef: ScrollBoxRenderable | null = null
 let promptScrollSyncTimeout: ReturnType<typeof setTimeout> | null = null
 let promptScrollAnimationTimeout: ReturnType<typeof setTimeout> | null = null
+let promptScrollAnimationToken = 0
 
 const PROMPT_SCROLL_ANIMATION_STEP_MS = 16
 const PROMPT_SCROLL_ANIMATION_EPSILON = 0.75
-const PROMPT_SCROLL_ANIMATION_DURATION_STEPS = 8
+const PROMPT_SCROLL_ANIMATION_DURATION_STEPS = 14
 
 const PROMPT_DEBUG_LOG_PATH = join(process.cwd(), "prompt-scroll-debug.log")
 
@@ -375,6 +376,7 @@ function debugPromptScroll(state: AppState, event: string, extra: Record<string,
 }
 
 function stopPromptScrollAnimation(): void {
+  promptScrollAnimationToken += 1
   if (promptScrollAnimationTimeout) {
     clearTimeout(promptScrollAnimationTimeout)
     promptScrollAnimationTimeout = null
@@ -384,27 +386,36 @@ function stopPromptScrollAnimation(): void {
 function animatePromptScrollTo(state: AppState, redraw: () => void, targetY: number, reason: string): void {
   if (!promptScrollRef) return
   stopPromptScrollAnimation()
+  const animationToken = promptScrollAnimationToken
   const startY = promptScrollRef.scrollTop
+  debugPromptScroll(state, "animatePromptScrollTo:start", { reason, targetY, startY, animationToken })
   if (Math.abs(targetY - startY) <= PROMPT_SCROLL_ANIMATION_EPSILON) {
     promptScrollRef.scrollTo({ x: 0, y: targetY })
+    debugPromptScroll(state, "animatePromptScrollTo:skip", { reason, targetY, startY, animationToken })
     redraw()
     return
   }
   let stepIndex = 0
   const step = () => {
+    if (animationToken !== promptScrollAnimationToken) {
+      debugPromptScroll(state, "animatePromptScrollTo:cancelled", { reason, targetY, startY, animationToken, currentAnimationToken: promptScrollAnimationToken })
+      promptScrollAnimationTimeout = null
+      return
+    }
     if (!promptScrollRef) {
       promptScrollAnimationTimeout = null
       return
     }
     stepIndex += 1
     const progress = Math.min(1, stepIndex / PROMPT_SCROLL_ANIMATION_DURATION_STEPS)
-    const eased = 1 - ((1 - progress) * (1 - progress) * (1 - progress))
+    const eased = 0.5 - (Math.cos(Math.PI * progress) / 2)
     const nextY = startY + ((targetY - startY) * eased)
     promptScrollRef.scrollTo({ x: 0, y: nextY })
     debugPromptScroll(state, "animatePromptScrollTo:step", { reason, targetY, startY, nextY, progress })
     redraw()
     if (progress >= 1 || Math.abs(targetY - nextY) <= PROMPT_SCROLL_ANIMATION_EPSILON) {
       promptScrollRef.scrollTo({ x: 0, y: targetY })
+      debugPromptScroll(state, "animatePromptScrollTo:complete", { reason, targetY, startY, animationToken, finalScrollTop: promptScrollRef.scrollTop })
       promptScrollAnimationTimeout = null
       redraw()
       return
@@ -424,8 +435,28 @@ function schedulePromptScrollSync(state: AppState, redraw: () => void, reason: s
     if (!promptScrollRef || !editor) return
     const shouldStickToBottom = state.promptScrollTop === Number.MAX_SAFE_INTEGER
     debugPromptScroll(state, "schedulePromptScrollSync:before", { reason, shouldStickToBottom })
+    const shouldAnimate = shouldStickToBottom && (reason === "submitPromptMessage" || reason === "promptCursorChange")
+    debugPromptScroll(state, "schedulePromptScrollSync:decision", { reason, shouldStickToBottom, shouldAnimate, currentScrollTop: promptScrollRef.scrollTop })
     if (shouldStickToBottom) {
-      animatePromptScrollTo(state, redraw, Number.MAX_SAFE_INTEGER, reason)
+      if (shouldAnimate) {
+        const currentBottom = promptScrollRef.scrollTop
+        promptScrollRef.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
+        const targetBottom = promptScrollRef.scrollTop
+        promptScrollRef.scrollTo({ x: 0, y: currentBottom })
+        debugPromptScroll(state, "schedulePromptScrollSync:measuredBottom", { reason, currentBottom, targetBottom })
+        animatePromptScrollTo(state, redraw, targetBottom, reason)
+      } else {
+        stopPromptScrollAnimation()
+        promptScrollRef.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
+        debugPromptScroll(state, "schedulePromptScrollSync:snapBottom", { reason, resultingScrollTop: promptScrollRef.scrollTop })
+        redraw()
+      }
+    } else if (reason === "promptCursorChange" || reason === "promptContentChange") {
+      stopPromptScrollAnimation()
+      promptScrollRef.scrollTo({ x: 0, y: state.promptScrollTop })
+      state.promptScrollTop = Math.max(0, promptScrollRef.scrollTop)
+      debugPromptScroll(state, "schedulePromptScrollSync:snapState", { reason, resultingScrollTop: promptScrollRef.scrollTop })
+      redraw()
     } else {
       animatePromptScrollTo(state, redraw, state.promptScrollTop, reason)
       state.promptScrollTop = Math.max(0, promptScrollRef.scrollTop)
@@ -442,9 +473,7 @@ function refreshPromptScroll(state: AppState): void {
   debugPromptScroll(state, "refreshPromptScroll:before", { shouldStickToBottom, historyCount: Math.max(0, state.promptMessages.length - 1) })
   replaceChildren(promptScrollRef, renderPromptThreadContent(state, editor))
   state.promptViewportHeight = Math.max(8, promptScrollRef.viewport.height || (state.layoutMode === "wide" ? 16 : 10))
-  if (shouldStickToBottom) {
-    promptScrollRef.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
-  } else {
+  if (!shouldStickToBottom) {
     promptScrollRef.scrollTo({ x: 0, y: state.promptScrollTop })
     state.promptScrollTop = Math.max(0, promptScrollRef.scrollTop)
   }
