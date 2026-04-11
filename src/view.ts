@@ -136,7 +136,7 @@ export function renderPromptThreadContent(state: AppState, editor: NonNullable<A
   const previewWidth = promptPreviewWidth(state)
   const history = state.promptMessages.slice(0, -1)
   return Box(
-    { width: "100%", minHeight: "100%", flexDirection: "column", gap: 1 },
+    { width: "100%", flexDirection: "column", gap: 1 },
     ...history.map((message, index) => Box(
       {
         width: "100%",
@@ -151,7 +151,6 @@ export function renderPromptThreadContent(state: AppState, editor: NonNullable<A
       Text({ content: promptMessageLabel(message, index), fg: COLORS.muted, attributes: TextAttributes.BOLD }),
       ...(promptPreviewLines(message.text, previewWidth, 24).map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line))))),
     )),
-    Box({ width: "100%", minHeight: editor.visibleLineCount + 2, maxHeight: editor.visibleLineCount + 2, backgroundColor: COLORS.panelSoft, flexDirection: "column" }, editor.renderable),
   )
 }
 
@@ -160,7 +159,11 @@ function renderPromptPane(state: AppState, promptScroll: ScrollBoxRenderable | n
   const promptFocused = editor?.renderable.focused ?? false
   const modeIsPlan = state.uiMode === "plan"
   const content = editor
-    ? Box({ width: "100%", height: "100%" }, promptScroll ?? Box({ width: "100%" }))
+    ? Box(
+        { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
+        Box({ width: "100%", flexGrow: 1, minHeight: 0 }, promptScroll ?? Box({ width: "100%" })),
+        Box({ width: "100%", minHeight: editor.visibleLineCount + 2, maxHeight: editor.visibleLineCount + 2, backgroundColor: COLORS.panelSoft, flexDirection: "column" }, editor.renderable),
+      )
     : Box(
         { width: "100%", minHeight: 8, paddingX: 1, paddingY: 1, backgroundColor: COLORS.panelSoft, flexDirection: "column", gap: 0 },
         ...(state.promptText.trim()
