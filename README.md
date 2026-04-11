@@ -4,6 +4,8 @@
 
 The current application is an OpenTUI workspace for concept-aware prompt composition. It reads a JSON concept graph, lets you navigate by stable concept path, edit concept summaries, mention concepts directly in a prompt with `@root...` aliases, and currently exports compact LLM-ready context plus interpretation guidance through the clipboard for use with external coding agents.
 
+It now also includes a minimal provider-shaped streaming chat path: prompt submission goes through a local SSE dummy server, and assistant text is rendered incrementally in the TUI so the future ChatGPT integration can reuse the same event flow with minimal changes.
+
 ## Current goals
 
 - browse concepts by hierarchy rather than raw files
@@ -80,6 +82,7 @@ Example options file:
 ## Architecture
 
 - `src/index.ts` boots the OpenTUI app and wires keyboard input to state transitions
+- `src/chat.ts` defines the minimal streaming transport boundary and the disposable local dummy SSE server
 - `src/model.ts` loads and normalizes concept graphs
 - `src/state.ts` manages navigation, status, layout mode, and scroll state
 - `src/view.ts` renders the prompt-first interface, concept summary surfaces, and inspector overlays
@@ -109,6 +112,7 @@ Example options file:
 - `tab`: move focus between concepts and prompt
 - `i`: edit the prompt
 - `enter`: edit the highlighted concept summary or, when prompt-focused, edit the prompt
+- `enter` while prompt editing: submit the prompt and watch the assistant response stream in real time
 - `@` while editing the prompt: fuzzy-search full concept paths and insert a stable alias such as `@root.views.layout.sidebar`
 - `ctrl+n` / `ctrl+p`: move through alias suggestions while editing the prompt
 - `s`: open snippet inspector for the highlighted concept

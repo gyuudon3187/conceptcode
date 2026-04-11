@@ -78,8 +78,26 @@ export type EditorModalState = {
 }
 
 export type PromptMessage = {
+  id?: string
   text: string
   role: "user" | "assistant"
+  status?: "streaming" | "complete" | "error"
+  provider?: string
+}
+
+export type ChatStreamEvent =
+  | { type: "response.created"; responseId: string; messageId: string; role: "assistant"; provider: string }
+  | { type: "response.output_text.delta"; responseId: string; messageId: string; delta: string }
+  | { type: "response.completed"; responseId: string; messageId: string }
+  | { type: "response.error"; responseId: string; messageId: string; error: string }
+
+export type ChatTurnRequest = {
+  messages: Array<{ role: "user" | "assistant"; text: string }>
+  mode: UiMode
+}
+
+export type ChatTransport = {
+  streamTurn: (request: ChatTurnRequest) => AsyncIterable<ChatStreamEvent>
 }
 
 export type KindDefinition = {
@@ -143,4 +161,7 @@ export type AppState = {
   ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
   promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
   promptTokenBreakdown: EffectivePromptTokenBreakdown
+  chatTransport: ChatTransport
+  activeResponseId: string | null
+  activeAssistantMessageId: string | null
 }

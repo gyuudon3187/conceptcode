@@ -5,6 +5,7 @@ import { spawn } from "node:child_process"
 
 import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, type Highlight, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
+import { createSseChatTransport, startDummyChatServer } from "./chat"
 import { buildClipboardPayload, clipboardSelection, copyToClipboard, effectivePromptTokenBreakdown, EMPTY_PROMPT_TOKEN_BREAKDOWN } from "./clipboard"
 import { loadConceptGraph } from "./model"
 import { applySelectionChange, clampCursor, currentNode, currentPath, handleResize, moveCursor, pageSize, scrollMain, visiblePaths } from "./state"
@@ -441,6 +442,60 @@ function syncPromptDraft(state: AppState, editor: EditorModalState): void {
   state.promptText = editor.renderable.plainText
 }
 
+function replacePromptMessage(state: AppState, messageId: string, updater: (message: PromptMessage) => PromptMessage): void {
+  const index = state.promptMessages.findIndex((message) => message.id === messageId)
+  if (index < 0) return
+  state.promptMessages[index] = updater(state.promptMessages[index])
+}
+
+function rebindActiveAssistantMessageId(state: AppState, nextMessageId: string): void {
+  const activeAssistantMessageId = state.activeAssistantMessageId
+  if (!activeAssistantMessageId || activeAssistantMessageId === nextMessageId) return
+  const index = state.promptMessages.findIndex((message) => message.id === activeAssistantMessageId && message.role === "assistant")
+  if (index < 0) return
+  state.promptMessages[index] = { ...state.promptMessages[index], id: nextMessageId }
+}
+
+async function streamAssistantResponse(state: AppState, redraw: () => void): Promise<void> {
+  const requestMessages = state.promptMessages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .filter((message) => message.text.trim().length > 0)
+    .map((message) => ({ role: message.role, text: message.text }))
+  try {
+    for await (const event of state.chatTransport.streamTurn({ messages: requestMessages, mode: state.uiMode })) {
+      if (event.type === "response.created") {
+        rebindActiveAssistantMessageId(state, event.messageId)
+        state.activeResponseId = event.responseId
+        state.activeAssistantMessageId = event.messageId
+        replacePromptMessage(state, event.messageId, (message) => ({ ...message, provider: event.provider, status: "streaming" }))
+      } else if (event.type === "response.output_text.delta") {
+        replacePromptMessage(state, event.messageId, (message) => ({ ...message, text: `${message.text}${event.delta}`, status: "streaming" }))
+      } else if (event.type === "response.completed") {
+        replacePromptMessage(state, event.messageId, (message) => ({ ...message, status: "complete" }))
+        state.activeResponseId = null
+        state.activeAssistantMessageId = null
+      } else if (event.type === "response.error") {
+        replacePromptMessage(state, event.messageId, (message) => ({ ...message, text: message.text || `Error: ${event.error}`, status: "error" }))
+        state.activeResponseId = null
+        state.activeAssistantMessageId = null
+      }
+      refreshPromptScroll(state)
+      schedulePromptScrollSync(state, redraw, "submitPromptMessage")
+      redraw()
+    }
+  } catch (error) {
+    const assistantMessageId = state.activeAssistantMessageId
+    if (assistantMessageId) {
+      const message = error instanceof Error ? error.message : String(error)
+      replacePromptMessage(state, assistantMessageId, (current) => ({ ...current, text: current.text || `Error: ${message}`, status: "error" }))
+    }
+    state.activeResponseId = null
+    state.activeAssistantMessageId = null
+    refreshPromptScroll(state)
+    redraw()
+  }
+}
+
 function submitPromptMessage(state: AppState, renderer: CliRenderer, redraw: () => void): void {
   const editor = state.editorModal
   if (!editor || editor.target.kind !== "prompt") return
@@ -448,15 +503,24 @@ function submitPromptMessage(state: AppState, renderer: CliRenderer, redraw: () 
   const currentDraftIndex = editor.promptDraftIndex ?? Math.max(0, state.promptMessages.length - 1)
   const currentText = state.promptMessages[currentDraftIndex]?.text ?? ""
   if (!currentText.trim()) return
-  state.promptMessages[currentDraftIndex] = { text: currentText, role: "user" }
-  const nextMessages: PromptMessage[] = [...state.promptMessages, { text: "Dummy LLM response placeholder.", role: "assistant" }, { text: "", role: "user" }]
+  const userMessageId = `msg_${crypto.randomUUID()}`
+  const assistantMessageId = `msg_${crypto.randomUUID()}`
+  const draftMessageId = `msg_${crypto.randomUUID()}`
+  state.promptMessages[currentDraftIndex] = { id: userMessageId, text: currentText, role: "user", status: "complete" }
+  const nextMessages: PromptMessage[] = [
+    ...state.promptMessages,
+    { id: assistantMessageId, text: "", role: "assistant", status: "streaming", provider: "dummy-local" },
+    { id: draftMessageId, text: "", role: "user", status: "complete" },
+  ]
   state.promptMessages = nextMessages
+  state.activeAssistantMessageId = assistantMessageId
   state.promptText = ""
   openEditor(state, renderer, redraw, { kind: "prompt" }, "", nextMessages.length - 1)
   state.promptScrollTop = Number.MAX_SAFE_INTEGER
   refreshPromptScroll(state)
   schedulePromptScrollSync(state, redraw, "submitPromptMessage")
   refreshPromptTokenBreakdown(state, redraw)
+  void streamAssistantResponse(state, redraw)
 }
 
 function handlePromptAliasBoundaryKey(state: AppState, key: KeyEvent, redraw: () => void): boolean {
@@ -672,6 +736,7 @@ async function main(): Promise<void> {
   const PROMPT_ANIMATION_STEP_MS = 16
   const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
   const { graphPayload, nodes, kindDefinitions } = loadConceptGraph(conceptsPath, optionsPath)
+  const dummyChatServer = await startDummyChatServer()
   const trackedPaths = (await readFile(join(process.cwd(), ".gitignore"), "utf8").catch(() => ""), await Bun.$`git ls-files -co --exclude-standard`.text())
   const projectFiles = trackedPaths.replace(/\r\n/g, "\n").split("\n").map((line) => line.trim()).filter(Boolean)
   const projectDirectories = [...new Set(projectFiles.flatMap((file) => {
@@ -715,7 +780,14 @@ async function main(): Promise<void> {
     ctrlCExitTimeout: null,
     promptPaneAnimationTimeout: null,
     promptTokenBreakdown: EMPTY_PROMPT_TOKEN_BREAKDOWN,
+    chatTransport: createSseChatTransport(dummyChatServer.baseUrl),
+    activeResponseId: null,
+    activeAssistantMessageId: null,
   }
+
+  process.on("exit", () => {
+    void dummyChatServer.stop()
+  })
 
   let renderer: CliRenderer
   let listScroll!: ScrollBoxRenderable

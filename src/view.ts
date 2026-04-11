@@ -129,7 +129,11 @@ function renderConceptSummaryFooter(state: AppState): Renderable | VNode<any, an
 }
 
 function promptMessageLabel(message: AppState["promptMessages"][number], index: number): string {
-  return message.role === "assistant" ? `Assistant ${Math.floor(index / 2) + 1}` : `Prompt ${Math.floor(index / 2) + 1}`
+  const base = message.role === "assistant" ? `Assistant ${Math.floor(index / 2) + 1}` : `Prompt ${Math.floor(index / 2) + 1}`
+  if (message.role !== "assistant") return base
+  if (message.status === "streaming") return `${base} · streaming`
+  if (message.status === "error") return `${base} · error`
+  return base
 }
 
 export function renderPromptThreadContent(state: AppState, editor: NonNullable<AppState["editorModal"]>): Renderable | VNode<any, any[]> {
