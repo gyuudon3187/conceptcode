@@ -16,11 +16,20 @@ These instructions apply when working in this directory and its subdirectories.
 ## Architecture reminders
 
 - `src/index.ts` boots the OpenTUI app and wires keyboard input to state transitions.
+- `src/chat.ts` is the provider-facing streaming transport boundary and the current home of the disposable local dummy SSE chat server.
 - `src/model.ts` loads and normalizes concept graphs.
 - `src/state.ts` manages navigation, status, layout mode, and scroll state.
 - `src/view.ts` renders the prompt-first interface, concept summary surfaces, and inspector overlays.
 - `src/clipboard.ts` builds the current clipboard export payload from prompt-referenced concept aliases and integrates with `wl-copy`.
 - `src/types.ts` defines shared application and schema types.
+
+## Streaming integration guidance
+
+- Keep provider-specific wire protocols out of the TUI rendering path when possible; normalize them at the chat transport boundary first.
+- Preserve the prompt thread's incremental rendering behavior when changing chat integration so assistant output can appear token-by-token without blocking the UI.
+- Prefer minimal provider coupling in `src/index.ts` and `src/view.ts`; transport swapping should mostly happen in `src/chat.ts` and shared event types.
+- Keep the dummy chat path disposable and lightweight; it exists to exercise the streaming UI path, not to become a second full provider implementation.
+- `src/chat.test.ts` is the smoke test for the streaming transport flow. Extend it when changing stream event sequencing or dummy output behavior.
 
 ## Development environment
 
