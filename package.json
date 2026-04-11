@@ -5,8 +5,9 @@
   "scripts": {
     "example": "bun run src/index.ts --concepts-path examples/book_ops_tui_concepts.json",
     "browse": "bun run src/index.ts",
+    "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
-    "check": "bun run typecheck",
+    "check": "bun run typecheck && bun run test",
     "start": "bun run example"
   },
   "dependencies": {
