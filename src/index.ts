@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawn } from "node:child_process"
@@ -331,19 +331,124 @@ function refreshPromptTokenBreakdown(state: AppState, redraw: () => void): void 
 }
 
 let promptScrollRef: ScrollBoxRenderable | null = null
+let promptScrollSyncTimeout: ReturnType<typeof setTimeout> | null = null
+let promptScrollAnimationTimeout: ReturnType<typeof setTimeout> | null = null
+
+const PROMPT_SCROLL_ANIMATION_STEP_MS = 16
+const PROMPT_SCROLL_ANIMATION_EPSILON = 0.75
+const PROMPT_SCROLL_ANIMATION_DURATION_STEPS = 8
+
+const PROMPT_DEBUG_LOG_PATH = join(process.cwd(), "prompt-scroll-debug.log")
+
+function safeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function safeStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, candidate) => {
+    if (typeof candidate === "number" && !Number.isFinite(candidate)) {
+      return String(candidate)
+    }
+    return candidate
+  })
+}
+
+function debugPromptScroll(state: AppState, event: string, extra: Record<string, unknown> = {}): void {
+  const editor = state.editorModal?.target.kind === "prompt" ? state.editorModal : null
+  const payload = {
+    timestamp: new Date().toISOString(),
+    event,
+    promptMessageCount: state.promptMessages.length,
+    promptScrollTop: state.promptScrollTop,
+    promptViewportHeight: state.promptViewportHeight,
+    promptScrollViewportHeight: safeNumber(promptScrollRef?.viewport?.height),
+    promptScrollViewportWidth: safeNumber(promptScrollRef?.viewport?.width),
+    promptScrollInternalTop: safeNumber(promptScrollRef?.scrollTop),
+    editorVisibleLineCount: editor?.visibleLineCount ?? null,
+    editorMinHeight: editor ? safeNumber(editor.renderable.minHeight) : null,
+    editorMaxHeight: editor ? safeNumber(editor.renderable.maxHeight) : null,
+    editorCursorOffset: editor ? safeNumber((editor.renderable as TextareaRenderable & { cursorOffset?: number }).cursorOffset) : null,
+    editorTextLength: editor?.renderable.plainText.length ?? null,
+    ...extra,
+  }
+  void appendFile(PROMPT_DEBUG_LOG_PATH, `${safeStringify(payload)}\n`, "utf8")
+}
+
+function stopPromptScrollAnimation(): void {
+  if (promptScrollAnimationTimeout) {
+    clearTimeout(promptScrollAnimationTimeout)
+    promptScrollAnimationTimeout = null
+  }
+}
+
+function animatePromptScrollTo(state: AppState, redraw: () => void, targetY: number, reason: string): void {
+  if (!promptScrollRef) return
+  stopPromptScrollAnimation()
+  const startY = promptScrollRef.scrollTop
+  if (Math.abs(targetY - startY) <= PROMPT_SCROLL_ANIMATION_EPSILON) {
+    promptScrollRef.scrollTo({ x: 0, y: targetY })
+    redraw()
+    return
+  }
+  let stepIndex = 0
+  const step = () => {
+    if (!promptScrollRef) {
+      promptScrollAnimationTimeout = null
+      return
+    }
+    stepIndex += 1
+    const progress = Math.min(1, stepIndex / PROMPT_SCROLL_ANIMATION_DURATION_STEPS)
+    const eased = 1 - ((1 - progress) * (1 - progress) * (1 - progress))
+    const nextY = startY + ((targetY - startY) * eased)
+    promptScrollRef.scrollTo({ x: 0, y: nextY })
+    debugPromptScroll(state, "animatePromptScrollTo:step", { reason, targetY, startY, nextY, progress })
+    redraw()
+    if (progress >= 1 || Math.abs(targetY - nextY) <= PROMPT_SCROLL_ANIMATION_EPSILON) {
+      promptScrollRef.scrollTo({ x: 0, y: targetY })
+      promptScrollAnimationTimeout = null
+      redraw()
+      return
+    }
+    promptScrollAnimationTimeout = setTimeout(step, PROMPT_SCROLL_ANIMATION_STEP_MS)
+  }
+  promptScrollAnimationTimeout = setTimeout(step, PROMPT_SCROLL_ANIMATION_STEP_MS)
+}
+
+function schedulePromptScrollSync(state: AppState, redraw: () => void, reason: string): void {
+  if (promptScrollSyncTimeout) {
+    clearTimeout(promptScrollSyncTimeout)
+  }
+  promptScrollSyncTimeout = setTimeout(() => {
+    promptScrollSyncTimeout = null
+    const editor = state.editorModal?.target.kind === "prompt" ? state.editorModal : null
+    if (!promptScrollRef || !editor) return
+    const shouldStickToBottom = state.promptScrollTop === Number.MAX_SAFE_INTEGER
+    debugPromptScroll(state, "schedulePromptScrollSync:before", { reason, shouldStickToBottom })
+    if (shouldStickToBottom) {
+      animatePromptScrollTo(state, redraw, Number.MAX_SAFE_INTEGER, reason)
+    } else {
+      animatePromptScrollTo(state, redraw, state.promptScrollTop, reason)
+      state.promptScrollTop = Math.max(0, promptScrollRef.scrollTop)
+    }
+    debugPromptScroll(state, "schedulePromptScrollSync:after", { reason, shouldStickToBottom })
+    redraw()
+  }, 0)
+}
 
 function refreshPromptScroll(state: AppState): void {
   const editor = state.editorModal?.target.kind === "prompt" ? state.editorModal : null
   if (!promptScrollRef || !editor) return
   const shouldStickToBottom = state.promptScrollTop === Number.MAX_SAFE_INTEGER
+  debugPromptScroll(state, "refreshPromptScroll:before", { shouldStickToBottom, historyCount: Math.max(0, state.promptMessages.length - 1) })
   replaceChildren(promptScrollRef, renderPromptThreadContent(state, editor))
   state.promptViewportHeight = Math.max(8, promptScrollRef.viewport.height || (state.layoutMode === "wide" ? 16 : 10))
   if (shouldStickToBottom) {
     promptScrollRef.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
   } else {
     promptScrollRef.scrollTo({ x: 0, y: state.promptScrollTop })
+    state.promptScrollTop = Math.max(0, promptScrollRef.scrollTop)
   }
-  state.promptScrollTop = shouldStickToBottom ? Number.MAX_SAFE_INTEGER : Math.max(0, promptScrollRef.scrollTop)
+  debugPromptScroll(state, "refreshPromptScroll:after", { shouldStickToBottom, historyCount: Math.max(0, state.promptMessages.length - 1) })
 }
 
 function syncPromptDraft(state: AppState, editor: EditorModalState): void {
@@ -363,12 +468,16 @@ function submitPromptMessage(state: AppState, renderer: CliRenderer, redraw: () 
   const currentDraftIndex = editor.promptDraftIndex ?? Math.max(0, state.promptMessages.length - 1)
   const currentText = state.promptMessages[currentDraftIndex]?.text ?? ""
   if (!currentText.trim()) return
+  debugPromptScroll(state, "submitPromptMessage:before", { currentDraftIndex, currentTextLength: currentText.length })
   state.promptMessages[currentDraftIndex] = { text: currentText, role: "user" }
   const nextMessages: PromptMessage[] = [...state.promptMessages, { text: "Dummy LLM response placeholder.", role: "assistant" }, { text: "", role: "user" }]
   state.promptMessages = nextMessages
   state.promptText = ""
   openEditor(state, renderer, redraw, { kind: "prompt" }, "", nextMessages.length - 1)
   state.promptScrollTop = Number.MAX_SAFE_INTEGER
+  refreshPromptScroll(state)
+  schedulePromptScrollSync(state, redraw, "submitPromptMessage")
+  debugPromptScroll(state, "submitPromptMessage:after", { nextDraftIndex: nextMessages.length - 1 })
   refreshPromptTokenBreakdown(state, redraw)
 }
 
@@ -460,6 +569,7 @@ function togglePromptMode(state: AppState): void {
         if (target.kind === "prompt") {
           refreshPromptTokenBreakdown(state, redraw)
           refreshPromptScroll(state)
+          schedulePromptScrollSync(state, redraw, "promptContentChange")
         }
       }
       if (target.kind === "prompt") {
@@ -480,6 +590,7 @@ function togglePromptMode(state: AppState): void {
       applyPromptAliasHighlights(renderable)
       refreshAliasSuggestion(state)
       refreshPromptScroll(state)
+      schedulePromptScrollSync(state, redraw, "promptCursorChange")
       redraw()
     }
     applyPromptAliasHighlights(renderable)
@@ -488,14 +599,20 @@ function togglePromptMode(state: AppState): void {
   state.editorModal = { target, renderable, aliasSuggestion: null, visibleLineCount, promptDraftIndex }
   refreshAliasSuggestion(state)
   if (target.kind === "prompt") {
+    debugPromptScroll(state, "openEditor:prompt:beforeRefresh", { promptDraftIndex, initialTextLength: initialText.length })
     state.conceptNavigationFocused = false
     state.promptPaneMode = "expanded"
     refreshPromptPaneTarget()
     refreshPromptScroll(state)
+    schedulePromptScrollSync(state, redraw, "openEditor")
+    debugPromptScroll(state, "openEditor:prompt:afterRefresh", { promptDraftIndex, initialTextLength: initialText.length })
   }
   setTimeout(() => {
     if (state.editorModal?.renderable === renderable) {
       renderable.focus()
+      if (target.kind === "prompt") {
+        debugPromptScroll(state, "openEditor:prompt:postTick", { promptDraftIndex, initialTextLength: initialText.length })
+      }
       redraw()
     }
   }, 0)

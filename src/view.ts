@@ -136,7 +136,7 @@ export function renderPromptThreadContent(state: AppState, editor: NonNullable<A
   const previewWidth = promptPreviewWidth(state)
   const history = state.promptMessages.slice(0, -1)
   return Box(
-    { width: "100%", minHeight: "100%", flexDirection: "column", justifyContent: "flex-end", gap: 1 },
+    { width: "100%", minHeight: "100%", flexDirection: "column", gap: 1 },
     ...history.map((message, index) => Box(
       {
         width: "100%",
