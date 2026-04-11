@@ -6,7 +6,7 @@ These instructions apply repo-wide unless a deeper `AGENTS.md` overrides them.
 
 ## Project purpose
 
-`setsumei` is a tool for representing software and related systems as hierarchical concept graphs and working with those graphs through a concept-aware interface for coding agents.
+`ConceptCode` is a tool for representing software and related systems as hierarchical concept graphs and working with those graphs through a concept-aware interface for coding agents.
 
 The project is not limited to TUIs or to source code modules. It should work well for:
 

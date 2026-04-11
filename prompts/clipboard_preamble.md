@@ -1,4 +1,4 @@
-# setsumei exported concept context
+# ConceptCode exported concept context
 
 Use this concept graph context to identify the referenced part of the system. Use whichever fields are present and relevant to the task.
 

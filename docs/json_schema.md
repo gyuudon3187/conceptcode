@@ -1,6 +1,6 @@
 # Concept Graph Schema
 
-`setsumei` reads a hierarchical JSON document with this general shape:
+`ConceptCode` reads a hierarchical JSON document with this general shape:
 
 ```json
 {

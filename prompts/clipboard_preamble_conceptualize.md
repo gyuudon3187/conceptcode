@@ -1,4 +1,4 @@
-# setsumei exported concept context for concept-graph editing
+# ConceptCode exported concept context for concept-graph editing
 
 Use this concept graph context to update the concept graph itself. Treat the concept graph as the primary artifact for this task.
 

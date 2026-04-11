@@ -1,6 +1,6 @@
 /generate-concept-graph <target>
 
-Goal: create a `setsumei` JSON concept graph for the given file, directory, or subsystem.
+Goal: create a `ConceptCode` JSON concept graph for the given file, directory, or subsystem.
 
 Instructions for the LLM:
 - Read the target code and identify the major concepts, views, workflows, state transitions, controls, data structures, and important relationships.

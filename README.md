@@ -1,6 +1,6 @@
-# setsumei
+# ConceptCode
 
-`setsumei` is a concept-aware interface for working with hierarchical concept graphs while composing prompts for coding agents.
+`ConceptCode` is a concept-aware interface for working with hierarchical concept graphs while composing prompts for coding agents.
 
 The current application is an OpenTUI workspace for concept-aware prompt composition. It reads a JSON concept graph, lets you navigate by stable concept path, edit concept summaries, mention concepts directly in a prompt with `@root...` aliases, and currently exports compact LLM-ready context plus interpretation guidance through the clipboard for use with external coding agents.
 

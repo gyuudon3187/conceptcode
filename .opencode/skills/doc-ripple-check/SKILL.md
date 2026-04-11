@@ -88,7 +88,7 @@ Use these topic cues while classifying:
 - `concept_path_semantics`: stable child keys, derived paths, path stability
 - `anchor_semantics`: `loc`, `loc.file`, confidence, anchoring rules
 - `prompt_workflow`: generate-versus-enrich split, pass ordering, preserve-structure rules
-- `product_framing`: what `setsumei` is for, supported system types, browsing goals
+- `product_framing`: what `ConceptCode` is for, supported system types, browsing goals
 - `architecture_dev`: setup, scripts, runtime architecture, source layout
 
 ## How to work

@@ -9,6 +9,8 @@ debug.log
 .env.*
 !.env.example
 
+.conceptcode/
+
 *.tsbuildinfo
 dist/
 coverage/

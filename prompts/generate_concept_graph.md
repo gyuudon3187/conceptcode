@@ -1,11 +1,11 @@
 # Generate Concept Graph
 
-Use this prompt when you want an LLM to create the main `setsumei` concept graph for a codebase or a specific file.
+Use this prompt when you want an LLM to create the main `ConceptCode` concept graph for a codebase or a specific file.
 
 ## Prompt template
 
 ```text
-Analyze the target code and produce a JSON concept graph for use with the `setsumei` concept-aware interface.
+Analyze the target code and produce a JSON concept graph for use with the `ConceptCode` concept-aware interface.
 
 Requirements:
 - Output valid JSON only.

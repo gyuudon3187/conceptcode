@@ -86,7 +86,7 @@ export function syncSessionMetadata(session: ChatSession): void {
 function sessionRootDir(jsonPath: string): string {
   const absoluteJsonPath = resolve(jsonPath)
   const digest = createHash("sha1").update(absoluteJsonPath).digest("hex").slice(0, 12)
-  return join(process.cwd(), ".setsumei", "sessions", digest)
+  return join(process.cwd(), ".conceptcode", "sessions", digest)
 }
 
 function sessionFilePath(jsonPath: string, sessionId: string): string {

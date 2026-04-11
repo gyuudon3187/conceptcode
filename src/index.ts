@@ -1581,7 +1581,7 @@ async function main(): Promise<void> {
   async function openExternalEditor(initialText: string): Promise<string> {
     const editor = process.env.EDITOR?.trim()
     if (!editor) throw new Error("EDITOR is not set")
-    const tempDir = await mkdtemp(join(tmpdir(), "setsumei-"))
+    const tempDir = await mkdtemp(join(tmpdir(), "conceptcode-"))
     const tempFile = join(tempDir, "buffer-note.txt")
     await writeFile(tempFile, initialText, "utf8")
     const [command, ...args] = editor.split(/\s+/)

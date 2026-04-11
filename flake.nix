@@ -1,5 +1,5 @@
 {
-  description = "setsumei OpenTUI development shell";
+  description = "ConceptCode OpenTUI development shell";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

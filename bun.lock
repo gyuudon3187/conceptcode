@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "setsumei-opentui",
+      "name": "conceptcode-opentui",
       "dependencies": {
         "@opentui/core": "^0.1.96",
         "js-tiktoken": "^1.0.21",

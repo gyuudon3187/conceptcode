@@ -6,7 +6,7 @@ These instructions apply when working in this directory and its subdirectories, 
 
 ## Prompt-execution priorities
 
-- Optimize for faithfully modeling the target system, not for proposing product changes to `setsumei`.
+- Optimize for faithfully modeling the target system, not for proposing product changes to `ConceptCode`.
 - Follow the explicit output contract in the prompt template before adding any extra interpretation.
 - Preserve stable child keys under `children` because they define user-facing derived paths.
 - Prefer a good concept graph over uncertain anchors.
