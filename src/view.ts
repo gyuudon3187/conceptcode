@@ -13,6 +13,8 @@ export const COLORS = {
   borderActive: "#d08770",
   accent: "#88c0d0",
   accentSoft: "#8fbcbb",
+  plan: "#7aa2f7",
+  build: "#d19a66",
   text: "#e5e9f0",
   muted: "#9aa7b0",
   success: "#a3be8c",
@@ -141,8 +143,8 @@ function renderConceptSummaryFooter(state: AppState): Renderable | VNode<any, an
 
 function promptModePresentation(mode: AppState["uiMode"]): { label: string; color: string; tone: string } {
   return mode === "plan"
-    ? { label: "PLAN", color: COLORS.accentSoft, tone: "Strategy mode" }
-    : { label: "BUILD", color: COLORS.warning, tone: "Execution mode" }
+    ? { label: "PLAN", color: COLORS.plan, tone: "Strategy mode" }
+    : { label: "BUILD", color: COLORS.build, tone: "Execution mode" }
 }
 
 function renderPromptMessageHeader(message: AppState["promptMessages"][number]): Renderable | VNode<any, any[]> {
@@ -151,7 +153,7 @@ function renderPromptMessageHeader(message: AppState["promptMessages"][number]):
     return Box(
       { width: "100%", flexDirection: "row", justifyContent: "flex-end", gap: 1 },
       ...(statusSuffix ? [Text({ content: statusSuffix, fg: message.status === "error" ? COLORS.error : COLORS.border })] : []),
-      Text({ content: "Assistant", fg: COLORS.accentSoft, attributes: TextAttributes.BOLD }),
+      Text({ content: "Assistant", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
     )
   }
 
@@ -172,9 +174,9 @@ export function renderPromptThreadContent(state: AppState, editor: NonNullable<A
         width: "100%",
         paddingX: 1,
         paddingY: 1,
-        backgroundColor: message.role === "assistant" ? "#162028" : message.mode === "build" ? "#201b16" : "#171d22",
+        backgroundColor: message.role === "assistant" ? "#162028" : message.mode === "build" ? "#221c17" : "#171a22",
         borderStyle: "rounded",
-        borderColor: message.role === "assistant" ? COLORS.accent : (message.mode === "build" ? COLORS.warning : COLORS.accentSoft),
+        borderColor: message.role === "assistant" ? COLORS.accent : (message.mode === "build" ? COLORS.build : COLORS.plan),
         flexDirection: "column",
         gap: 1,
       },
