@@ -348,7 +348,11 @@ function stopPromptScrollAnimation(): void {
   }
 }
 
-function animatePromptScrollTo(state: AppState, redraw: () => void, targetY: number, reason: string): void {
+function newlineCount(text: string): number {
+  return (text.match(/\n/g) ?? []).length
+}
+
+function animatePromptScrollTo(state: AppState, redraw: () => void, targetY: number, _reason: string): void {
   if (!promptScrollRef) return
   stopPromptScrollAnimation()
   const animationToken = promptScrollAnimationToken
@@ -394,7 +398,7 @@ function schedulePromptScrollSync(state: AppState, redraw: () => void, reason: s
     const editor = state.editorModal?.target.kind === "prompt" ? state.editorModal : null
     if (!promptScrollRef || !editor) return
     const shouldStickToBottom = state.promptScrollTop === Number.MAX_SAFE_INTEGER
-    const shouldAnimate = shouldStickToBottom && (reason === "submitPromptMessage" || reason === "promptCursorChange")
+    const shouldAnimate = shouldStickToBottom && reason === "streamAssistantResponse"
     if (shouldStickToBottom) {
       if (shouldAnimate) {
         const currentBottom = promptScrollRef.scrollTop
@@ -432,6 +436,38 @@ function refreshPromptScroll(state: AppState): void {
   }
 }
 
+function syncStreamingOverflowScroll(state: AppState, redraw: () => void): void {
+  if (!promptScrollRef) return
+  if (state.promptScrollTop !== Number.MAX_SAFE_INTEGER) return
+  const assistantMessageId = state.activeAssistantMessageId
+  if (!assistantMessageId) return
+  const assistantMessage = state.promptMessages.find((message) => message.id === assistantMessageId)
+  if (!assistantMessage) return
+  const nextNewlineCount = newlineCount(assistantMessage.text)
+  if (nextNewlineCount <= state.activeAssistantNewlineCount) return
+  const previousTop = promptScrollRef.scrollTop
+  promptScrollRef.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
+  const targetTop = promptScrollRef.scrollTop
+  promptScrollRef.scrollTo({ x: 0, y: previousTop })
+  state.activeAssistantNewlineCount = nextNewlineCount
+  if (targetTop > previousTop) {
+    state.lastPromptAutoScrollTop = targetTop
+    animatePromptScrollTo(state, redraw, targetTop, "streamAssistantOverflow")
+    return
+  }
+  state.lastPromptAutoScrollTop = previousTop
+}
+
+function syncPromptScrollToBottom(state: AppState, redraw: () => void): void {
+  if (!promptScrollRef) return
+  if (state.promptScrollTop !== Number.MAX_SAFE_INTEGER) return
+  const previousTop = promptScrollRef.scrollTop
+  promptScrollRef.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
+  const targetTop = promptScrollRef.scrollTop
+  if (targetTop <= previousTop) return
+  animatePromptScrollTo(state, redraw, targetTop, "streamAssistantComplete")
+}
+
 function syncPromptDraft(state: AppState, editor: EditorModalState): void {
   if (editor.target.kind !== "prompt") return
   const promptDraftIndex = editor.promptDraftIndex ?? Math.max(0, state.promptMessages.length - 1)
@@ -467,20 +503,24 @@ async function streamAssistantResponse(state: AppState, redraw: () => void): Pro
         rebindActiveAssistantMessageId(state, event.messageId)
         state.activeResponseId = event.responseId
         state.activeAssistantMessageId = event.messageId
+        state.activeAssistantNewlineCount = 0
         replacePromptMessage(state, event.messageId, (message) => ({ ...message, provider: event.provider, status: "streaming" }))
       } else if (event.type === "response.output_text.delta") {
         replacePromptMessage(state, event.messageId, (message) => ({ ...message, text: `${message.text}${event.delta}`, status: "streaming" }))
       } else if (event.type === "response.completed") {
         replacePromptMessage(state, event.messageId, (message) => ({ ...message, status: "complete" }))
-        state.activeResponseId = null
-        state.activeAssistantMessageId = null
       } else if (event.type === "response.error") {
         replacePromptMessage(state, event.messageId, (message) => ({ ...message, text: message.text || `Error: ${event.error}`, status: "error" }))
-        state.activeResponseId = null
-        state.activeAssistantMessageId = null
       }
       refreshPromptScroll(state)
-      schedulePromptScrollSync(state, redraw, "submitPromptMessage")
+      if (event.type === "response.completed" || event.type === "response.error") {
+        syncPromptScrollToBottom(state, redraw)
+        state.activeResponseId = null
+        state.activeAssistantMessageId = null
+        state.activeAssistantNewlineCount = 0
+      } else {
+        syncStreamingOverflowScroll(state, redraw)
+      }
       redraw()
     }
   } catch (error) {
@@ -491,6 +531,7 @@ async function streamAssistantResponse(state: AppState, redraw: () => void): Pro
     }
     state.activeResponseId = null
     state.activeAssistantMessageId = null
+    state.activeAssistantNewlineCount = 0
     refreshPromptScroll(state)
     redraw()
   }
@@ -514,6 +555,8 @@ function submitPromptMessage(state: AppState, renderer: CliRenderer, redraw: () 
   ]
   state.promptMessages = nextMessages
   state.activeAssistantMessageId = assistantMessageId
+  state.activeAssistantNewlineCount = 0
+  state.lastPromptAutoScrollTop = null
   state.promptText = ""
   openEditor(state, renderer, redraw, { kind: "prompt" }, "", nextMessages.length - 1)
   state.promptScrollTop = Number.MAX_SAFE_INTEGER
@@ -783,6 +826,8 @@ async function main(): Promise<void> {
     chatTransport: createSseChatTransport(dummyChatServer.baseUrl),
     activeResponseId: null,
     activeAssistantMessageId: null,
+    lastPromptAutoScrollTop: null,
+    activeAssistantNewlineCount: 0,
   }
 
   process.on("exit", () => {

@@ -164,4 +164,6 @@ export type AppState = {
   chatTransport: ChatTransport
   activeResponseId: string | null
   activeAssistantMessageId: string | null
+  lastPromptAutoScrollTop: number | null
+  activeAssistantNewlineCount: number
 }

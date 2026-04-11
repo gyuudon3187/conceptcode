@@ -22,7 +22,7 @@ function createDummyResponseText(request: ChatTurnRequest): string {
     fileLine,
     latestUserMessage ? `Latest prompt: ${latestUserMessage}` : "Latest prompt was empty.",
     "This is coming from a minimal SSE-compatible local server so a future ChatGPT provider can slot into the same event path.",
-  ].join(" ")
+  ].join("\n")
 }
 
 function delay(ms: number): Promise<void> {

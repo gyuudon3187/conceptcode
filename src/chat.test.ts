@@ -35,5 +35,6 @@ describe("dummy chat transport", () => {
     expect(combinedText).toContain("Streaming dummy build response")
     expect(combinedText).toContain("@root.views.layout")
     expect(combinedText).toContain("&src/index.ts")
+    expect(combinedText).toContain("\n")
   })
 })
