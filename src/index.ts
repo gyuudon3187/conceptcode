@@ -49,11 +49,17 @@ function sessionModalEntries(state: AppState): ChatSession[] {
 function openSessionModal(state: AppState): void {
   const entries = sessionModalEntries(state)
   const activeIndex = Math.max(0, entries.findIndex((session) => session.id === state.activeSessionId))
+  if (state.editorModal?.target.kind === "prompt") {
+    state.editorModal.renderable.blur()
+  }
   state.sessionModal = { selectedIndex: activeIndex }
 }
 
 function closeSessionModal(state: AppState): void {
   state.sessionModal = null
+  if (state.editorModal?.target.kind === "prompt") {
+    state.editorModal.renderable.focus()
+  }
 }
 
 async function persistSessions(state: AppState): Promise<void> {
@@ -1201,26 +1207,36 @@ async function main(): Promise<void> {
     if (!modal) return false
     const entries = sessionModalEntries(state)
     if (key.name === "escape" || (key.ctrl && key.name === "q")) {
+      key.preventDefault()
+      key.stopPropagation()
       closeSessionModal(state)
       draw()
       return true
     }
     if (key.name === "j" || key.name === "down") {
+      key.preventDefault()
+      key.stopPropagation()
       modal.selectedIndex = Math.min(entries.length - 1, modal.selectedIndex + 1)
       draw()
       return true
     }
     if (key.name === "k" || key.name === "up") {
+      key.preventDefault()
+      key.stopPropagation()
       modal.selectedIndex = Math.max(0, modal.selectedIndex - 1)
       draw()
       return true
     }
     if (key.name === "n") {
+      key.preventDefault()
+      key.stopPropagation()
       await createAndSwitchSession(state, renderer, draw)
       draw()
       return true
     }
     if (key.name === "return") {
+      key.preventDefault()
+      key.stopPropagation()
       const selected = entries[modal.selectedIndex]
       if (selected) {
         await switchToSession(state, selected.id, renderer, draw)
@@ -1283,6 +1299,8 @@ async function main(): Promise<void> {
         return
       }
       if (state.sessionModal) {
+        key.preventDefault()
+        key.stopPropagation()
         await handleSessionModalKey(key)
         return
       }

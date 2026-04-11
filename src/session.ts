@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
+import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises"
 import { createHash, randomUUID } from "node:crypto"
 import { basename, join, resolve } from "node:path"
 
@@ -38,6 +38,10 @@ function normalizeMessages(messages: PromptMessage[]): PromptMessage[] {
 function isSessionEmpty(session: ChatSession): boolean {
   const meaningfulMessages = session.messages.filter((message) => message.text.trim())
   return meaningfulMessages.length === 0 && session.draftPromptText.trim().length === 0
+}
+
+function hasCommittedConversation(session: ChatSession): boolean {
+  return session.messages.some((message) => message.text.trim().length > 0 && message.id)
 }
 
 function summarizeSession(session: ChatSession): ChatSessionSummary {
@@ -147,16 +151,24 @@ export async function loadSessions(jsonPath: string, defaultMode: UiMode): Promi
 export async function saveSessions(jsonPath: string, sessions: ChatSession[], activeSessionId: string): Promise<void> {
   const root = sessionRootDir(jsonPath)
   await mkdir(root, { recursive: true })
-  await Promise.all(sessions.map(async (session) => {
+  const persistedSessions = sessions.filter((session) => hasCommittedConversation(session) || isSessionEmpty(session))
+  const persistedIds = new Set(persistedSessions.map((session) => session.id))
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
+  await Promise.all(entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json") && entry.name !== "index.json")
+    .filter((entry) => !persistedIds.has(entry.name.replace(/\.json$/, "")))
+    .map((entry) => unlink(join(root, entry.name)).catch(() => undefined)))
+  await Promise.all(persistedSessions.map(async (session) => {
     const nextSession = structuredClone(session)
     syncSessionMetadata(nextSession)
     await writeFile(sessionFilePath(jsonPath, nextSession.id), `${JSON.stringify(nextSession, null, 2)}\n`, "utf8")
   }))
+  const fallbackActiveSessionId = persistedSessions.find((session) => session.id === activeSessionId)?.id ?? persistedSessions[0]?.id ?? null
   const index: SessionStoreIndex = {
     schemaVersion: SESSION_SCHEMA_VERSION,
     graphPath: resolve(jsonPath),
-    activeSessionId,
-    sessions: sessions.map((session) => summarizeSession(session)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    activeSessionId: fallbackActiveSessionId,
+    sessions: persistedSessions.map((session) => summarizeSession(session)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
   }
   await writeFile(indexFilePath(jsonPath), `${JSON.stringify(index, null, 2)}\n`, "utf8")
 }
