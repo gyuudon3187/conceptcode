@@ -37,4 +37,20 @@ describe("dummy chat transport", () => {
     expect(combinedText).toContain("&src/index.ts")
     expect(combinedText).toContain("\n")
   })
+
+  test("includes conceptualize mode in dummy response", async () => {
+    const transport = createSseChatTransport(dummyServer.baseUrl)
+    const deltas: string[] = []
+
+    for await (const event of transport.streamTurn({
+      mode: "conceptualize",
+      messages: [{ role: "user", text: "reshape @root.views and update the graph diff" }],
+    })) {
+      if (event.type === "response.output_text.delta") {
+        deltas.push(event.delta)
+      }
+    }
+
+    expect(deltas.join("")).toContain("Streaming dummy conceptualize response")
+  })
 })

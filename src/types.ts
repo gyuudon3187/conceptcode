@@ -31,7 +31,7 @@ export type GraphPayload = {
 
 export type LayoutMode = "wide" | "narrow"
 
-export type UiMode = "plan" | "build"
+export type UiMode = "plan" | "build" | "conceptualize"
 
 export type InspectorKind = "snippet" | "subtree" | "metadata"
 
@@ -86,6 +86,32 @@ export type PromptMessage = {
   provider?: string
 }
 
+export type ChatSession = {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  graphPath: string
+  draftPromptText: string
+  lastMode: UiMode
+  messages: PromptMessage[]
+}
+
+export type ChatSessionSummary = {
+  id: string
+  title: string
+  updatedAt: string
+  messageCount: number
+  lastMode: UiMode
+}
+
+export type SessionStoreIndex = {
+  schemaVersion: 1
+  graphPath: string
+  activeSessionId: string | null
+  sessions: ChatSessionSummary[]
+}
+
 export type ChatStreamEvent =
   | { type: "response.created"; responseId: string; messageId: string; role: "assistant"; provider: string }
   | { type: "response.output_text.delta"; responseId: string; messageId: string; delta: string }
@@ -129,6 +155,10 @@ export type ConfirmModalState =
       path: string
     }
 
+export type SessionModalState = {
+  selectedIndex: number
+}
+
 export type AppState = {
   jsonPath: string
   graphPayload: GraphPayload
@@ -148,8 +178,8 @@ export type AppState = {
   mainViewportHeight: number
   contextTitle: string
   contextLegendItems: Array<{ kindLabel: string; color: RGBA }>
-  promptMessages: PromptMessage[]
-  promptText: string
+  sessions: ChatSession[]
+  activeSessionId: string
   promptPaneRatio: number
   promptPaneTargetRatio: number
   promptPaneMode: "collapsed" | "expanded"
@@ -158,6 +188,7 @@ export type AppState = {
   conceptNavigationFocused: boolean
   startupDrawComplete: boolean
   editorModal: EditorModalState | null
+  sessionModal: SessionModalState | null
   pendingCtrlCExit: boolean
   ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
   promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null

@@ -8,8 +8,9 @@ import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, type Highli
 import { createSseChatTransport, startDummyChatServer } from "./chat"
 import { buildClipboardPayload, clipboardSelection, copyToClipboard, effectivePromptTokenBreakdown, EMPTY_PROMPT_TOKEN_BREAKDOWN } from "./clipboard"
 import { loadConceptGraph } from "./model"
+import { activeSession, createNamedSession, loadSessions, saveSessions, syncSessionMetadata } from "./session"
 import { applySelectionChange, clampCursor, currentNode, currentPath, handleResize, moveCursor, pageSize, scrollMain, visiblePaths } from "./state"
-import type { AppState, ConceptNode, CreateConceptDraft, EditorModalState, InspectorKind, KindDefinition, PromptMessage } from "./types"
+import type { AppState, ChatSession, ConceptNode, CreateConceptDraft, EditorModalState, InspectorKind, KindDefinition, PromptMessage } from "./types"
 import { repaint, renderPromptThreadContent, replaceChildren, scrollListForCursor } from "./view"
 
 const FILE_REFERENCE_TOKEN = /&[^\s&]+/g
@@ -39,6 +40,75 @@ function parseArgs(argv: string[]): { conceptsPath: string; optionsPath?: string
 
 function emptyCreateDraft(): CreateConceptDraft {
   return { title: "", summary: "" }
+}
+
+function sessionModalEntries(state: AppState): ChatSession[] {
+  return [...state.sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+}
+
+function openSessionModal(state: AppState): void {
+  const entries = sessionModalEntries(state)
+  const activeIndex = Math.max(0, entries.findIndex((session) => session.id === state.activeSessionId))
+  state.sessionModal = { selectedIndex: activeIndex }
+}
+
+function closeSessionModal(state: AppState): void {
+  state.sessionModal = null
+}
+
+async function persistSessions(state: AppState): Promise<void> {
+  for (const session of state.sessions) {
+    syncSessionMetadata(session)
+  }
+  await saveSessions(state.jsonPath, state.sessions, state.activeSessionId)
+}
+
+async function switchToSession(state: AppState, sessionId: string, renderer: CliRenderer, redraw: () => void): Promise<void> {
+  const session = state.sessions.find((candidate) => candidate.id === sessionId)
+  if (!session) return
+  if (state.editorModal?.target.kind === "prompt") {
+    syncPromptDraft(state, state.editorModal)
+  }
+  syncSessionMetadata(session)
+  state.activeSessionId = sessionId
+  state.uiMode = session.lastMode
+  state.activeResponseId = null
+  state.activeAssistantMessageId = null
+  state.activeAssistantNewlineCount = 0
+  state.promptScrollTop = Number.MAX_SAFE_INTEGER
+  state.lastPromptAutoScrollTop = null
+  state.editorModal = null
+  closeSessionModal(state)
+  await persistSessions(state)
+  openPromptEditor(state, renderer, redraw)
+}
+
+async function createAndSwitchSession(state: AppState, renderer: CliRenderer, redraw: () => void): Promise<void> {
+  if (state.editorModal?.target.kind === "prompt") {
+    syncPromptDraft(state, state.editorModal)
+  }
+  const session = createNamedSession(state.jsonPath, state.uiMode)
+  state.sessions.unshift(session)
+  state.activeSessionId = session.id
+  state.uiMode = session.lastMode
+  state.activeResponseId = null
+  state.activeAssistantMessageId = null
+  state.activeAssistantNewlineCount = 0
+  state.promptScrollTop = Number.MAX_SAFE_INTEGER
+  state.lastPromptAutoScrollTop = null
+  closeSessionModal(state)
+  await persistSessions(state)
+  openPromptEditor(state, renderer, redraw)
+}
+
+async function flushActiveSession(state: AppState): Promise<void> {
+  if (state.editorModal?.target.kind === "prompt") {
+    syncPromptDraft(state, state.editorModal)
+  }
+  const session = activeSession(state)
+  session.lastMode = state.uiMode
+  syncSessionMetadata(session)
+  await persistSessions(state)
 }
 
 function slugifyTitle(title: string): string {
@@ -441,7 +511,7 @@ function syncStreamingOverflowScroll(state: AppState, redraw: () => void): void 
   if (state.promptScrollTop !== Number.MAX_SAFE_INTEGER) return
   const assistantMessageId = state.activeAssistantMessageId
   if (!assistantMessageId) return
-  const assistantMessage = state.promptMessages.find((message) => message.id === assistantMessageId)
+  const assistantMessage = activeSession(state).messages.find((message) => message.id === assistantMessageId)
   if (!assistantMessage) return
   const nextNewlineCount = newlineCount(assistantMessage.text)
   if (nextNewlineCount <= state.activeAssistantNewlineCount) return
@@ -470,30 +540,34 @@ function syncPromptScrollToBottom(state: AppState, redraw: () => void): void {
 
 function syncPromptDraft(state: AppState, editor: EditorModalState): void {
   if (editor.target.kind !== "prompt") return
-  const promptDraftIndex = editor.promptDraftIndex ?? Math.max(0, state.promptMessages.length - 1)
-  if (!state.promptMessages[promptDraftIndex]) {
-    state.promptMessages[promptDraftIndex] = { text: "", role: "user" }
+  const session = activeSession(state)
+  const promptDraftIndex = editor.promptDraftIndex ?? Math.max(0, session.messages.length - 1)
+  if (!session.messages[promptDraftIndex]) {
+    session.messages[promptDraftIndex] = { text: "", role: "user", status: "complete" }
   }
-  state.promptMessages[promptDraftIndex].text = editor.renderable.plainText
-  state.promptText = editor.renderable.plainText
+  session.messages[promptDraftIndex].text = editor.renderable.plainText
+  session.draftPromptText = editor.renderable.plainText
+  session.lastMode = state.uiMode
 }
 
 function replacePromptMessage(state: AppState, messageId: string, updater: (message: PromptMessage) => PromptMessage): void {
-  const index = state.promptMessages.findIndex((message) => message.id === messageId)
+  const session = activeSession(state)
+  const index = session.messages.findIndex((message) => message.id === messageId)
   if (index < 0) return
-  state.promptMessages[index] = updater(state.promptMessages[index])
+  session.messages[index] = updater(session.messages[index])
 }
 
 function rebindActiveAssistantMessageId(state: AppState, nextMessageId: string): void {
   const activeAssistantMessageId = state.activeAssistantMessageId
   if (!activeAssistantMessageId || activeAssistantMessageId === nextMessageId) return
-  const index = state.promptMessages.findIndex((message) => message.id === activeAssistantMessageId && message.role === "assistant")
+  const session = activeSession(state)
+  const index = session.messages.findIndex((message) => message.id === activeAssistantMessageId && message.role === "assistant")
   if (index < 0) return
-  state.promptMessages[index] = { ...state.promptMessages[index], id: nextMessageId }
+  session.messages[index] = { ...session.messages[index], id: nextMessageId }
 }
 
 async function streamAssistantResponse(state: AppState, redraw: () => void): Promise<void> {
-  const requestMessages = state.promptMessages
+  const requestMessages = activeSession(state).messages
     .filter((message) => message.role === "user" || message.role === "assistant")
     .filter((message) => message.text.trim().length > 0)
     .map((message) => ({ role: message.role, text: message.text }))
@@ -541,23 +615,26 @@ function submitPromptMessage(state: AppState, renderer: CliRenderer, redraw: () 
   const editor = state.editorModal
   if (!editor || editor.target.kind !== "prompt") return
   syncPromptDraft(state, editor)
-  const currentDraftIndex = editor.promptDraftIndex ?? Math.max(0, state.promptMessages.length - 1)
-  const currentText = state.promptMessages[currentDraftIndex]?.text ?? ""
+  const session = activeSession(state)
+  const currentDraftIndex = editor.promptDraftIndex ?? Math.max(0, session.messages.length - 1)
+  const currentText = session.messages[currentDraftIndex]?.text ?? ""
   if (!currentText.trim()) return
   const userMessageId = `msg_${crypto.randomUUID()}`
   const assistantMessageId = `msg_${crypto.randomUUID()}`
   const draftMessageId = `msg_${crypto.randomUUID()}`
-  state.promptMessages[currentDraftIndex] = { id: userMessageId, text: currentText, role: "user", mode: state.uiMode, status: "complete" }
+  session.messages[currentDraftIndex] = { id: userMessageId, text: currentText, role: "user", mode: state.uiMode, status: "complete" }
   const nextMessages: PromptMessage[] = [
-    ...state.promptMessages,
+    ...session.messages,
     { id: assistantMessageId, text: "", role: "assistant", status: "streaming", provider: "dummy-local" },
     { id: draftMessageId, text: "", role: "user", status: "complete" },
   ]
-  state.promptMessages = nextMessages
+  session.messages = nextMessages
+  session.draftPromptText = ""
+  session.lastMode = state.uiMode
+  syncSessionMetadata(session)
   state.activeAssistantMessageId = assistantMessageId
   state.activeAssistantNewlineCount = 0
   state.lastPromptAutoScrollTop = null
-  state.promptText = ""
   openEditor(state, renderer, redraw, { kind: "prompt" }, "", nextMessages.length - 1)
   state.promptScrollTop = Number.MAX_SAFE_INTEGER
   refreshPromptScroll(state)
@@ -624,7 +701,7 @@ function applyEditorText(state: AppState, editor: EditorModalState): void {
 }
 
 function togglePromptMode(state: AppState): void {
-  state.uiMode = state.uiMode === "plan" ? "build" : "plan"
+  state.uiMode = state.uiMode === "plan" ? "build" : state.uiMode === "build" ? "conceptualize" : "plan"
 }
 
   function openEditor(state: AppState, renderer: CliRenderer, redraw: () => void, target: EditorModalState["target"], initialText: string, promptDraftIndex?: number): void {
@@ -666,8 +743,9 @@ function togglePromptMode(state: AppState): void {
     },
   })
   if (target.kind === "prompt") {
+    const session = activeSession(state)
     if (typeof promptDraftIndex === "number") {
-      state.promptMessages[promptDraftIndex] = { text: initialText, role: "user" }
+      session.messages[promptDraftIndex] = { ...(session.messages[promptDraftIndex] ?? { role: "user", status: "complete" }), text: initialText, role: "user", status: "complete" }
     }
     renderable.syntaxStyle = promptAliasStyle()
     renderable.focus()
@@ -699,8 +777,9 @@ function togglePromptMode(state: AppState): void {
 }
 
 function openPromptEditor(state: AppState, renderer: CliRenderer, redraw: () => void): void {
-  const promptDraftIndex = Math.max(0, state.promptMessages.length - 1)
-  const initialText = state.promptMessages[promptDraftIndex]?.text ?? state.promptText
+  const session = activeSession(state)
+  const promptDraftIndex = Math.max(0, session.messages.length - 1)
+  const initialText = session.messages[promptDraftIndex]?.text ?? session.draftPromptText
   openEditor(state, renderer, redraw, { kind: "prompt" }, initialText, promptDraftIndex)
 }
 
@@ -790,6 +869,7 @@ async function main(): Promise<void> {
     }
     return directories
   }))].sort((left, right) => left.localeCompare(right))
+  const { sessions, activeSessionId } = await loadSessions(conceptsPath, "plan")
   const state: AppState = {
     jsonPath: conceptsPath,
     graphPayload,
@@ -809,8 +889,8 @@ async function main(): Promise<void> {
     mainViewportHeight: 18,
     contextTitle: "Inspector",
     contextLegendItems: [],
-    promptMessages: [{ text: "", role: "user" }],
-    promptText: "",
+    sessions,
+    activeSessionId,
     promptPaneRatio: COLLAPSED_PROMPT_RATIO,
     promptPaneTargetRatio: COLLAPSED_PROMPT_RATIO,
     promptPaneMode: "collapsed",
@@ -819,6 +899,7 @@ async function main(): Promise<void> {
     conceptNavigationFocused: true,
     startupDrawComplete: false,
     editorModal: null,
+    sessionModal: null,
     pendingCtrlCExit: false,
     ctrlCExitTimeout: null,
     promptPaneAnimationTimeout: null,
@@ -829,6 +910,7 @@ async function main(): Promise<void> {
     lastPromptAutoScrollTop: null,
     activeAssistantNewlineCount: 0,
   }
+  state.uiMode = activeSession(state).lastMode
 
   process.on("exit", () => {
     void dummyChatServer.stop()
@@ -1114,6 +1196,41 @@ async function main(): Promise<void> {
     return true
   }
 
+  async function handleSessionModalKey(key: KeyEvent): Promise<boolean> {
+    const modal = state.sessionModal
+    if (!modal) return false
+    const entries = sessionModalEntries(state)
+    if (key.name === "escape" || (key.ctrl && key.name === "q")) {
+      closeSessionModal(state)
+      draw()
+      return true
+    }
+    if (key.name === "j" || key.name === "down") {
+      modal.selectedIndex = Math.min(entries.length - 1, modal.selectedIndex + 1)
+      draw()
+      return true
+    }
+    if (key.name === "k" || key.name === "up") {
+      modal.selectedIndex = Math.max(0, modal.selectedIndex - 1)
+      draw()
+      return true
+    }
+    if (key.name === "n") {
+      await createAndSwitchSession(state, renderer, draw)
+      draw()
+      return true
+    }
+    if (key.name === "return") {
+      const selected = entries[modal.selectedIndex]
+      if (selected) {
+        await switchToSession(state, selected.id, renderer, draw)
+        draw()
+      }
+      return true
+    }
+    return true
+  }
+
   function promptToRemoveDraft(path: string): void {
     state.confirmModal = {
       kind: "remove-draft",
@@ -1140,6 +1257,7 @@ async function main(): Promise<void> {
           return
         }
         if (state.pendingCtrlCExit) {
+          await flushActiveSession(state)
           renderer.destroy()
           process.exit(0)
         }
@@ -1162,6 +1280,10 @@ async function main(): Promise<void> {
 
       if (state.confirmModal) {
         handleConfirmModalKey(key)
+        return
+      }
+      if (state.sessionModal) {
+        await handleSessionModalKey(key)
         return
       }
       if (state.inspector) {
@@ -1187,6 +1309,13 @@ async function main(): Promise<void> {
         return
       }
       if (state.editorModal) {
+        if (key.ctrl && key.name === "s") {
+          key.preventDefault()
+          key.stopPropagation()
+          openSessionModal(state)
+          draw()
+          return
+        }
         if (state.editorModal.target.kind === "prompt" && key.name === "pagedown") {
           state.promptScrollTop += Math.max(1, state.promptViewportHeight - 2)
           refreshPromptScroll(state)
@@ -1287,6 +1416,11 @@ async function main(): Promise<void> {
         draw()
         return
       }
+      if (key.ctrl && key.name === "s") {
+        openSessionModal(state)
+        draw()
+        return
+      }
       if (key.name === "s") {
         openInspector(state, "snippet")
         draw()
@@ -1303,6 +1437,7 @@ async function main(): Promise<void> {
         return
       }
       if (key.name === "q") {
+        await flushActiveSession(state)
         renderer.destroy()
         process.exit(0)
       }
@@ -1401,7 +1536,7 @@ async function main(): Promise<void> {
         state.confirmModal = {
           kind: "remove-draft",
           title: "Help",
-          message: ["Browse: j/k move  h/l back/open  i prompt  Enter summary  s/t/m inspect  y copy  p path  q quit"],
+          message: ["Browse: j/k move  h/l back/open  i prompt  Enter summary  Ctrl+S sessions  s/t/m inspect  y copy  p path  q quit"],
           confirmLabel: "dismisses help",
           path: currentPath(state),
         }

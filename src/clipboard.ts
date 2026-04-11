@@ -6,10 +6,16 @@ import { resolve } from "node:path"
 import { encodingForModel } from "js-tiktoken"
 
 import { asMetadataObject, bulletList } from "./model"
-import type { AppState, ConceptNode, JsonValue } from "./types"
+import { activeSession } from "./session"
+import type { AppState, ConceptNode, JsonValue, UiMode } from "./types"
 
 const CLIPBOARD_PREAMBLE = `${readFileSync(resolve(import.meta.dir, "../prompts/clipboard_preamble.md"), "utf8").trim()}\n`
+const CONCEPTUALIZE_CLIPBOARD_PREAMBLE = `${readFileSync(resolve(import.meta.dir, "../prompts/clipboard_preamble_conceptualize.md"), "utf8").trim()}\n`
 const TOKEN_ENCODING = encodingForModel("gpt-4o")
+
+function clipboardPreambleForMode(mode: UiMode): string {
+  return mode === "conceptualize" ? CONCEPTUALIZE_CLIPBOARD_PREAMBLE : CLIPBOARD_PREAMBLE
+}
 
 function referencedPaths(text: string): string[] {
   const matches = [...text.matchAll(/@([a-zA-Z0-9_.-]+)/g)]
@@ -110,7 +116,7 @@ function renderDirectoryReferenceBlock(path: string): string {
 }
 
 async function referencedFileEntries(state: AppState): Promise<Array<{ path: string; kind: "file" | "directory"; block: string }>> {
-  const paths = referencedFilePaths(state.promptText.trim())
+  const paths = referencedFilePaths(activeSession(state).draftPromptText.trim())
     .filter((path) => state.projectFiles.includes(path) || state.projectDirectories.includes(path))
     .sort((left, right) => left.localeCompare(right))
   return Promise.all(paths.map(async (path) => {
@@ -167,7 +173,7 @@ function normalizedInterpretationHint(state: AppState): Record<string, JsonValue
 }
 
 export async function buildEffectivePrompt(state: AppState, _currentPath: string): Promise<string> {
-  const promptText = state.promptText.trim()
+  const promptText = activeSession(state).draftPromptText.trim()
   const conceptPaths = referencedConceptPaths(promptText, state.nodes)
   const fileEntries = await referencedFileEntries(state)
   const concepts = conceptPaths
@@ -175,7 +181,7 @@ export async function buildEffectivePrompt(state: AppState, _currentPath: string
     .join("\n")
   const interpretationHint = normalizedInterpretationHint(state)
   const hintLines = flattenInterpretationHints(interpretationHint)
-  const sections = [CLIPBOARD_PREAMBLE]
+  const sections = [clipboardPreambleForMode(state.uiMode)]
   const systemOverview = renderSystemOverviewBlock(state.nodes.get("root"))
   if (systemOverview) {
     sections.push(systemOverview.trimEnd())
@@ -196,12 +202,12 @@ export async function buildEffectivePrompt(state: AppState, _currentPath: string
 }
 
 export async function effectivePromptTokenBreakdown(state: AppState, _currentPath: string): Promise<EffectivePromptTokenBreakdown> {
-  const promptText = state.promptText.trim()
+  const promptText = activeSession(state).draftPromptText.trim()
   const conceptPaths = referencedConceptPaths(promptText, state.nodes)
   const fileEntries = await referencedFileEntries(state)
   const interpretationHint = normalizedInterpretationHint(state)
   const hintLines = flattenInterpretationHints(interpretationHint)
-  const staticSections = [CLIPBOARD_PREAMBLE]
+  const staticSections = [clipboardPreambleForMode(state.uiMode)]
   const systemOverview = renderSystemOverviewBlock(state.nodes.get("root"))
   if (systemOverview) {
     staticSections.push(systemOverview.trimEnd())
@@ -246,7 +252,7 @@ export async function buildClipboardPayload(state: AppState, currentPath: string
 }
 
 export function clipboardSelection(state: AppState, _currentPath: string): { paths: string[]; count: number } {
-  const promptText = state.promptText.trim()
+  const promptText = activeSession(state).draftPromptText.trim()
   const paths = [...referencedConceptPaths(promptText, state.nodes), ...referencedFilePaths(promptText).filter((path) => state.projectFiles.includes(path) || state.projectDirectories.includes(path))]
   return { paths, count: paths.length }
 }

@@ -2,8 +2,9 @@ import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, Text
 
 import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview, type PreviewLegendItem } from "./snippet"
 import { visibleAliasSuggestions } from "./index"
+import { activeSession } from "./session"
 import { currentNode, currentPath, visiblePaths } from "./state"
-import type { AppState, CreateConceptModalState, ListLine } from "./types"
+import type { AppState, ChatSession, CreateConceptModalState, ListLine } from "./types"
 
 export const COLORS = {
   bg: "#111417",
@@ -15,6 +16,7 @@ export const COLORS = {
   accentSoft: "#8fbcbb",
   plan: "#7aa2f7",
   build: "#d19a66",
+  conceptualize: "#7fbf7f",
   text: "#e5e9f0",
   muted: "#9aa7b0",
   success: "#a3be8c",
@@ -142,12 +144,16 @@ function renderConceptSummaryFooter(state: AppState): Renderable | VNode<any, an
 }
 
 function promptModePresentation(mode: AppState["uiMode"]): { label: string; color: string; tone: string } {
-  return mode === "plan"
-    ? { label: "PLAN", color: COLORS.plan, tone: "Strategy mode" }
-    : { label: "BUILD", color: COLORS.build, tone: "Execution mode" }
+  if (mode === "plan") {
+    return { label: "PLAN", color: COLORS.plan, tone: "Strategy mode" }
+  }
+  if (mode === "build") {
+    return { label: "BUILD", color: COLORS.build, tone: "Execution mode" }
+  }
+  return { label: "CONCEPTUALIZE", color: COLORS.conceptualize, tone: "Graph editing mode" }
 }
 
-function renderPromptMessageHeader(message: AppState["promptMessages"][number]): Renderable | VNode<any, any[]> {
+function renderPromptMessageHeader(message: ReturnType<typeof activeSession>["messages"][number]): Renderable | VNode<any, any[]> {
   if (message.role === "assistant") {
     const statusSuffix = message.status === "streaming" ? " · streaming" : message.status === "error" ? " · error" : ""
     return Box(
@@ -166,7 +172,7 @@ function renderPromptMessageHeader(message: AppState["promptMessages"][number]):
 
 export function renderPromptThreadContent(state: AppState, editor: NonNullable<AppState["editorModal"]>): Renderable | VNode<any, any[]> {
   const previewWidth = promptPreviewWidth(state)
-  const history = state.promptMessages.slice(0, -1)
+  const history = activeSession(state).messages.slice(0, -1)
   return Box(
     { width: "100%", flexDirection: "column", gap: 1 },
     ...history.map((message) => Box(
@@ -174,9 +180,9 @@ export function renderPromptThreadContent(state: AppState, editor: NonNullable<A
         width: "100%",
         paddingX: 1,
         paddingY: 1,
-        backgroundColor: message.role === "assistant" ? "#162028" : message.mode === "build" ? "#221c17" : "#171a22",
+        backgroundColor: message.role === "assistant" ? "#162028" : message.mode === "build" ? "#221c17" : message.mode === "conceptualize" ? "#182219" : "#171a22",
         borderStyle: "rounded",
-        borderColor: message.role === "assistant" ? COLORS.accent : (message.mode === "build" ? COLORS.build : COLORS.plan),
+        borderColor: message.role === "assistant" ? COLORS.accent : (message.mode === "build" ? COLORS.build : message.mode === "conceptualize" ? COLORS.conceptualize : COLORS.plan),
         flexDirection: "column",
         gap: 1,
       },
@@ -187,9 +193,9 @@ export function renderPromptThreadContent(state: AppState, editor: NonNullable<A
 }
 
 function renderPromptPane(state: AppState, promptScroll: ScrollBoxRenderable | null): Renderable | VNode<any, any[]> {
+  const session = activeSession(state)
   const editor = state.editorModal?.target.kind === "prompt" ? state.editorModal : null
   const promptFocused = editor?.renderable.focused ?? false
-  const modeIsPlan = state.uiMode === "plan"
   const { label: modeLabel, color: modeColor, tone: modeTone } = promptModePresentation(state.uiMode)
   const content = editor
     ? Box(
@@ -213,8 +219,8 @@ function renderPromptPane(state: AppState, promptScroll: ScrollBoxRenderable | n
         { width: "100%", minHeight: 8, flexDirection: "column", gap: 1 },
         Box(
           { width: "100%", paddingX: 1, paddingY: 1, backgroundColor: COLORS.panelSoft, flexDirection: "column", gap: 0 },
-          ...(state.promptText.trim()
-            ? promptPreviewLines(state.promptText, promptPreviewWidth(state), 8).map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line))))
+          ...(session.draftPromptText.trim()
+            ? promptPreviewLines(session.draftPromptText, promptPreviewWidth(state), 8).map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line))))
             : [Text({ content: "Start writing your prompt here. Press i to edit.", fg: COLORS.muted })]),
         ),
         Box(
@@ -362,6 +368,7 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   if (state.createConceptModal) {
     overlays.push(...renderCreateConceptModal(state, state.createConceptModal))
   }
+  overlays.push(...renderSessionModal(state))
   overlays.push(...renderConfirmModal(state))
   overlays.push(...renderInspectorOverlay(state, mainScroll))
 
@@ -486,6 +493,33 @@ function renderConfirmModal(state: AppState): Array<Renderable | VNode<any, any[
       Text({ content: state.confirmModal.title, fg: COLORS.accent, attributes: TextAttributes.BOLD }),
       ...state.confirmModal.message.map((line) => Text({ content: line, fg: COLORS.text })),
       Text({ content: "Enter -> Remove  Esc -> Close", fg: COLORS.muted }),
+    ),
+  ]
+}
+
+function renderSessionModalRow(state: AppState, session: ChatSession, selected: boolean): Renderable | VNode<any, any[]> {
+  const mode = promptModePresentation(session.lastMode)
+  return Box(
+    { width: "100%", paddingX: 1, backgroundColor: selected ? COLORS.selectedBg : COLORS.panel, flexDirection: "row", justifyContent: "space-between" },
+    Box(
+      { flexDirection: "column", flexGrow: 1 },
+      Text({ content: truncateSingleLine(session.title, state.layoutMode === "wide" ? 42 : 28), fg: selected ? COLORS.selectedFg : COLORS.text, attributes: TextAttributes.BOLD }),
+      Text({ content: truncateSingleLine(`${session.messages.filter((message) => message.text.trim()).length} messages  ${session.updatedAt.replace("T", " ").slice(0, 16)}`, state.layoutMode === "wide" ? 42 : 28), fg: selected ? COLORS.selectedFg : COLORS.muted }),
+    ),
+    Text({ content: mode.label, fg: selected ? COLORS.selectedFg : mode.color, attributes: TextAttributes.BOLD }),
+  )
+}
+
+function renderSessionModal(state: AppState): Array<Renderable | VNode<any, any[]>> {
+  if (!state.sessionModal) return []
+  const sessions = [...state.sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  return [
+    Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#00000088" }),
+    Box(
+      { position: "absolute", top: state.layoutMode === "wide" ? 5 : 3, left: state.layoutMode === "wide" ? "50%" : 2, width: state.layoutMode === "wide" ? 84 : "94%", padding: 1, backgroundColor: COLORS.panelSoft, borderStyle: "rounded", borderColor: COLORS.borderActive, marginLeft: state.layoutMode === "wide" ? -42 : undefined, flexDirection: "column", gap: 1 },
+      Text({ content: "Sessions", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
+      ...sessions.map((session, index) => renderSessionModalRow(state, session, index === state.sessionModal?.selectedIndex)),
+      Text({ content: "Enter -> Switch  n -> New  Esc -> Close", fg: COLORS.muted }),
     ),
   ]
 }

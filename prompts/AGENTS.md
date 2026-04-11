@@ -21,7 +21,7 @@ These instructions apply when working in this directory and its subdirectories, 
 - Use `enrich_concept_graph_anchors.md` for a follow-up pass that improves `loc` without changing the core concept structure.
 - Use `enrich_kind_definitions.md` for a separate follow-up pass that derives `kind_definitions` for a TUI options file without changing the graph.
 - When enriching anchors, preserve the existing hierarchy, stable paths, and summaries unless the supplied graph is clearly wrong.
-- `clipboard_preamble.md` is the current agent-facing interpretation guide for exported concept context. Keep it aligned with the stable-path and anchor semantics defined by the generation and anchor-enrichment prompts, and with prompt-driven concept inclusion semantics in the TUI.
+- `clipboard_preamble.md` is the default agent-facing interpretation guide for exported concept context, and `clipboard_preamble_conceptualize.md` is the concept-graph-editing variant. Keep both aligned with the stable-path and anchor semantics defined by the generation and anchor-enrichment prompts, with prompt-driven concept inclusion semantics in the TUI, and with the conceptualize-mode contract that graph-editing requests may target explicit paths or inferred concepts but must stay scoped to the concept graph.
 
 ## Output expectations
 
@@ -29,5 +29,5 @@ These instructions apply when working in this directory and its subdirectories, 
 - Keep the top-level shape consistent with the schema in `docs/json_schema.md`.
 - Make `loc.file` explicit when a concept's best anchor is outside the graph-level `source_file`.
 - Use `related_paths` only when they add real navigational value.
-- Treat concept-graph updates as a final follow-up step after implementation work, not as an early planning step.
+- Treat concept-graph updates as a final follow-up step after implementation work unless the active prompt mode is explicitly for concept-graph editing.
 - Do not add prose outside the requested output format.
