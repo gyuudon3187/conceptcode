@@ -547,7 +547,7 @@ function submitPromptMessage(state: AppState, renderer: CliRenderer, redraw: () 
   const userMessageId = `msg_${crypto.randomUUID()}`
   const assistantMessageId = `msg_${crypto.randomUUID()}`
   const draftMessageId = `msg_${crypto.randomUUID()}`
-  state.promptMessages[currentDraftIndex] = { id: userMessageId, text: currentText, role: "user", status: "complete" }
+  state.promptMessages[currentDraftIndex] = { id: userMessageId, text: currentText, role: "user", mode: state.uiMode, status: "complete" }
   const nextMessages: PromptMessage[] = [
     ...state.promptMessages,
     { id: assistantMessageId, text: "", role: "assistant", status: "streaming", provider: "dummy-local" },

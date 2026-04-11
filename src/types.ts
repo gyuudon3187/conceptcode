@@ -81,6 +81,7 @@ export type PromptMessage = {
   id?: string
   text: string
   role: "user" | "assistant"
+  mode?: UiMode
   status?: "streaming" | "complete" | "error"
   provider?: string
 }

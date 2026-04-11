@@ -74,9 +74,20 @@ function promptPreviewLines(text: string, width: number, maxLines: number): stri
       flattened.push("")
       continue
     }
-    for (let index = 0; index < source.length; index += width) {
-      flattened.push(source.slice(index, index + width))
+    let remaining = source
+    while (remaining.length > width) {
+      const segment = remaining.slice(0, width + 1)
+      const breakIndex = segment.lastIndexOf(" ")
+      if (breakIndex > 0) {
+        flattened.push(segment.slice(0, breakIndex))
+        remaining = remaining.slice(breakIndex + 1)
+        continue
+      }
+
+      flattened.push(remaining.slice(0, width))
+      remaining = remaining.slice(width)
     }
+    flattened.push(remaining)
   }
   return flattened.slice(0, maxLines)
 }
@@ -128,12 +139,27 @@ function renderConceptSummaryFooter(state: AppState): Renderable | VNode<any, an
   )
 }
 
-function promptMessageLabel(message: AppState["promptMessages"][number], index: number): string {
-  const base = message.role === "assistant" ? `Assistant ${Math.floor(index / 2) + 1}` : `Prompt ${Math.floor(index / 2) + 1}`
-  if (message.role !== "assistant") return base
-  if (message.status === "streaming") return `${base} · streaming`
-  if (message.status === "error") return `${base} · error`
-  return base
+function promptModePresentation(mode: AppState["uiMode"]): { label: string; color: string; tone: string } {
+  return mode === "plan"
+    ? { label: "PLAN", color: COLORS.accentSoft, tone: "Strategy mode" }
+    : { label: "BUILD", color: COLORS.warning, tone: "Execution mode" }
+}
+
+function renderPromptMessageHeader(message: AppState["promptMessages"][number]): Renderable | VNode<any, any[]> {
+  if (message.role === "assistant") {
+    const statusSuffix = message.status === "streaming" ? " · streaming" : message.status === "error" ? " · error" : ""
+    return Box(
+      { width: "100%", flexDirection: "row", justifyContent: "flex-end", gap: 1 },
+      ...(statusSuffix ? [Text({ content: statusSuffix, fg: message.status === "error" ? COLORS.error : COLORS.border })] : []),
+      Text({ content: "Assistant", fg: COLORS.accentSoft, attributes: TextAttributes.BOLD }),
+    )
+  }
+
+  const { label, color } = promptModePresentation(message.mode ?? "plan")
+  return Box(
+    { width: "100%", flexDirection: "row", justifyContent: "flex-start" },
+    Text({ content: label, fg: color, attributes: TextAttributes.BOLD }),
+  )
 }
 
 export function renderPromptThreadContent(state: AppState, editor: NonNullable<AppState["editorModal"]>): Renderable | VNode<any, any[]> {
@@ -141,18 +167,18 @@ export function renderPromptThreadContent(state: AppState, editor: NonNullable<A
   const history = state.promptMessages.slice(0, -1)
   return Box(
     { width: "100%", flexDirection: "column", gap: 1 },
-    ...history.map((message, index) => Box(
+    ...history.map((message) => Box(
       {
         width: "100%",
         paddingX: 1,
         paddingY: 1,
-        backgroundColor: message.role === "assistant" ? "#162028" : "#171d22",
+        backgroundColor: message.role === "assistant" ? "#162028" : message.mode === "build" ? "#201b16" : "#171d22",
         borderStyle: "rounded",
-        borderColor: message.role === "assistant" ? COLORS.accent : COLORS.border,
+        borderColor: message.role === "assistant" ? COLORS.accent : (message.mode === "build" ? COLORS.warning : COLORS.accentSoft),
         flexDirection: "column",
-        gap: 0,
+        gap: 1,
       },
-      Text({ content: promptMessageLabel(message, index), fg: COLORS.muted, attributes: TextAttributes.BOLD }),
+      renderPromptMessageHeader(message),
       ...(promptPreviewLines(message.text, previewWidth, 24).map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line))))),
     )),
   )
@@ -162,25 +188,45 @@ function renderPromptPane(state: AppState, promptScroll: ScrollBoxRenderable | n
   const editor = state.editorModal?.target.kind === "prompt" ? state.editorModal : null
   const promptFocused = editor?.renderable.focused ?? false
   const modeIsPlan = state.uiMode === "plan"
+  const { label: modeLabel, color: modeColor, tone: modeTone } = promptModePresentation(state.uiMode)
   const content = editor
     ? Box(
         { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
         Box({ width: "100%", flexGrow: 1, minHeight: 0 }, promptScroll ?? Box({ width: "100%" })),
-        Box({ width: "100%", minHeight: editor.visibleLineCount + 2, maxHeight: editor.visibleLineCount + 2, backgroundColor: COLORS.panelSoft, flexDirection: "column" }, editor.renderable),
+        Box(
+          { width: "100%", flexDirection: "column", gap: 1 },
+          Box({ width: "100%", minHeight: editor.visibleLineCount + 2, maxHeight: editor.visibleLineCount + 2, backgroundColor: COLORS.panelSoft, flexDirection: "column" }, editor.renderable),
+          Box(
+            { width: "100%", flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingX: 1 },
+            Box(
+              { flexDirection: "row", alignItems: "center", gap: 1 },
+              Text({ content: modeLabel, fg: modeColor, attributes: TextAttributes.BOLD }),
+              Text({ content: modeTone, fg: COLORS.muted }),
+            ),
+            Text({ content: "Tab toggles mode", fg: COLORS.border }),
+          ),
+        ),
       )
     : Box(
-        { width: "100%", minHeight: 8, paddingX: 1, paddingY: 1, backgroundColor: COLORS.panelSoft, flexDirection: "column", gap: 0 },
-        ...(state.promptText.trim()
-          ? promptPreviewLines(state.promptText, promptPreviewWidth(state), 8).map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line))))
-          : [Text({ content: "Start writing your prompt here. Press i to edit.", fg: COLORS.muted })]),
+        { width: "100%", minHeight: 8, flexDirection: "column", gap: 1 },
+        Box(
+          { width: "100%", paddingX: 1, paddingY: 1, backgroundColor: COLORS.panelSoft, flexDirection: "column", gap: 0 },
+          ...(state.promptText.trim()
+            ? promptPreviewLines(state.promptText, promptPreviewWidth(state), 8).map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line))))
+            : [Text({ content: "Start writing your prompt here. Press i to edit.", fg: COLORS.muted })]),
+        ),
+        Box(
+          { width: "100%", flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingX: 1 },
+          Box(
+            { flexDirection: "row", alignItems: "center", gap: 1 },
+            Text({ content: modeLabel, fg: modeColor, attributes: TextAttributes.BOLD }),
+            Text({ content: modeTone, fg: COLORS.muted }),
+          ),
+          Text({ content: "Tab toggles mode", fg: COLORS.border }),
+        ),
       )
   return Box(
     { width: "100%", borderStyle: "rounded", borderColor: promptFocused ? COLORS.borderActive : COLORS.border, title: "Prompt", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1, flexGrow: 1 },
-    Box(
-      { width: "100%", flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-      Text({ content: modeIsPlan ? "plan" : "build", fg: COLORS.muted, attributes: TextAttributes.BOLD }),
-      Text({ content: "Tab toggles mode", fg: COLORS.border }),
-    ),
     content,
   )
 }
