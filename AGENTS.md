@@ -45,6 +45,13 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 - Reusable prompt material for concept-graph creation lives in `prompts/`.
 - Command wrappers and reusable invocation text live in `commands/`.
 
+## Session storage note
+
+- TUI chat sessions are bucketed under `.conceptcode/sessions/<digest>`.
+- The `<digest>` is derived from the absolute concept-graph path, not just the graph filename.
+- If the repo or parent directory is renamed, the absolute graph path changes, so previously saved sessions may stop appearing in the session modal because the TUI starts reading from a different bucket.
+- If that happens, the sessions usually still exist on disk under the old bucket and can be restored by copying the relevant session JSON files into the current bucket for the same graph.
+
 ## Schema reference
 
 - Canonical schema guidance lives in `docs/json_schema.md`.
