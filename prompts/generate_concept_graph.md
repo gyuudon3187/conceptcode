@@ -14,8 +14,19 @@ Requirements:
 - Use stable, human-meaningful keys under `children` because those keys define the concept's stable derived path.
 - Prefer concise summaries.
 - Focus on conceptual structure first: identify the most useful concepts, relationships, and hierarchy for browsing and later edits.
+- Prefer first-level concepts that a non-programmer product collaborator could understand without reading the code.
+- Prefer user-meaningful views, domain concepts, major subsystems, and independently meaningful processes over buckets that mainly mirror implementation structure.
+- Do not create top-level buckets like constants, helpers, utils, entrypoints, or generic workflows unless they are themselves meaningful concepts for understanding the system.
 - Include `related_paths` when another concept materially affects understanding.
 - Use `kind` values such as module, view, layout, region, workflow, control, concept, behavior, transition, dataclass, data_group, or guidance when appropriate.
+- Use `region` for a bounded, tangible area within a view, layout, or other clearly comprehensible surface. Use `control` instead for focused interactive elements. Do not use `region` as a generic grouping kind for arbitrary code sections.
+- Use `control` for a focused interactive element or tight control cluster such as a button, dropdown, input, toggle, tab set, picker, or action list.
+- Use `behavior` when the concept is an action, interaction flow, or reaction owned by a parent concept such as a view, control, or stateful surface.
+- Use `workflow` when the concept is an independently meaningful multi-step process that stands on its own rather than being primarily a behavior of one parent surface.
+- Attach each `behavior` to the most specific meaningful owner. Prefer a `control` over its containing `region` when the control is the real trigger or state owner.
+- If several nearby controls jointly own a behavior, attach that behavior to their containing `region`.
+- If a flow is mainly triggered from and understood through one UI surface, model it as that surface's child `behavior` instead of as a separate top-level `workflow`.
+- Do not model every small UI element. Add a `control` node when it has meaningful behavior, state, or user-facing importance, or when omitting it would force behaviors onto an overly broad parent.
 - Do not include empty fields unless useful for consistency.
 - Do not add `loc` in this pass; source anchors belong in a later enrichment pass.
 
@@ -36,6 +47,19 @@ The concept graph should help a human or LLM refer to parts of the program by pa
 - Favor conceptual names over UI label text when the concept is broader than the label.
 - Keep interface-oriented metadata compact so it supports browsing and prompt composition without overwhelming the concept hierarchy.
 - Use `related_paths` sparingly and only when they add navigational value.
+- Treat source-level helpers, constants, and startup glue as implementation detail unless they represent a user-meaningful subsystem or domain concept.
+- If a concept only makes sense because it belongs to a view or control, attach it to that parent instead of lifting it toward the top level.
+- Avoid using `region` as a fallback for "miscellaneous" or uncategorized parts of the code.
+- When a button, dropdown, toggle, input, or similar control is the natural thing a user would point to while describing an interaction, model it explicitly as a `control`.
+- Avoid adding low-value `control` nodes for decorative or trivial elements with no distinct behavior, state, or navigational value.
+
+## Anti-patterns to avoid
+
+- A top-level `constants`, `utils`, or `entrypoints` node that mainly mirrors source organization.
+- A top-level `workflows` bucket that collects flows which are really behaviors of specific views or controls.
+- A `region` node used only to group programmatic concepts that are not experienced as one bounded surface or area.
+- A `region` owning a behavior that is actually triggered by one clearly meaningful `control` inside it.
+- A graph that skips meaningful controls and therefore forces several unrelated behaviors onto one broad `region`.
 
 ## When to split the work
 

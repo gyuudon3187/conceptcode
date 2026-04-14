@@ -2,7 +2,14 @@
 
  Goal: route concept-graph work to the right prompt flow for the given file, directory, or subsystem.
 
-Instructions for the LLM:
+ Instructions for the LLM:
+ - Prefer a concept hierarchy that a non-programmer product collaborator can browse and discuss without needing source-level implementation categories.
+ - During graph generation, prefer user-meaningful views, domain concepts, major subsystems, and independently meaningful processes over buckets that mainly mirror code organization.
+ - Do not default to top-level categories like constants, utils, entrypoints, or generic workflows unless they are themselves meaningful concepts for understanding the system.
+ - Treat `region` as a bounded, tangible area within a view, layout, or other clearly comprehensible surface, not as a fallback bucket for arbitrary code sections.
+ - Treat `control` as a focused interactive element or tight control cluster such as a button, dropdown, input, toggle, tab set, picker, or action list.
+ - Treat a UI-coupled or parent-owned flow as a child `behavior` of the relevant concept; reserve `workflow` for a process that stands on its own outside a specific parent surface.
+ - Attach a `behavior` to the most specific meaningful owner: prefer a `control` over its containing `region` when the control is the real trigger or state owner, prefer a `region` when multiple nearby controls act together, and prefer a `view` when the behavior belongs to the whole screen or mode.
  - Supported modes are `generate`, `anchors`, and `kinds`.
  - If a mode is provided and it is exactly one of `generate`, `anchors`, or `kinds`, use it directly.
  - If a would-be mode is provided but is not clearly one of `generate`, `anchors`, or `kinds`, ask the user to provide a clear `mode` instead of guessing.
