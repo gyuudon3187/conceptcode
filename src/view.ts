@@ -129,17 +129,87 @@ function promptPreviewChunks(line: string): TextChunk[] {
   return chunks
 }
 
-function renderConceptSummaryFooter(state: AppState): Renderable | VNode<any, any[]> {
+function latestConversationPreview(state: AppState): { text: string; role: "user" | "assistant" | "none"; status: "streaming" | "complete" | "error" | "idle" } {
+  const session = activeSession(state)
+  const activeAssistantId = state.activeAssistantMessageId
+  if (activeAssistantId) {
+    const activeAssistant = session.messages.find((message) => message.id === activeAssistantId && message.role === "assistant")
+    if (activeAssistant) {
+      return {
+        text: activeAssistant.text.trim() || "Assistant is thinking...",
+        role: "assistant",
+        status: activeAssistant.status ?? "streaming",
+      }
+    }
+  }
+
+  const latestUserMessage = [...session.messages].reverse().find((message) => message.role === "user" && message.text.trim())
+  if (latestUserMessage) {
+    return { text: latestUserMessage.text.trim(), role: "user", status: latestUserMessage.status ?? "complete" }
+  }
+
+  if (session.draftPromptText.trim()) {
+    return { text: session.draftPromptText.trim(), role: "user", status: "complete" }
+  }
+
+  return { text: "Prompt workspace available", role: "none", status: "idle" }
+}
+
+function renderDetailsPane(state: AppState): Renderable | VNode<any, any[]> {
   const node = currentNode(state)
   const body = node.summary.trim() || "No summary for this concept yet."
   return Box(
-    { width: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Summary", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
+    { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Details", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
     Box(
       { width: "100%", flexDirection: "row", justifyContent: "space-between" },
       Text({ content: truncateSingleLine(node.title, state.layoutMode === "wide" ? 24 : 18), fg: COLORS.text, attributes: TextAttributes.BOLD }),
       Text({ content: node.kind ?? "(no kind)", fg: COLORS.accentSoft }),
     ),
     Text({ content: body, fg: node.summary.trim() ? COLORS.text : COLORS.muted }),
+  )
+}
+
+function renderPromptPreviewPane(state: AppState): Renderable | VNode<any, any[]> {
+  const preview = latestConversationPreview(state)
+  const statusLabel = preview.status === "streaming"
+    ? "Assistant: Thinking"
+    : preview.status === "error"
+      ? "Assistant: Error"
+      : "Assistant: Idle"
+  const statusColor = preview.status === "streaming" ? COLORS.warning : preview.status === "error" ? COLORS.error : COLORS.muted
+  const width = Math.max(16, promptPreviewWidth(state) - 6)
+  const lines = promptPreviewLines(preview.text, width, 3)
+  const hint = "Tab -> Prompt"
+  return Box(
+    { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Prompt", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
+    Text({ content: statusLabel, fg: statusColor, attributes: preview.status === "streaming" ? TextAttributes.BOLD : 0 }),
+    Box(
+      { width: "100%", flexDirection: "column", flexGrow: 1, minHeight: 0, paddingX: 1, paddingY: 1, backgroundColor: COLORS.panelSoft, gap: 0 },
+      ...lines.map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line || " ")))),
+    ),
+    Box(
+      { width: "100%", flexDirection: "row", justifyContent: "space-between" },
+      Text({ content: preview.role === "assistant" ? "Live reply" : preview.role === "user" ? "Latest prompt" : "Prompt ready", fg: COLORS.muted }),
+      Text({ content: hint, fg: COLORS.border }),
+    ),
+  )
+}
+
+function renderConceptPreviewPane(state: AppState): Renderable | VNode<any, any[]> {
+  const node = currentNode(state)
+  const summary = node.summary.trim() || "No summary for this concept yet."
+  return Box(
+    { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Concepts", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
+    Box(
+      { width: "100%", flexDirection: "row", justifyContent: "space-between" },
+      Text({ content: truncateSingleLine(node.title, state.layoutMode === "wide" ? 22 : 18), fg: COLORS.text, attributes: TextAttributes.BOLD }),
+      Text({ content: node.kind ?? "(no kind)", fg: COLORS.accentSoft }),
+    ),
+    Text({ content: truncateSingleLine(summary, state.layoutMode === "wide" ? 54 : 34), fg: node.summary.trim() ? COLORS.text : COLORS.muted }),
+    Box(
+      { width: "100%", flexDirection: "row", justifyContent: "flex-end" },
+      Text({ content: "Shift+Tab -> Concepts", fg: COLORS.border }),
+    ),
   )
 }
 
@@ -319,15 +389,23 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   const sidebarOptions = state.layoutMode === "wide" && sidebarWidth !== null
     ? { width: sidebarWidth, flexBasis: sidebarWidth, minWidth: 24, flexGrow: 1, flexShrink: 1, flexDirection: "column" as const, gap: 1 }
     : { width: "100%" as const, flexGrow: 0, flexShrink: 0, flexDirection: "column" as const, gap: 1 }
-  const sidebarTitle = state.conceptNavigationFocused ? "Concepts" : "Context"
-  const sidebar = Box(
-    sidebarOptions,
-    Box(
-      { flexGrow: 1, borderStyle: "rounded", borderColor: state.conceptNavigationFocused ? COLORS.borderActive : COLORS.border, title: sidebarTitle, padding: 1, backgroundColor: COLORS.panel },
-      conceptsContent,
-    ),
-    ...(state.conceptNavigationFocused ? [renderConceptSummaryFooter(state)] : []),
+  const supportHeight = state.layoutMode === "wide" ? 11 : undefined
+  const supportColumn = state.conceptNavigationFocused
+    ? Box(
+        sidebarOptions,
+        Box({ width: "100%", minHeight: supportHeight, maxHeight: supportHeight, flexDirection: "column" }, renderDetailsPane(state)),
+        Box({ width: "100%", flexGrow: 1, minHeight: 8, flexDirection: "column" }, renderPromptPreviewPane(state)),
+      )
+    : Box(
+        sidebarOptions,
+        Box({ width: "100%", minHeight: supportHeight, maxHeight: supportHeight, borderStyle: "rounded", borderColor: COLORS.border, title: "Context", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" }, renderPromptBudgetPane(state)),
+        Box({ width: "100%", flexGrow: 1, minHeight: 8, flexDirection: "column" }, renderConceptPreviewPane(state)),
+      )
+  const conceptsPane = Box(
+    { flexGrow: 1, borderStyle: "rounded", borderColor: state.conceptNavigationFocused ? COLORS.borderActive : COLORS.border, title: "Concepts", padding: 1, backgroundColor: COLORS.panel },
+    conceptsContent,
   )
+  const promptPane = renderTaskPane(state, promptScroll)
   const overlays: Array<Renderable | VNode<any, any[]>> = []
 
   if (state.editorModal && state.editorModal.target.kind !== "prompt") {
@@ -379,7 +457,13 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
 
   return Box(
     { width: "100%", height: "100%", flexDirection: "column", backgroundColor: COLORS.bg, padding: 1, gap: 1 },
-    ...(state.layoutMode === "wide" ? [Box({ width: "100%", flexGrow: 1, flexDirection: "row", gap: 1 }, sidebar, renderTaskPane(state, promptScroll))] : [sidebar, renderTaskPane(state, promptScroll)]),
+    ...(state.layoutMode === "wide"
+      ? [
+          state.conceptNavigationFocused
+            ? Box({ width: "100%", flexGrow: 1, flexDirection: "row", gap: 1 }, conceptsPane, supportColumn)
+            : Box({ width: "100%", flexGrow: 1, flexDirection: "row", gap: 1 }, supportColumn, promptPane),
+        ]
+      : [conceptsPane, state.conceptNavigationFocused ? renderDetailsPane(state) : Box({ width: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Context", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" }, renderPromptBudgetPane(state)), state.conceptNavigationFocused ? renderPromptPreviewPane(state) : renderConceptPreviewPane(state), promptPane]),
     ...overlays,
   )
 }
