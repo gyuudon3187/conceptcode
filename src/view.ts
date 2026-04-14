@@ -155,7 +155,7 @@ function promptModePresentation(mode: AppState["uiMode"]): { label: string; colo
 
 function renderPromptMessageHeader(message: ReturnType<typeof activeSession>["messages"][number]): Renderable | VNode<any, any[]> {
   if (message.role === "assistant") {
-    const statusSuffix = message.status === "streaming" ? " · streaming" : message.status === "error" ? " · error" : ""
+    const statusSuffix = message.status === "streaming" ? "thinking ·" : message.status === "error" ? "error ·" : ""
     return Box(
       { width: "100%", flexDirection: "row", justifyContent: "flex-end", gap: 1 },
       ...(statusSuffix ? [Text({ content: statusSuffix, fg: message.status === "error" ? COLORS.error : COLORS.border })] : []),
@@ -211,7 +211,7 @@ function renderPromptPane(state: AppState, promptScroll: ScrollBoxRenderable | n
               Text({ content: modeLabel, fg: modeColor, attributes: TextAttributes.BOLD }),
               Text({ content: modeTone, fg: COLORS.muted }),
             ),
-            Text({ content: "Tab toggles mode", fg: COLORS.border }),
+            Text({ content: "Tab mode, Shift+Tab focus", fg: COLORS.border }),
           ),
         ),
       )
@@ -221,7 +221,7 @@ function renderPromptPane(state: AppState, promptScroll: ScrollBoxRenderable | n
           { width: "100%", paddingX: 1, paddingY: 1, backgroundColor: COLORS.panelSoft, flexDirection: "column", gap: 0 },
           ...(session.draftPromptText.trim()
             ? promptPreviewLines(session.draftPromptText, promptPreviewWidth(state), 8).map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line))))
-            : [Text({ content: "Start writing your prompt here. Press i to edit.", fg: COLORS.muted })]),
+            : [Text({ content: "Start writing your prompt here. Press Shift+Tab to edit.", fg: COLORS.muted })]),
         ),
         Box(
           { width: "100%", flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingX: 1 },
@@ -230,7 +230,7 @@ function renderPromptPane(state: AppState, promptScroll: ScrollBoxRenderable | n
             Text({ content: modeLabel, fg: modeColor, attributes: TextAttributes.BOLD }),
             Text({ content: modeTone, fg: COLORS.muted }),
           ),
-          Text({ content: "Tab toggles mode", fg: COLORS.border }),
+          Text({ content: "Tab mode, Shift+Tab focus", fg: COLORS.border }),
         ),
       )
   return Box(
@@ -268,6 +268,10 @@ function renderPromptBudgetPane(state: AppState): Renderable | VNode<any, any[]>
       ...referenceRows,
     ),
   )
+}
+
+function renderConceptsPaneContent(state: AppState, listScroll: ScrollBoxRenderable): Renderable | VNode<any, any[]> {
+  return state.conceptNavigationFocused ? listScroll : renderPromptBudgetPane(state)
 }
 
 function renderTaskPane(state: AppState, promptScroll: ScrollBoxRenderable | null): Renderable | VNode<any, any[]> {
@@ -311,17 +315,18 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   const promptPaneWidth = state.layoutMode === "wide" ? Math.max(28, Math.floor((frameInnerWidth - 1) * state.promptPaneRatio)) : null
   const sidebarWidth = state.layoutMode === "wide" && promptPaneWidth !== null ? Math.max(24, frameInnerWidth - 1 - promptPaneWidth) : null
   const promptFocused = state.editorModal?.target.kind === "prompt"
-  const conceptsContent = promptFocused ? renderPromptBudgetPane(state) : listScroll
+  const conceptsContent = renderConceptsPaneContent(state, listScroll)
   const sidebarOptions = state.layoutMode === "wide" && sidebarWidth !== null
     ? { width: sidebarWidth, flexBasis: sidebarWidth, minWidth: 24, flexGrow: 1, flexShrink: 1, flexDirection: "column" as const, gap: 1 }
     : { width: "100%" as const, flexGrow: 0, flexShrink: 0, flexDirection: "column" as const, gap: 1 }
+  const sidebarTitle = state.conceptNavigationFocused ? "Concepts" : "Context"
   const sidebar = Box(
     sidebarOptions,
     Box(
-      { flexGrow: 1, borderStyle: "rounded", borderColor: state.conceptNavigationFocused ? COLORS.borderActive : COLORS.border, title: "Concepts", padding: 1, backgroundColor: COLORS.panel },
+      { flexGrow: 1, borderStyle: "rounded", borderColor: state.conceptNavigationFocused ? COLORS.borderActive : COLORS.border, title: sidebarTitle, padding: 1, backgroundColor: COLORS.panel },
       conceptsContent,
     ),
-    ...(promptFocused ? [] : [renderConceptSummaryFooter(state)]),
+    ...(state.conceptNavigationFocused ? [renderConceptSummaryFooter(state)] : []),
   )
   const overlays: Array<Renderable | VNode<any, any[]>> = []
 

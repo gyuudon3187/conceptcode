@@ -710,6 +710,36 @@ function togglePromptMode(state: AppState): void {
   state.uiMode = state.uiMode === "plan" ? "build" : state.uiMode === "build" ? "conceptualize" : "plan"
 }
 
+function cyclePromptMode(state: AppState, redraw: () => void): void {
+  togglePromptMode(state)
+  refreshPromptTokenBreakdown(state, redraw)
+}
+
+function togglePaneFocus(state: AppState, renderer: CliRenderer, redraw: () => void): void {
+  if (state.editorModal?.target.kind === "prompt") {
+    applyEditorText(state, state.editorModal)
+    state.editorModal.renderable.blur()
+    state.conceptNavigationFocused = true
+    state.promptPaneMode = "collapsed"
+    state.editorModal = null
+    refreshPromptPaneTarget()
+    redraw()
+    return
+  }
+  openPromptEditor(state, renderer, redraw)
+}
+
+function focusPromptPane(state: AppState, renderer: CliRenderer, redraw: () => void): void {
+  if (state.editorModal?.target.kind === "prompt") {
+    state.conceptNavigationFocused = false
+    state.promptPaneMode = "expanded"
+    refreshPromptPaneTarget()
+    redraw()
+    return
+  }
+  openPromptEditor(state, renderer, redraw)
+}
+
   function openEditor(state: AppState, renderer: CliRenderer, redraw: () => void, target: EditorModalState["target"], initialText: string, promptDraftIndex?: number): void {
   const visibleLineCount = editorVisibleLineCount(initialText)
   const renderable = new TextareaRenderable(renderer, {
@@ -897,12 +927,12 @@ async function main(): Promise<void> {
     contextLegendItems: [],
     sessions,
     activeSessionId,
-    promptPaneRatio: COLLAPSED_PROMPT_RATIO,
-    promptPaneTargetRatio: COLLAPSED_PROMPT_RATIO,
-    promptPaneMode: "collapsed",
+    promptPaneRatio: EXPANDED_PROMPT_RATIO,
+    promptPaneTargetRatio: EXPANDED_PROMPT_RATIO,
+    promptPaneMode: "expanded",
     promptScrollTop: 0,
     promptViewportHeight: 12,
-    conceptNavigationFocused: true,
+    conceptNavigationFocused: false,
     startupDrawComplete: false,
     editorModal: null,
     sessionModal: null,
@@ -1347,8 +1377,14 @@ async function main(): Promise<void> {
           return
         }
         if (state.editorModal.target.kind === "prompt" && key.name === "tab" && !key.shift) {
-          togglePromptMode(state)
+          cyclePromptMode(state, draw)
           draw()
+          return
+        }
+        if (key.shift && key.name === "tab") {
+          key.preventDefault()
+          key.stopPropagation()
+          togglePaneFocus(state, renderer, draw)
           return
         }
         if (state.editorModal.target.kind === "prompt" && key.name === "return" && !key.shift && !key.ctrl && !state.editorModal.aliasSuggestion) {
@@ -1427,11 +1463,10 @@ async function main(): Promise<void> {
         return
       }
 
-      if (key.name === "i") {
+      if (key.shift && key.name === "tab") {
         key.preventDefault()
         key.stopPropagation()
-        openPromptEditor(state, renderer, draw)
-        draw()
+        togglePaneFocus(state, renderer, draw)
         return
       }
       if (key.ctrl && key.name === "s") {
@@ -1623,6 +1658,7 @@ async function main(): Promise<void> {
   handleResize(state, initialRenderer.terminalWidth || process.stdout.columns || 120)
   state.promptPaneTargetRatio = desiredPromptPaneRatio()
   state.promptPaneRatio = state.promptPaneTargetRatio
+  openPromptEditor(state, initialRenderer, draw)
   refreshPromptTokenBreakdown(state, draw)
   draw()
   state.startupDrawComplete = true
