@@ -172,24 +172,22 @@ function renderDetailsPane(state: AppState): Renderable | VNode<any, any[]> {
 function renderPromptPreviewPane(state: AppState): Renderable | VNode<any, any[]> {
   const preview = latestConversationPreview(state)
   const statusLabel = preview.status === "streaming"
-    ? "Assistant: Thinking"
+    ? "thinking"
     : preview.status === "error"
-      ? "Assistant: Error"
-      : "Assistant: Idle"
-  const statusColor = preview.status === "streaming" ? COLORS.warning : preview.status === "error" ? COLORS.error : COLORS.muted
+      ? "error"
+      : "idle"
   const width = Math.max(16, promptPreviewWidth(state) - 6)
-  const lines = promptPreviewLines(preview.text, width, 3)
+  const lines = promptPreviewLines(preview.text, width, 1)
   const hint = "Tab -> Prompt"
   return Box(
-    { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Prompt", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
-    Text({ content: statusLabel, fg: statusColor, attributes: preview.status === "streaming" ? TextAttributes.BOLD : 0 }),
+    { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: `Session: ${statusLabel}`, padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
     Box(
-      { width: "100%", flexDirection: "column", flexGrow: 1, minHeight: 0, paddingX: 1, paddingY: 1, backgroundColor: COLORS.panelSoft, gap: 0 },
+      { width: "100%", minHeight: 1, maxHeight: 1, flexDirection: "column", paddingX: 1, backgroundColor: COLORS.panelSoft, gap: 0 },
       ...lines.map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line || " ")))),
     ),
     Box(
       { width: "100%", flexDirection: "row", justifyContent: "space-between" },
-      Text({ content: preview.role === "assistant" ? "Live reply" : preview.role === "user" ? "Latest prompt" : "Prompt ready", fg: COLORS.muted }),
+      Text({ content: preview.role === "assistant" ? "Live reply" : preview.role === "user" ? "Latest prompt" : "", fg: COLORS.muted }),
       Text({ content: hint, fg: COLORS.border }),
     ),
   )
@@ -389,17 +387,18 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   const sidebarOptions = state.layoutMode === "wide" && sidebarWidth !== null
     ? { width: sidebarWidth, flexBasis: sidebarWidth, minWidth: 24, flexGrow: 1, flexShrink: 1, flexDirection: "column" as const, gap: 1 }
     : { width: "100%" as const, flexGrow: 0, flexShrink: 0, flexDirection: "column" as const, gap: 1 }
-  const supportHeight = state.layoutMode === "wide" ? 11 : undefined
+  const supportHeight = state.layoutMode === "wide" ? 22 : undefined
+  const previewHeight = state.layoutMode === "wide" ? 5 : 8
   const supportColumn = state.conceptNavigationFocused
     ? Box(
-        sidebarOptions,
+        { ...sidebarOptions, height: "100%" },
         Box({ width: "100%", minHeight: supportHeight, maxHeight: supportHeight, flexDirection: "column" }, renderDetailsPane(state)),
-        Box({ width: "100%", flexGrow: 1, minHeight: 8, flexDirection: "column" }, renderPromptPreviewPane(state)),
+        Box({ width: "100%", flexGrow: 1, minHeight: previewHeight, flexDirection: "column" }, renderPromptPreviewPane(state)),
       )
     : Box(
-        sidebarOptions,
+        { ...sidebarOptions, height: "100%" },
         Box({ width: "100%", minHeight: supportHeight, maxHeight: supportHeight, borderStyle: "rounded", borderColor: COLORS.border, title: "Context", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" }, renderPromptBudgetPane(state)),
-        Box({ width: "100%", flexGrow: 1, minHeight: 8, flexDirection: "column" }, renderConceptPreviewPane(state)),
+        Box({ width: "100%", flexGrow: 1, minHeight: previewHeight, flexDirection: "column" }, renderConceptPreviewPane(state)),
       )
   const conceptsPane = Box(
     { flexGrow: 1, borderStyle: "rounded", borderColor: state.conceptNavigationFocused ? COLORS.borderActive : COLORS.border, title: "Concepts", padding: 1, backgroundColor: COLORS.panel },
