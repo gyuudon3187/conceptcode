@@ -176,19 +176,23 @@ function renderPromptPreviewPane(state: AppState): Renderable | VNode<any, any[]
     : preview.status === "error"
       ? "error"
       : "idle"
-  const width = Math.max(16, promptPreviewWidth(state) - 6)
-  const lines = promptPreviewLines(preview.text, width, 1)
   const hint = "Tab -> Prompt"
+  const width = Math.max(16, promptPreviewWidth(state) - hint.length - 12)
+  const lines = promptPreviewLines(preview.text, width, 1)
+  const leftLabel = preview.role === "assistant" ? "Live reply" : preview.role === "user" ? "Draft" : ""
   return Box(
     { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: `Session: ${statusLabel}`, padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
     Box(
-      { width: "100%", minHeight: 1, maxHeight: 1, flexDirection: "column", paddingX: 1, backgroundColor: COLORS.panelSoft, gap: 0 },
-      ...lines.map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line || " ")))),
-    ),
-    Box(
-      { width: "100%", flexDirection: "row", justifyContent: "space-between" },
-      Text({ content: preview.role === "assistant" ? "Live reply" : preview.role === "user" ? "Latest prompt" : "", fg: COLORS.muted }),
-      Text({ content: hint, fg: COLORS.border }),
+      { width: "100%", height: "100%", paddingX: 1, backgroundColor: COLORS.panelSoft, flexDirection: "column", gap: 1 },
+      Box(
+        { width: "100%", flexDirection: "column", gap: 0 },
+        ...(leftLabel ? [Text({ content: leftLabel, fg: COLORS.muted })] : []),
+        ...lines.map((line) => Text({}, ...textNodesForChunks(promptPreviewChunks(line || " ")))),
+      ),
+      Box(
+        { width: "100%", flexGrow: 1, flexDirection: "row", justifyContent: "flex-end", alignItems: "flex-end" },
+        Text({ content: hint, fg: COLORS.border }),
+      ),
     ),
   )
 }
