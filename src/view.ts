@@ -479,6 +479,26 @@ function rightAlignedLeft(containerWidth: number, paneWidth: number): number {
   return containerWidth - paneWidth + 1
 }
 
+function interpolateValue(from: number, to: number, progress: number): number {
+  return Math.round(from + (to - from) * progress)
+}
+
+function interpolateVerticalStack(topFrom: PaneRect, bottomFrom: PaneRect, topTo: PaneRect, bottomTo: PaneRect, progress: number, gap: number): { topRect: PaneRect; bottomRect: PaneRect } {
+  const topLeft = interpolateValue(topFrom.left, topTo.left, progress)
+  const topWidth = interpolateValue(topFrom.width, topTo.width, progress)
+  const bottomLeft = interpolateValue(bottomFrom.left, bottomTo.left, progress)
+  const bottomWidth = interpolateValue(bottomFrom.width, bottomTo.width, progress)
+  const columnTop = interpolateValue(topFrom.top, topTo.top, progress)
+  const columnBottom = interpolateValue(bottomFrom.top + bottomFrom.height, bottomTo.top + bottomTo.height, progress)
+  const topHeight = Math.max(3, interpolateValue(topFrom.height, topTo.height, progress))
+  const bottomTop = columnTop + topHeight + gap
+  const bottomHeight = Math.max(3, columnBottom - bottomTop)
+  return {
+    topRect: { left: topLeft, top: columnTop, width: topWidth, height: topHeight },
+    bottomRect: { left: bottomLeft, top: bottomTop, width: bottomWidth, height: bottomHeight },
+  }
+}
+
 function interpolateBottomAnchoredRect(from: PaneRect, to: PaneRect, progress: number): PaneRect {
   const left = Math.round(from.left + (to.left - from.left) * progress)
   const width = Math.max(8, Math.round(from.width + (to.width - from.width) * progress))
@@ -561,8 +581,9 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
   }
   const sessionRect = interpolateBottomRightAnchoredRect(fromWorkspace.session, sessionMiniTarget, progress)
   const contextExitTarget: PaneRect = { left: 0, top: 0, width: 8, height: 3 }
-  const contextRect = interpolateRect(fromWorkspace.context, contextExitTarget, progress)
-  const conceptRect = interpolateBottomAnchoredRect(fromWorkspace.conceptPreview, toWorkspace.concepts, progress)
+  const leftStack = interpolateVerticalStack(fromWorkspace.context, fromWorkspace.conceptPreview, contextExitTarget, toWorkspace.concepts, progress, 1)
+  const contextRect = leftStack.topRect
+  const conceptRect = leftStack.bottomRect
   const detailsEnterStart: PaneRect = { left: rightAlignedLeft(fromWorkspace.frameWidth, 8), top: 0, width: 8, height: 3 }
   const detailsPinnedTarget: PaneRect = {
     left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.details.width),
@@ -570,7 +591,9 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
     width: toWorkspace.details.width,
     height: toWorkspace.details.height,
   }
-  const detailsRect = interpolateTopRightAnchoredRect(detailsEnterStart, detailsPinnedTarget, progress)
+  const rightStack = interpolateVerticalStack(detailsEnterStart, fromWorkspace.session, detailsPinnedTarget, sessionMiniTarget, progress, 1)
+  const detailsRect = rightStack.topRect
+  const sessionRectWithSharedGap = rightStack.bottomRect
   if (!transition.loggedFirstFrame) {
     transition.loggedFirstFrame = true
     const sessionFromRight = fromWorkspace.session.left + fromWorkspace.session.width
@@ -600,26 +623,26 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
         animatedOuter: {
           left: fromWorkspace.frameLeft + sessionRect.left,
           top: fromWorkspace.frameTop + sessionRect.top,
-          width: sessionRect.width,
-          height: sessionRect.height,
+          width: sessionRectWithSharedGap.width,
+          height: sessionRectWithSharedGap.height,
         },
         from: fromWorkspace.session,
         target: sessionMiniTarget,
-        current: sessionRect,
+        current: sessionRectWithSharedGap,
         rightEdges: {
           from: sessionFromRight,
           target: sessionTargetRight,
-          current: sessionCurrentRight,
+          current: sessionRectWithSharedGap.left + sessionRectWithSharedGap.width,
           liveOuter: fromWorkspace.frameLeft + fromWorkspace.session.left + fromWorkspace.session.width,
-          animatedOuter: fromWorkspace.frameLeft + sessionRect.left + sessionRect.width,
+          animatedOuter: fromWorkspace.frameLeft + sessionRectWithSharedGap.left + sessionRectWithSharedGap.width,
         },
         distanceToFrameRight: {
           liveOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + fromWorkspace.session.left + fromWorkspace.session.width),
-          animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + sessionRect.left + sessionRect.width),
+          animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + sessionRectWithSharedGap.left + sessionRectWithSharedGap.width),
         },
         distanceToCanvasRight: {
           liveOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + fromWorkspace.session.left + fromWorkspace.session.width),
-          animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + sessionRect.left + sessionRect.width),
+          animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + sessionRectWithSharedGap.left + sessionRectWithSharedGap.width),
         },
       },
       details: {
@@ -660,7 +683,7 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
     Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
     Box(
       { position: "absolute", top: fromWorkspace.frameTop, left: fromWorkspace.frameLeft, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
-      renderAnimatedPane(sessionRect, fromWorkspace.sessionNode, COLORS.borderActive, "Session"),
+      renderAnimatedPane(sessionRectWithSharedGap, fromWorkspace.sessionNode, COLORS.borderActive, "Session"),
       renderAnimatedPane(contextRect, fromWorkspace.contextNode, COLORS.border, progress > 0.7 ? undefined : "Context"),
       renderAnimatedPane(conceptRect, toWorkspace.conceptsNode, transition.to === "concepts" ? COLORS.borderActive : COLORS.border, progress > 0.35 ? "Concepts" : undefined),
       renderAnimatedPane(detailsRect, toWorkspace.detailsNode, COLORS.border, progress > 0.45 ? "Details" : undefined),
