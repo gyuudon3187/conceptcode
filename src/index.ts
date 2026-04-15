@@ -1,4 +1,4 @@
-import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawn } from "node:child_process"
@@ -15,20 +15,8 @@ import { repaint, renderPromptThreadContent, replaceChildren, scrollListForCurso
 
 const FILE_REFERENCE_TOKEN = /&[^\s&]+/g
 const CONCEPT_REFERENCE_TOKEN = /@[a-zA-Z0-9_.-]+/g
-const DEBUG_WORKSPACE_TRANSITION = true
-const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")
-
 type PromptReferenceToken = { token: string; start: number; end: number }
 type ActivePromptSuggestion = { prefix: "@" | "&"; query: string; start: number; end: number; suggestions: string[] }
-
-async function appendWorkspaceDebugLog(event: string, payload: Record<string, unknown>): Promise<void> {
-  if (!DEBUG_WORKSPACE_TRANSITION) return
-  const line = `${JSON.stringify({ ts: new Date().toISOString(), event, ...payload })}\n`
-  try {
-    await appendFile(WORKSPACE_DEBUG_LOG_PATH, line, "utf8")
-  } catch {
-  }
-}
 
 function parseArgs(argv: string[]): { conceptsPath: string; optionsPath?: string } {
   let conceptsPath: string | null = null
@@ -1024,31 +1012,13 @@ async function main(): Promise<void> {
       to: nextFocus ? "concepts" : "session",
       progress: 0,
       startedAt: Date.now(),
-      loggedFirstFrame: false,
     }
-    void appendWorkspaceDebugLog("transition_start", {
-      from: state.workspaceTransition.from,
-      to: state.workspaceTransition.to,
-      viewportWidth: process.stdout.columns || 120,
-      viewportHeight: process.stdout.rows || 36,
-      promptPaneRatio: state.promptPaneRatio,
-      promptPaneTargetRatio: state.promptPaneTargetRatio,
-      layoutMode: state.layoutMode,
-    })
     const step = () => {
       const transition = state.workspaceTransition
       if (!transition) return
       const elapsed = Date.now() - transition.startedAt
       transition.progress = Math.min(1, elapsed / WORKSPACE_TRANSITION_DURATION_MS)
       if (transition.progress >= 1) {
-        void appendWorkspaceDebugLog("transition_end", {
-          from: transition.from,
-          to: transition.to,
-          progress: transition.progress,
-          elapsed,
-          viewportWidth: process.stdout.columns || 120,
-          viewportHeight: process.stdout.rows || 36,
-        })
         finishWorkspaceTransition(nextFocus)
         return
       }

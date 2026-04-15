@@ -1,6 +1,3 @@
-import { appendFile } from "node:fs/promises"
-import { join } from "node:path"
-
 import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, TextNodeRenderable, type TextChunk } from "@opentui/core"
 
 import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview, type PreviewLegendItem } from "./snippet"
@@ -28,18 +25,6 @@ export const COLORS = {
   selectedFg: "#101418",
   selectedBg: "#f2cc8f",
 } as const
-
-const DEBUG_WORKSPACE_TRANSITION = true
-const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")
-
-async function appendWorkspaceDebugLog(event: string, payload: Record<string, unknown>): Promise<void> {
-  if (!DEBUG_WORKSPACE_TRANSITION) return
-  const line = `${JSON.stringify({ ts: new Date().toISOString(), event, ...payload })}\n`
-  try {
-    await appendFile(WORKSPACE_DEBUG_LOG_PATH, line, "utf8")
-  } catch {
-  }
-}
 
 function maxVisibleAliasSuggestions(): number {
   const viewportHeight = process.stdout.rows || 24
@@ -457,43 +442,6 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
   const conceptRect = interpolateBottomAnchoredRect(fromWorkspace.conceptPreview, toWorkspace.concepts, progress)
   const detailsEnterStart: PaneRect = { left: fromWorkspace.frameWidth - 8, top: 0, width: 8, height: 3 }
   const detailsRect = interpolateRect(detailsEnterStart, toWorkspace.details, progress)
-  if (!transition.loggedFirstFrame) {
-    transition.loggedFirstFrame = true
-    void appendWorkspaceDebugLog("transition_first_frame", {
-      from: transition.from,
-      to: transition.to,
-      progress,
-      viewportWidth: process.stdout.columns || 120,
-      viewportHeight: process.stdout.rows || 36,
-      fromWorkspace: {
-        frameWidth: fromWorkspace.frameWidth,
-        frameHeight: fromWorkspace.frameHeight,
-        session: fromWorkspace.session,
-        context: fromWorkspace.context,
-        conceptPreview: fromWorkspace.conceptPreview,
-        details: fromWorkspace.details,
-        concepts: fromWorkspace.concepts,
-      },
-      toWorkspace: {
-        frameWidth: toWorkspace.frameWidth,
-        frameHeight: toWorkspace.frameHeight,
-        session: toWorkspace.session,
-        context: toWorkspace.context,
-        conceptPreview: toWorkspace.conceptPreview,
-        details: toWorkspace.details,
-        concepts: toWorkspace.concepts,
-      },
-      overlayContainer: { top: 1, left: 1, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
-      interpolated: {
-        sessionRect,
-        contextRect,
-        conceptRect,
-        detailsRect,
-        contextExitTarget,
-        detailsEnterStart,
-      },
-    })
-  }
   return [
     Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
     Box(
