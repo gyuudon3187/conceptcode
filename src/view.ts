@@ -1,10 +1,13 @@
+import { appendFile } from "node:fs/promises"
+import { join } from "node:path"
+
 import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, TextNodeRenderable, type TextChunk } from "@opentui/core"
 
 import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview, type PreviewLegendItem } from "./snippet"
 import { visibleAliasSuggestions } from "./index"
 import { activeSession } from "./session"
 import { currentNode, currentPath, visiblePaths } from "./state"
-import type { AppState, ChatSession, CreateConceptModalState, ListLine } from "./types"
+import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "./types"
 
 export const COLORS = {
   bg: "#111417",
@@ -25,6 +28,18 @@ export const COLORS = {
   selectedFg: "#101418",
   selectedBg: "#f2cc8f",
 } as const
+
+const DEBUG_WORKSPACE_TRANSITION = true
+const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")
+
+async function appendWorkspaceDebugLog(event: string, payload: Record<string, unknown>): Promise<void> {
+  if (!DEBUG_WORKSPACE_TRANSITION) return
+  const line = `${JSON.stringify({ ts: new Date().toISOString(), event, ...payload })}\n`
+  try {
+    await appendFile(WORKSPACE_DEBUG_LOG_PATH, line, "utf8")
+  } catch {
+  }
+}
 
 function maxVisibleAliasSuggestions(): number {
   const viewportHeight = process.stdout.rows || 24
@@ -346,6 +361,151 @@ function renderConceptsPaneContent(state: AppState, listScroll: ScrollBoxRendera
   return state.conceptNavigationFocused ? listScroll : renderPromptBudgetPane(state)
 }
 
+type PaneRect = { left: number; top: number; width: number; height: number }
+
+type WorkspaceRects = {
+  session: PaneRect
+  context: PaneRect
+  conceptPreview: PaneRect
+  details: PaneRect
+  concepts: PaneRect
+  frameWidth: number
+  frameHeight: number
+}
+
+function workspaceRects(state: AppState): WorkspaceRects | null {
+  if (state.layoutMode !== "wide") return null
+  const viewportWidth = process.stdout.columns || 120
+  const viewportHeight = process.stdout.rows || 36
+  const rootPadding = 1
+  const rowGap = 1
+  const frameInnerWidth = Math.max(40, viewportWidth - 4)
+  const frameHeight = Math.max(12, viewportHeight - (rootPadding * 2))
+  const promptPaneWidth = Math.max(28, Math.floor((frameInnerWidth - 1) * state.promptPaneRatio))
+  const sidebarWidth = Math.max(24, frameInnerWidth - 1 - promptPaneWidth)
+  const contentTop = 0
+  const contentHeight = Math.max(8, frameHeight)
+  const supportHeight = 22
+  const previewHeight = Math.max(5, contentHeight - supportHeight - 1)
+  const left = 0
+  const rightColumnLeft = left + sidebarWidth + 1
+  return {
+    frameWidth: frameInnerWidth,
+    frameHeight,
+    session: { left: rightColumnLeft, top: contentTop, width: promptPaneWidth, height: contentHeight },
+    context: { left, top: contentTop, width: sidebarWidth, height: supportHeight },
+    conceptPreview: { left, top: contentTop + supportHeight + rowGap, width: sidebarWidth, height: previewHeight },
+    details: { left: rightColumnLeft, top: contentTop, width: sidebarWidth, height: supportHeight },
+    concepts: { left, top: contentTop, width: promptPaneWidth, height: contentHeight },
+  }
+}
+
+function interpolateRect(from: PaneRect, to: PaneRect, progress: number): PaneRect {
+  return {
+    left: Math.round(from.left + (to.left - from.left) * progress),
+    top: Math.round(from.top + (to.top - from.top) * progress),
+    width: Math.max(8, Math.round(from.width + (to.width - from.width) * progress)),
+    height: Math.max(3, Math.round(from.height + (to.height - from.height) * progress)),
+  }
+}
+
+function interpolateBottomAnchoredRect(from: PaneRect, to: PaneRect, progress: number): PaneRect {
+  const left = Math.round(from.left + (to.left - from.left) * progress)
+  const width = Math.max(8, Math.round(from.width + (to.width - from.width) * progress))
+  const height = Math.max(3, Math.round(from.height + (to.height - from.height) * progress))
+  const fromBottom = from.top + from.height
+  const toBottom = to.top + to.height
+  const bottom = Math.round(fromBottom + (toBottom - fromBottom) * progress)
+  return {
+    left,
+    top: bottom - height,
+    width,
+    height,
+  }
+}
+
+function renderAnimatedPane(rect: PaneRect, child: Renderable | VNode<any, any[]>, borderColor: string, title?: string): Renderable | VNode<any, any[]> {
+  return Box(
+    { position: "absolute", left: rect.left, top: rect.top, width: rect.width, height: rect.height, borderStyle: "rounded", borderColor, title, padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" },
+    child,
+  )
+}
+
+function renderTransitionPaneContent(state: AppState, focus: WorkspaceFocus, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): WorkspaceRects & { sessionNode: Renderable | VNode<any, any[]>; contextNode: Renderable | VNode<any, any[]>; conceptPreviewNode: Renderable | VNode<any, any[]>; detailsNode: Renderable | VNode<any, any[]>; conceptsNode: Renderable | VNode<any, any[]> } | null {
+  const rects = workspaceRects(state)
+  if (!rects) return null
+  return {
+    ...rects,
+    sessionNode: renderPromptPane(state, focus === "session" ? promptScroll : null),
+    contextNode: renderPromptBudgetPane(state),
+    conceptPreviewNode: renderConceptPreviewPane(state),
+    detailsNode: renderDetailsPane(state),
+    conceptsNode: focus === "concepts" ? Box({ width: "100%", height: "100%" }, listScroll) : Box({ width: "100%", height: "100%" }, mainScroll),
+  }
+}
+
+function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): Array<Renderable | VNode<any, any[]>> {
+  const transition = state.workspaceTransition
+  if (!transition) return []
+  const fromWorkspace = renderTransitionPaneContent(state, transition.from, listScroll, mainScroll, promptScroll)
+  const toWorkspace = renderTransitionPaneContent(state, transition.to, listScroll, mainScroll, promptScroll)
+  if (!fromWorkspace || !toWorkspace) return []
+  const progress = transition.progress
+  const sessionRect = interpolateBottomAnchoredRect(fromWorkspace.session, toWorkspace.conceptPreview, progress)
+  const contextExitTarget: PaneRect = { left: 0, top: 0, width: 8, height: 3 }
+  const contextRect = interpolateRect(fromWorkspace.context, contextExitTarget, progress)
+  const conceptRect = interpolateBottomAnchoredRect(fromWorkspace.conceptPreview, toWorkspace.concepts, progress)
+  const detailsEnterStart: PaneRect = { left: fromWorkspace.frameWidth - 8, top: 0, width: 8, height: 3 }
+  const detailsRect = interpolateRect(detailsEnterStart, toWorkspace.details, progress)
+  if (!transition.loggedFirstFrame) {
+    transition.loggedFirstFrame = true
+    void appendWorkspaceDebugLog("transition_first_frame", {
+      from: transition.from,
+      to: transition.to,
+      progress,
+      viewportWidth: process.stdout.columns || 120,
+      viewportHeight: process.stdout.rows || 36,
+      fromWorkspace: {
+        frameWidth: fromWorkspace.frameWidth,
+        frameHeight: fromWorkspace.frameHeight,
+        session: fromWorkspace.session,
+        context: fromWorkspace.context,
+        conceptPreview: fromWorkspace.conceptPreview,
+        details: fromWorkspace.details,
+        concepts: fromWorkspace.concepts,
+      },
+      toWorkspace: {
+        frameWidth: toWorkspace.frameWidth,
+        frameHeight: toWorkspace.frameHeight,
+        session: toWorkspace.session,
+        context: toWorkspace.context,
+        conceptPreview: toWorkspace.conceptPreview,
+        details: toWorkspace.details,
+        concepts: toWorkspace.concepts,
+      },
+      overlayContainer: { top: 1, left: 1, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+      interpolated: {
+        sessionRect,
+        contextRect,
+        conceptRect,
+        detailsRect,
+        contextExitTarget,
+        detailsEnterStart,
+      },
+    })
+  }
+  return [
+    Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
+    Box(
+      { position: "absolute", top: 1, left: 1, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+      renderAnimatedPane(sessionRect, fromWorkspace.sessionNode, COLORS.borderActive, "Session"),
+      renderAnimatedPane(contextRect, fromWorkspace.contextNode, COLORS.border, progress > 0.7 ? undefined : "Context"),
+      renderAnimatedPane(conceptRect, toWorkspace.conceptsNode, transition.to === "concepts" ? COLORS.borderActive : COLORS.border, progress > 0.35 ? "Concepts" : undefined),
+      renderAnimatedPane(detailsRect, progress < 0.55 ? Box({ width: "100%", height: "100%", backgroundColor: COLORS.panelSoft }) : toWorkspace.detailsNode, COLORS.border, progress > 0.45 ? "Details" : undefined),
+    ),
+  ]
+}
+
 function renderTaskPane(state: AppState, promptScroll: ScrollBoxRenderable | null): Renderable | VNode<any, any[]> {
   const viewportWidth = process.stdout.columns || 120
   const frameInnerWidth = Math.max(40, viewportWidth - 4)
@@ -457,6 +617,7 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   overlays.push(...renderSessionModal(state))
   overlays.push(...renderConfirmModal(state))
   overlays.push(...renderInspectorOverlay(state, mainScroll))
+  overlays.push(...renderWorkspaceTransitionOverlay(state, listScroll, mainScroll, promptScroll))
 
   return Box(
     { width: "100%", height: "100%", flexDirection: "column", backgroundColor: COLORS.bg, padding: 1, gap: 1 },

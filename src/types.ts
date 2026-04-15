@@ -159,6 +159,16 @@ export type SessionModalState = {
   selectedIndex: number
 }
 
+export type WorkspaceFocus = "session" | "concepts"
+
+export type WorkspaceTransitionState = {
+  from: WorkspaceFocus
+  to: WorkspaceFocus
+  progress: number
+  startedAt: number
+  loggedFirstFrame?: boolean
+}
+
 export type AppState = {
   jsonPath: string
   graphPayload: GraphPayload
@@ -198,4 +208,6 @@ export type AppState = {
   activeAssistantMessageId: string | null
   lastPromptAutoScrollTop: number | null
   activeAssistantNewlineCount: number
+  workspaceTransition: WorkspaceTransitionState | null
+  workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
 }

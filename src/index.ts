@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawn } from "node:child_process"
@@ -15,9 +15,20 @@ import { repaint, renderPromptThreadContent, replaceChildren, scrollListForCurso
 
 const FILE_REFERENCE_TOKEN = /&[^\s&]+/g
 const CONCEPT_REFERENCE_TOKEN = /@[a-zA-Z0-9_.-]+/g
+const DEBUG_WORKSPACE_TRANSITION = true
+const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")
 
 type PromptReferenceToken = { token: string; start: number; end: number }
 type ActivePromptSuggestion = { prefix: "@" | "&"; query: string; start: number; end: number; suggestions: string[] }
+
+async function appendWorkspaceDebugLog(event: string, payload: Record<string, unknown>): Promise<void> {
+  if (!DEBUG_WORKSPACE_TRANSITION) return
+  const line = `${JSON.stringify({ ts: new Date().toISOString(), event, ...payload })}\n`
+  try {
+    await appendFile(WORKSPACE_DEBUG_LOG_PATH, line, "utf8")
+  } catch {
+  }
+}
 
 function parseArgs(argv: string[]): { conceptsPath: string; optionsPath?: string } {
   let conceptsPath: string | null = null
@@ -715,31 +726,6 @@ function cyclePromptMode(state: AppState, redraw: () => void): void {
   refreshPromptTokenBreakdown(state, redraw)
 }
 
-function togglePaneFocus(state: AppState, renderer: CliRenderer, redraw: () => void): void {
-  if (state.editorModal?.target.kind === "prompt") {
-    applyEditorText(state, state.editorModal)
-    state.editorModal.renderable.blur()
-    state.conceptNavigationFocused = true
-    state.promptPaneMode = "collapsed"
-    state.editorModal = null
-    refreshPromptPaneTarget()
-    redraw()
-    return
-  }
-  openPromptEditor(state, renderer, redraw)
-}
-
-function focusPromptPane(state: AppState, renderer: CliRenderer, redraw: () => void): void {
-  if (state.editorModal?.target.kind === "prompt") {
-    state.conceptNavigationFocused = false
-    state.promptPaneMode = "expanded"
-    refreshPromptPaneTarget()
-    redraw()
-    return
-  }
-  openPromptEditor(state, renderer, redraw)
-}
-
   function openEditor(state: AppState, renderer: CliRenderer, redraw: () => void, target: EditorModalState["target"], initialText: string, promptDraftIndex?: number): void {
   const visibleLineCount = editorVisibleLineCount(initialText)
   const renderable = new TextareaRenderable(renderer, {
@@ -892,6 +878,8 @@ async function main(): Promise<void> {
   const EXPANDED_PROMPT_RATIO = 0.58
   const PROMPT_ANIMATION_EPSILON = 0.015
   const PROMPT_ANIMATION_STEP_MS = 16
+  const WORKSPACE_TRANSITION_STEP_MS = 16
+  const WORKSPACE_TRANSITION_DURATION_MS = 5000
   const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
   const { graphPayload, nodes, kindDefinitions } = loadConceptGraph(conceptsPath, optionsPath)
   const dummyChatServer = await startDummyChatServer()
@@ -945,6 +933,8 @@ async function main(): Promise<void> {
     activeAssistantMessageId: null,
     lastPromptAutoScrollTop: null,
     activeAssistantNewlineCount: 0,
+    workspaceTransition: null,
+    workspaceTransitionTimeout: null,
   }
   state.uiMode = activeSession(state).lastMode
 
@@ -1007,6 +997,68 @@ async function main(): Promise<void> {
     }
   }
 
+  function stopWorkspaceTransition(): void {
+    if (state.workspaceTransitionTimeout) {
+      clearTimeout(state.workspaceTransitionTimeout)
+      state.workspaceTransitionTimeout = null
+    }
+  }
+
+  function finishWorkspaceTransition(nextFocus: boolean): void {
+    stopWorkspaceTransition()
+    state.workspaceTransition = null
+    state.conceptNavigationFocused = nextFocus
+    state.promptPaneMode = nextFocus ? "collapsed" : "expanded"
+    refreshPromptPaneTarget()
+    draw()
+  }
+
+  function startWorkspaceTransition(nextFocus: boolean): void {
+    if (state.layoutMode !== "wide") {
+      finishWorkspaceTransition(nextFocus)
+      return
+    }
+    stopWorkspaceTransition()
+    state.workspaceTransition = {
+      from: state.conceptNavigationFocused ? "concepts" : "session",
+      to: nextFocus ? "concepts" : "session",
+      progress: 0,
+      startedAt: Date.now(),
+      loggedFirstFrame: false,
+    }
+    void appendWorkspaceDebugLog("transition_start", {
+      from: state.workspaceTransition.from,
+      to: state.workspaceTransition.to,
+      viewportWidth: process.stdout.columns || 120,
+      viewportHeight: process.stdout.rows || 36,
+      promptPaneRatio: state.promptPaneRatio,
+      promptPaneTargetRatio: state.promptPaneTargetRatio,
+      layoutMode: state.layoutMode,
+    })
+    const step = () => {
+      const transition = state.workspaceTransition
+      if (!transition) return
+      const elapsed = Date.now() - transition.startedAt
+      transition.progress = Math.min(1, elapsed / WORKSPACE_TRANSITION_DURATION_MS)
+      if (transition.progress >= 1) {
+        void appendWorkspaceDebugLog("transition_end", {
+          from: transition.from,
+          to: transition.to,
+          progress: transition.progress,
+          elapsed,
+          viewportWidth: process.stdout.columns || 120,
+          viewportHeight: process.stdout.rows || 36,
+        })
+        finishWorkspaceTransition(nextFocus)
+        return
+      }
+      draw()
+      state.workspaceTransitionTimeout = setTimeout(step, WORKSPACE_TRANSITION_STEP_MS)
+    }
+    draw()
+    state.workspaceTransitionTimeout = setTimeout(step, WORKSPACE_TRANSITION_STEP_MS)
+  }
+
   function animatePromptPane(): void {
     stopPromptPaneAnimation()
     if (state.layoutMode !== "wide") {
@@ -1051,6 +1103,27 @@ async function main(): Promise<void> {
     }
     state.promptPaneTargetRatio = nextTarget
     animatePromptPane()
+  }
+
+  function togglePaneFocus(state: AppState, renderer: CliRenderer, redraw: () => void): void {
+    if (state.workspaceTransition) return
+    if (state.editorModal?.target.kind === "prompt") {
+      applyEditorText(state, state.editorModal)
+      state.editorModal.renderable.blur()
+      state.editorModal = null
+      startWorkspaceTransition(true)
+      return
+    }
+    openPromptEditor(state, renderer, redraw)
+  }
+
+  function focusPromptPane(state: AppState, renderer: CliRenderer, redraw: () => void): void {
+    if (state.workspaceTransition) return
+    if (state.editorModal?.target.kind === "prompt") {
+      startWorkspaceTransition(false)
+      return
+    }
+    openPromptEditor(state, renderer, redraw)
   }
 
   function updateCreateDraftText(key: KeyEvent): boolean {
@@ -1403,8 +1476,9 @@ async function main(): Promise<void> {
           applyEditorText(state, state.editorModal)
           state.editorModal.renderable.blur()
           if (state.editorModal.target.kind === "prompt") {
-            state.conceptNavigationFocused = true
-            state.promptPaneMode = "collapsed"
+            state.editorModal = null
+            startWorkspaceTransition(true)
+            return
           }
           state.editorModal = null
           refreshPromptPaneTarget()
