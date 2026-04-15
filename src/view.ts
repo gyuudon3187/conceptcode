@@ -409,6 +409,23 @@ function interpolateBottomAnchoredRect(from: PaneRect, to: PaneRect, progress: n
   }
 }
 
+function interpolateBottomRightAnchoredRect(from: PaneRect, to: PaneRect, progress: number): PaneRect {
+  const width = Math.max(8, Math.round(from.width + (to.width - from.width) * progress))
+  const height = Math.max(3, Math.round(from.height + (to.height - from.height) * progress))
+  const fromRight = from.left + from.width
+  const toRight = to.left + to.width
+  const right = Math.round(fromRight + (toRight - fromRight) * progress)
+  const fromBottom = from.top + from.height
+  const toBottom = to.top + to.height
+  const bottom = Math.round(fromBottom + (toBottom - fromBottom) * progress)
+  return {
+    left: right - width,
+    top: bottom - height,
+    width,
+    height,
+  }
+}
+
 function renderAnimatedPane(rect: PaneRect, child: Renderable | VNode<any, any[]>, borderColor: string, title?: string): Renderable | VNode<any, any[]> {
   return Box(
     { position: "absolute", left: rect.left, top: rect.top, width: rect.width, height: rect.height, borderStyle: "rounded", borderColor, title, padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" },
@@ -436,7 +453,13 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
   const toWorkspace = renderTransitionPaneContent(state, transition.to, listScroll, mainScroll, promptScroll)
   if (!fromWorkspace || !toWorkspace) return []
   const progress = transition.progress
-  const sessionRect = interpolateBottomAnchoredRect(fromWorkspace.session, toWorkspace.conceptPreview, progress)
+  const sessionMiniTarget: PaneRect = {
+    left: fromWorkspace.session.left + fromWorkspace.session.width - toWorkspace.conceptPreview.width,
+    top: fromWorkspace.session.top + fromWorkspace.session.height - toWorkspace.conceptPreview.height,
+    width: toWorkspace.conceptPreview.width,
+    height: toWorkspace.conceptPreview.height,
+  }
+  const sessionRect = interpolateBottomRightAnchoredRect(fromWorkspace.session, sessionMiniTarget, progress)
   const contextExitTarget: PaneRect = { left: 0, top: 0, width: 8, height: 3 }
   const contextRect = interpolateRect(fromWorkspace.context, contextExitTarget, progress)
   const conceptRect = interpolateBottomAnchoredRect(fromWorkspace.conceptPreview, toWorkspace.concepts, progress)
