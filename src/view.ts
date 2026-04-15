@@ -492,6 +492,16 @@ function revealAfter(progress: number, delayFraction: number): boolean {
   return progress > delayFraction
 }
 
+function acceleratedProgress(progress: number, factor: number): number {
+  return Math.min(1, progress * factor)
+}
+
+function blendProgress(progress: number, start: number, end: number): number {
+  if (progress <= start) return 0
+  if (progress >= end) return 1
+  return (progress - start) / (end - start)
+}
+
 function interpolateVerticalStack(topFrom: PaneRect, bottomFrom: PaneRect, topTo: PaneRect, bottomTo: PaneRect, progress: number, gap: number): { topRect: PaneRect; bottomRect: PaneRect } {
   const topLeft = interpolateValue(topFrom.left, topTo.left, progress)
   const topWidth = interpolateValue(topFrom.width, topTo.width, progress)
@@ -589,9 +599,25 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
     height: toWorkspace.conceptPreview.height,
   }
   const contextExitTarget: PaneRect = { left: 0, top: 0, width: 8, height: 3 }
-  const leftStack = interpolateVerticalStack(fromWorkspace.context, fromWorkspace.conceptPreview, contextExitTarget, toWorkspace.concepts, progress, 1)
+  const leftStackProgress = acceleratedProgress(progress, 1.22)
+  const leftStack = interpolateVerticalStack(fromWorkspace.context, fromWorkspace.conceptPreview, contextExitTarget, toWorkspace.concepts, leftStackProgress, 1)
   const contextRect = leftStack.topRect
   const conceptRect = leftStack.bottomRect
+  const contextVisibleProgress = blendProgress(leftStackProgress, 0.78, 0.92)
+  const showContextPane = contextVisibleProgress < 1
+  const conceptSoloBlend = blendProgress(leftStackProgress, 0.72, 0.9)
+  const conceptSoloTop = interpolateValue(fromWorkspace.conceptPreview.top, toWorkspace.concepts.top, leftStackProgress)
+  const conceptBottom = interpolateValue(fromWorkspace.conceptPreview.top + fromWorkspace.conceptPreview.height, toWorkspace.concepts.top + toWorkspace.concepts.height, leftStackProgress)
+  const maxConceptTopWhileContextVisible = contextRect.top + contextRect.height + 1
+  const blendedConceptTop = interpolateValue(conceptRect.top, conceptSoloTop, conceptSoloBlend)
+  const clampedConceptTop = Math.max(blendedConceptTop, maxConceptTopWhileContextVisible)
+  const finalConceptTop = interpolateValue(clampedConceptTop, conceptSoloTop, contextVisibleProgress)
+  const conceptRectWithSoloGrowth: PaneRect = {
+    left: conceptRect.left,
+    top: finalConceptTop,
+    width: conceptRect.width,
+    height: Math.max(3, conceptBottom - finalConceptTop),
+  }
   const detailsEnterStart: PaneRect = { left: rightAlignedLeft(fromWorkspace.frameWidth, 8), top: 0, width: 8, height: 3 }
   const detailsPinnedTarget: PaneRect = {
     left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.details.width),
@@ -599,10 +625,11 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
     width: toWorkspace.details.width,
     height: toWorkspace.details.height,
   }
-  const detailsDelay = 0.14
-  const detailsProgress = delayedProgress(progress, detailsDelay)
-  const showDetailsPane = revealAfter(progress, detailsDelay)
-  const sessionRect = interpolateBottomRightAnchoredRect(fromWorkspace.session, sessionMiniTarget, progress)
+  const rightStackProgress = acceleratedProgress(progress, 1.22)
+  const detailsDelay = 0.115
+  const detailsProgress = delayedProgress(rightStackProgress, detailsDelay)
+  const showDetailsPane = revealAfter(rightStackProgress, detailsDelay)
+  const sessionRect = interpolateBottomRightAnchoredRect(fromWorkspace.session, sessionMiniTarget, rightStackProgress)
   const detailsHeight = Math.max(3, interpolateValue(detailsEnterStart.height, detailsPinnedTarget.height, detailsProgress))
   const detailsWidth = interpolateValue(detailsEnterStart.width, detailsPinnedTarget.width, detailsProgress)
   const detailsLeft = interpolateValue(detailsEnterStart.left, detailsPinnedTarget.left, detailsProgress)
@@ -617,7 +644,7 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
         left: sessionRect.left,
         top: detailsRect.top + detailsRect.height + 1,
         width: sessionRect.width,
-        height: Math.max(3, (fromWorkspace.session.top + fromWorkspace.session.height) - (detailsRect.top + detailsRect.height + 1)),
+        height: Math.max(3, (fromWorkspace.frameHeight) - (detailsRect.top + detailsRect.height + 1)),
       }
     : sessionRect
   if (!transition.loggedFirstFrame) {
@@ -710,8 +737,8 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
     Box(
       { position: "absolute", top: fromWorkspace.frameTop, left: fromWorkspace.frameLeft, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
       renderAnimatedPane(sessionRectWithSharedGap, fromWorkspace.sessionNode, COLORS.borderActive, "Session"),
-      renderAnimatedPane(contextRect, fromWorkspace.contextNode, COLORS.border, progress > 0.7 ? undefined : "Context"),
-      renderAnimatedPane(conceptRect, toWorkspace.conceptsNode, transition.to === "concepts" ? COLORS.borderActive : COLORS.border, progress > 0.35 ? "Concepts" : undefined),
+      ...(showContextPane ? [renderAnimatedPane(contextRect, fromWorkspace.contextNode, COLORS.border, progress > 0.7 ? undefined : "Context")] : []),
+      renderAnimatedPane(conceptRectWithSoloGrowth, toWorkspace.conceptsNode, transition.to === "concepts" ? COLORS.borderActive : COLORS.border, progress > 0.35 ? "Concepts" : undefined),
       ...(showDetailsPane ? [renderAnimatedPane(detailsRect, toWorkspace.detailsNode, COLORS.border, progress > 0.45 ? "Details" : undefined)] : []),
     ),
   ]
