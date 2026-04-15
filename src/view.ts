@@ -483,6 +483,15 @@ function interpolateValue(from: number, to: number, progress: number): number {
   return Math.round(from + (to - from) * progress)
 }
 
+function delayedProgress(progress: number, delayFraction: number): number {
+  if (progress <= delayFraction) return 0
+  return Math.min(1, (progress - delayFraction) / (1 - delayFraction))
+}
+
+function revealAfter(progress: number, delayFraction: number): boolean {
+  return progress > delayFraction
+}
+
 function interpolateVerticalStack(topFrom: PaneRect, bottomFrom: PaneRect, topTo: PaneRect, bottomTo: PaneRect, progress: number, gap: number): { topRect: PaneRect; bottomRect: PaneRect } {
   const topLeft = interpolateValue(topFrom.left, topTo.left, progress)
   const topWidth = interpolateValue(topFrom.width, topTo.width, progress)
@@ -579,7 +588,6 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
     width: toWorkspace.conceptPreview.width,
     height: toWorkspace.conceptPreview.height,
   }
-  const sessionRect = interpolateBottomRightAnchoredRect(fromWorkspace.session, sessionMiniTarget, progress)
   const contextExitTarget: PaneRect = { left: 0, top: 0, width: 8, height: 3 }
   const leftStack = interpolateVerticalStack(fromWorkspace.context, fromWorkspace.conceptPreview, contextExitTarget, toWorkspace.concepts, progress, 1)
   const contextRect = leftStack.topRect
@@ -591,9 +599,27 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
     width: toWorkspace.details.width,
     height: toWorkspace.details.height,
   }
-  const rightStack = interpolateVerticalStack(detailsEnterStart, fromWorkspace.session, detailsPinnedTarget, sessionMiniTarget, progress, 1)
-  const detailsRect = rightStack.topRect
-  const sessionRectWithSharedGap = rightStack.bottomRect
+  const detailsDelay = 0.14
+  const detailsProgress = delayedProgress(progress, detailsDelay)
+  const showDetailsPane = revealAfter(progress, detailsDelay)
+  const sessionRect = interpolateBottomRightAnchoredRect(fromWorkspace.session, sessionMiniTarget, progress)
+  const detailsHeight = Math.max(3, interpolateValue(detailsEnterStart.height, detailsPinnedTarget.height, detailsProgress))
+  const detailsWidth = interpolateValue(detailsEnterStart.width, detailsPinnedTarget.width, detailsProgress)
+  const detailsLeft = interpolateValue(detailsEnterStart.left, detailsPinnedTarget.left, detailsProgress)
+  const detailsRect: PaneRect = {
+    left: detailsLeft,
+    top: detailsPinnedTarget.top,
+    width: detailsWidth,
+    height: detailsHeight,
+  }
+  const sessionRectWithSharedGap: PaneRect = showDetailsPane
+    ? {
+        left: sessionRect.left,
+        top: detailsRect.top + detailsRect.height + 1,
+        width: sessionRect.width,
+        height: Math.max(3, (fromWorkspace.session.top + fromWorkspace.session.height) - (detailsRect.top + detailsRect.height + 1)),
+      }
+    : sessionRect
   if (!transition.loggedFirstFrame) {
     transition.loggedFirstFrame = true
     const sessionFromRight = fromWorkspace.session.left + fromWorkspace.session.width
@@ -686,7 +712,7 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
       renderAnimatedPane(sessionRectWithSharedGap, fromWorkspace.sessionNode, COLORS.borderActive, "Session"),
       renderAnimatedPane(contextRect, fromWorkspace.contextNode, COLORS.border, progress > 0.7 ? undefined : "Context"),
       renderAnimatedPane(conceptRect, toWorkspace.conceptsNode, transition.to === "concepts" ? COLORS.borderActive : COLORS.border, progress > 0.35 ? "Concepts" : undefined),
-      renderAnimatedPane(detailsRect, toWorkspace.detailsNode, COLORS.border, progress > 0.45 ? "Details" : undefined),
+      ...(showDetailsPane ? [renderAnimatedPane(detailsRect, toWorkspace.detailsNode, COLORS.border, progress > 0.45 ? "Details" : undefined)] : []),
     ),
   ]
 }
