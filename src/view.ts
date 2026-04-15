@@ -230,6 +230,34 @@ function renderConceptPreviewPane(state: AppState): Renderable | VNode<any, any[
   )
 }
 
+function renderSessionTransitionBody(state: AppState): Renderable | VNode<any, any[]> {
+  const preview = latestConversationPreview(state)
+  const label = preview.role === "assistant" ? "Live reply" : preview.role === "user" ? "Draft" : "Session"
+  const line = promptPreviewLines(preview.text, Math.max(18, promptPreviewWidth(state) - 8), 1)[0] || "Session"
+  return Box(
+    { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
+    Box(
+      { width: "100%", flexDirection: "column", gap: 0 },
+      Text({ content: label, fg: COLORS.muted }),
+      Text({}, ...textNodesForChunks(promptPreviewChunks(line))),
+    ),
+  )
+}
+
+function renderDetailsTransitionBody(state: AppState): Renderable | VNode<any, any[]> {
+  const node = currentNode(state)
+  const body = truncateSingleLine(node.summary.trim() || "No summary for this concept yet.", 42)
+  return Box(
+    { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
+    Box(
+      { width: "100%", flexDirection: "row", justifyContent: "space-between" },
+      Text({ content: truncateSingleLine(node.title, 22), fg: COLORS.text, attributes: TextAttributes.BOLD }),
+      Text({ content: node.kind ?? "(no kind)", fg: COLORS.accentSoft }),
+    ),
+    Text({ content: body, fg: node.summary.trim() ? COLORS.text : COLORS.muted }),
+  )
+}
+
 function promptModePresentation(mode: AppState["uiMode"]): { label: string; color: string; tone: string } {
   if (mode === "plan") {
     return { label: "PLAN", color: COLORS.plan, tone: "Strategy mode" }
@@ -369,34 +397,72 @@ type WorkspaceRects = {
   conceptPreview: PaneRect
   details: PaneRect
   concepts: PaneRect
+  canvasLeft: number
+  canvasTop: number
+  canvasWidth: number
+  canvasHeight: number
+  frameLeft: number
+  frameTop: number
   frameWidth: number
   frameHeight: number
 }
 
-function workspaceRects(state: AppState): WorkspaceRects | null {
+type WideWorkspaceGeometry = {
+  frameLeft: number
+  frameTop: number
+  frameWidth: number
+  frameHeight: number
+  promptPaneWidth: number
+  sidebarWidth: number
+  supportHeight: number
+  previewHeight: number
+}
+
+function wideWorkspaceGeometry(state: AppState): WideWorkspaceGeometry | null {
   if (state.layoutMode !== "wide") return null
   const viewportWidth = process.stdout.columns || 120
   const viewportHeight = process.stdout.rows || 36
   const rootPadding = 1
-  const rowGap = 1
   const frameInnerWidth = Math.max(40, viewportWidth - 4)
   const frameHeight = Math.max(12, viewportHeight - (rootPadding * 2))
   const promptPaneWidth = Math.max(28, Math.floor((frameInnerWidth - 1) * state.promptPaneRatio))
   const sidebarWidth = Math.max(24, frameInnerWidth - 1 - promptPaneWidth)
-  const contentTop = 0
-  const contentHeight = Math.max(8, frameHeight)
   const supportHeight = 22
-  const previewHeight = Math.max(5, contentHeight - supportHeight - 1)
-  const left = 0
-  const rightColumnLeft = left + sidebarWidth + 1
+  const previewHeight = Math.max(5, frameHeight - supportHeight - 1)
   return {
+    frameLeft: rootPadding,
+    frameTop: rootPadding,
     frameWidth: frameInnerWidth,
     frameHeight,
-    session: { left: rightColumnLeft, top: contentTop, width: promptPaneWidth, height: contentHeight },
-    context: { left, top: contentTop, width: sidebarWidth, height: supportHeight },
-    conceptPreview: { left, top: contentTop + supportHeight + rowGap, width: sidebarWidth, height: previewHeight },
-    details: { left: rightColumnLeft, top: contentTop, width: sidebarWidth, height: supportHeight },
-    concepts: { left, top: contentTop, width: promptPaneWidth, height: contentHeight },
+    promptPaneWidth,
+    sidebarWidth,
+    supportHeight,
+    previewHeight,
+  }
+}
+
+function workspaceRects(state: AppState): WorkspaceRects | null {
+  const geometry = wideWorkspaceGeometry(state)
+  if (!geometry) return null
+  const rowGap = 1
+  const contentTop = 0
+  const contentHeight = Math.max(8, geometry.frameHeight)
+  const left = 0
+  const rightColumnLeft = rightAlignedLeft(geometry.frameWidth, geometry.promptPaneWidth)
+  return {
+    canvasLeft: 0,
+    canvasTop: 0,
+    canvasWidth: geometry.frameWidth,
+    canvasHeight: geometry.frameHeight,
+    frameLeft: geometry.frameLeft,
+    frameTop: geometry.frameTop,
+    frameWidth: geometry.frameWidth,
+    frameHeight: geometry.frameHeight,
+    session: { left: rightColumnLeft, top: contentTop, width: geometry.promptPaneWidth, height: contentHeight },
+    context: { left, top: contentTop, width: geometry.sidebarWidth, height: geometry.supportHeight },
+    conceptPreview: { left, top: contentTop + geometry.supportHeight + rowGap, width: geometry.sidebarWidth, height: geometry.previewHeight },
+    details: { left: rightColumnLeft, top: contentTop, width: geometry.sidebarWidth, height: geometry.supportHeight },
+    concepts: { left, top: contentTop, width: geometry.promptPaneWidth, height: contentHeight },
   }
 }
 
@@ -407,6 +473,10 @@ function interpolateRect(from: PaneRect, to: PaneRect, progress: number): PaneRe
     width: Math.max(8, Math.round(from.width + (to.width - from.width) * progress)),
     height: Math.max(3, Math.round(from.height + (to.height - from.height) * progress)),
   }
+}
+
+function rightAlignedLeft(containerWidth: number, paneWidth: number): number {
+  return containerWidth - paneWidth + 1
 }
 
 function interpolateBottomAnchoredRect(from: PaneRect, to: PaneRect, progress: number): PaneRect {
@@ -458,7 +528,7 @@ function interpolateTopRightAnchoredRect(from: PaneRect, to: PaneRect, progress:
 
 function renderAnimatedPane(rect: PaneRect, child: Renderable | VNode<any, any[]>, borderColor: string, title?: string): Renderable | VNode<any, any[]> {
   return Box(
-    { position: "absolute", left: rect.left, top: rect.top, width: rect.width, height: rect.height, borderStyle: "rounded", borderColor, title, padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" },
+    { position: "absolute", left: rect.left, top: rect.top, width: rect.width + 1, height: rect.height, borderStyle: "rounded", borderColor, title, padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" },
     child,
   )
 }
@@ -468,10 +538,10 @@ function renderTransitionPaneContent(state: AppState, focus: WorkspaceFocus, lis
   if (!rects) return null
   return {
     ...rects,
-    sessionNode: renderPromptPane(state, focus === "session" ? promptScroll : null),
+    sessionNode: renderSessionTransitionBody(state),
     contextNode: renderPromptBudgetPane(state),
     conceptPreviewNode: renderConceptPreviewPane(state),
-    detailsNode: renderDetailsPane(state),
+    detailsNode: renderDetailsTransitionBody(state),
     conceptsNode: focus === "concepts" ? Box({ width: "100%", height: "100%" }, listScroll) : Box({ width: "100%", height: "100%" }, mainScroll),
   }
 }
@@ -484,7 +554,7 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
   if (!fromWorkspace || !toWorkspace) return []
   const progress = transition.progress
   const sessionMiniTarget: PaneRect = {
-    left: fromWorkspace.session.left + fromWorkspace.session.width - toWorkspace.conceptPreview.width,
+    left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.conceptPreview.width),
     top: fromWorkspace.session.top + fromWorkspace.session.height - toWorkspace.conceptPreview.height,
     width: toWorkspace.conceptPreview.width,
     height: toWorkspace.conceptPreview.height,
@@ -493,9 +563,9 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
   const contextExitTarget: PaneRect = { left: 0, top: 0, width: 8, height: 3 }
   const contextRect = interpolateRect(fromWorkspace.context, contextExitTarget, progress)
   const conceptRect = interpolateBottomAnchoredRect(fromWorkspace.conceptPreview, toWorkspace.concepts, progress)
-  const detailsEnterStart: PaneRect = { left: fromWorkspace.frameWidth - 8, top: 0, width: 8, height: 3 }
+  const detailsEnterStart: PaneRect = { left: rightAlignedLeft(fromWorkspace.frameWidth, 8), top: 0, width: 8, height: 3 }
   const detailsPinnedTarget: PaneRect = {
-    left: fromWorkspace.frameWidth - toWorkspace.details.width,
+    left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.details.width),
     top: toWorkspace.details.top,
     width: toWorkspace.details.width,
     height: toWorkspace.details.height,
@@ -515,29 +585,85 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
       progress,
       viewportWidth: process.stdout.columns || 120,
       viewportHeight: process.stdout.rows || 36,
-      overlayContainer: { top: 1, left: 1, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+      outerFrame: { left: fromWorkspace.frameLeft, top: fromWorkspace.frameTop, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+      innerCanvas: { left: fromWorkspace.frameLeft + fromWorkspace.canvasLeft, top: fromWorkspace.frameTop + fromWorkspace.canvasTop, width: fromWorkspace.canvasWidth, height: fromWorkspace.canvasHeight },
+      overlayContainer: { top: fromWorkspace.frameTop, left: fromWorkspace.frameLeft, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+      frameRightEdge: fromWorkspace.frameLeft + fromWorkspace.frameWidth,
+      canvasRightEdge: fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth,
       session: {
+        liveOuter: {
+          left: fromWorkspace.frameLeft + fromWorkspace.session.left,
+          top: fromWorkspace.frameTop + fromWorkspace.session.top,
+          width: fromWorkspace.session.width,
+          height: fromWorkspace.session.height,
+        },
+        animatedOuter: {
+          left: fromWorkspace.frameLeft + sessionRect.left,
+          top: fromWorkspace.frameTop + sessionRect.top,
+          width: sessionRect.width,
+          height: sessionRect.height,
+        },
         from: fromWorkspace.session,
         target: sessionMiniTarget,
         current: sessionRect,
-        rightEdges: { from: sessionFromRight, target: sessionTargetRight, current: sessionCurrentRight },
+        rightEdges: {
+          from: sessionFromRight,
+          target: sessionTargetRight,
+          current: sessionCurrentRight,
+          liveOuter: fromWorkspace.frameLeft + fromWorkspace.session.left + fromWorkspace.session.width,
+          animatedOuter: fromWorkspace.frameLeft + sessionRect.left + sessionRect.width,
+        },
+        distanceToFrameRight: {
+          liveOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + fromWorkspace.session.left + fromWorkspace.session.width),
+          animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + sessionRect.left + sessionRect.width),
+        },
+        distanceToCanvasRight: {
+          liveOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + fromWorkspace.session.left + fromWorkspace.session.width),
+          animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + sessionRect.left + sessionRect.width),
+        },
       },
       details: {
+        liveOuter: {
+          left: fromWorkspace.frameLeft + detailsPinnedTarget.left,
+          top: fromWorkspace.frameTop + detailsPinnedTarget.top,
+          width: detailsPinnedTarget.width,
+          height: detailsPinnedTarget.height,
+        },
+        animatedOuter: {
+          left: fromWorkspace.frameLeft + detailsRect.left,
+          top: fromWorkspace.frameTop + detailsRect.top,
+          width: detailsRect.width,
+          height: detailsRect.height,
+        },
         start: detailsEnterStart,
         target: detailsPinnedTarget,
         current: detailsRect,
-        rightEdges: { start: detailsStartRight, target: detailsTargetRight, current: detailsCurrentRight },
+        rightEdges: {
+          start: detailsStartRight,
+          target: detailsTargetRight,
+          current: detailsCurrentRight,
+          liveOuter: fromWorkspace.frameLeft + detailsPinnedTarget.left + detailsPinnedTarget.width,
+          animatedOuter: fromWorkspace.frameLeft + detailsRect.left + detailsRect.width,
+        },
+        distanceToFrameRight: {
+          liveOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + detailsPinnedTarget.left + detailsPinnedTarget.width),
+          animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + detailsRect.left + detailsRect.width),
+        },
+        distanceToCanvasRight: {
+          liveOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + detailsPinnedTarget.left + detailsPinnedTarget.width),
+          animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + detailsRect.left + detailsRect.width),
+        },
       },
     })
   }
   return [
     Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
     Box(
-      { position: "absolute", top: 1, left: 1, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+      { position: "absolute", top: fromWorkspace.frameTop, left: fromWorkspace.frameLeft, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
       renderAnimatedPane(sessionRect, fromWorkspace.sessionNode, COLORS.borderActive, "Session"),
       renderAnimatedPane(contextRect, fromWorkspace.contextNode, COLORS.border, progress > 0.7 ? undefined : "Context"),
       renderAnimatedPane(conceptRect, toWorkspace.conceptsNode, transition.to === "concepts" ? COLORS.borderActive : COLORS.border, progress > 0.35 ? "Concepts" : undefined),
-      renderAnimatedPane(detailsRect, progress < 0.55 ? Box({ width: "100%", height: "100%", backgroundColor: COLORS.panelSoft }) : toWorkspace.detailsNode, COLORS.border, progress > 0.45 ? "Details" : undefined),
+      renderAnimatedPane(detailsRect, toWorkspace.detailsNode, COLORS.border, progress > 0.45 ? "Details" : undefined),
     ),
   ]
 }
@@ -578,17 +704,16 @@ function renderInspectorOverlay(state: AppState, mainScroll: ScrollBoxRenderable
 }
 
 export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): Renderable | VNode<any, any[]> {
-  const viewportWidth = process.stdout.columns || 120
-  const frameInnerWidth = Math.max(40, viewportWidth - 4)
-  const promptPaneWidth = state.layoutMode === "wide" ? Math.max(28, Math.floor((frameInnerWidth - 1) * state.promptPaneRatio)) : null
-  const sidebarWidth = state.layoutMode === "wide" && promptPaneWidth !== null ? Math.max(24, frameInnerWidth - 1 - promptPaneWidth) : null
+  const geometry = wideWorkspaceGeometry(state)
+  const promptPaneWidth = geometry?.promptPaneWidth ?? null
+  const sidebarWidth = geometry?.sidebarWidth ?? null
   const promptFocused = state.editorModal?.target.kind === "prompt"
   const conceptsContent = renderConceptsPaneContent(state, listScroll)
   const sidebarOptions = state.layoutMode === "wide" && sidebarWidth !== null
     ? { width: sidebarWidth, flexBasis: sidebarWidth, minWidth: 24, flexGrow: 1, flexShrink: 1, flexDirection: "column" as const, gap: 1 }
     : { width: "100%" as const, flexGrow: 0, flexShrink: 0, flexDirection: "column" as const, gap: 1 }
-  const supportHeight = state.layoutMode === "wide" ? 22 : undefined
-  const previewHeight = state.layoutMode === "wide" ? 5 : 8
+  const supportHeight = state.layoutMode === "wide" ? geometry?.supportHeight ?? 22 : undefined
+  const previewHeight = state.layoutMode === "wide" ? geometry?.previewHeight ?? 5 : 8
   const supportColumn = state.conceptNavigationFocused
     ? Box(
         { ...sidebarOptions, height: "100%" },
