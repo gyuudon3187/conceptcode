@@ -1,3 +1,6 @@
+import { appendFile } from "node:fs/promises"
+import { join } from "node:path"
+
 import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, TextNodeRenderable, type TextChunk } from "@opentui/core"
 
 import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview, type PreviewLegendItem } from "./snippet"
@@ -25,6 +28,18 @@ export const COLORS = {
   selectedFg: "#101418",
   selectedBg: "#f2cc8f",
 } as const
+
+const DEBUG_WORKSPACE_TRANSITION = true
+const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")
+
+async function appendWorkspaceDebugLog(event: string, payload: Record<string, unknown>): Promise<void> {
+  if (!DEBUG_WORKSPACE_TRANSITION) return
+  const line = `${JSON.stringify({ ts: new Date().toISOString(), event, ...payload })}\n`
+  try {
+    await appendFile(WORKSPACE_DEBUG_LOG_PATH, line, "utf8")
+  } catch {
+  }
+}
 
 function maxVisibleAliasSuggestions(): number {
   const viewportHeight = process.stdout.rows || 24
@@ -426,6 +441,21 @@ function interpolateBottomRightAnchoredRect(from: PaneRect, to: PaneRect, progre
   }
 }
 
+function interpolateTopRightAnchoredRect(from: PaneRect, to: PaneRect, progress: number): PaneRect {
+  const width = Math.max(8, Math.round(from.width + (to.width - from.width) * progress))
+  const height = Math.max(3, Math.round(from.height + (to.height - from.height) * progress))
+  const fromRight = from.left + from.width
+  const toRight = to.left + to.width
+  const right = Math.round(fromRight + (toRight - fromRight) * progress)
+  const top = Math.round(from.top + (to.top - from.top) * progress)
+  return {
+    left: right - width,
+    top,
+    width,
+    height,
+  }
+}
+
 function renderAnimatedPane(rect: PaneRect, child: Renderable | VNode<any, any[]>, borderColor: string, title?: string): Renderable | VNode<any, any[]> {
   return Box(
     { position: "absolute", left: rect.left, top: rect.top, width: rect.width, height: rect.height, borderStyle: "rounded", borderColor, title, padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" },
@@ -464,7 +494,42 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
   const contextRect = interpolateRect(fromWorkspace.context, contextExitTarget, progress)
   const conceptRect = interpolateBottomAnchoredRect(fromWorkspace.conceptPreview, toWorkspace.concepts, progress)
   const detailsEnterStart: PaneRect = { left: fromWorkspace.frameWidth - 8, top: 0, width: 8, height: 3 }
-  const detailsRect = interpolateRect(detailsEnterStart, toWorkspace.details, progress)
+  const detailsPinnedTarget: PaneRect = {
+    left: fromWorkspace.frameWidth - toWorkspace.details.width,
+    top: toWorkspace.details.top,
+    width: toWorkspace.details.width,
+    height: toWorkspace.details.height,
+  }
+  const detailsRect = interpolateTopRightAnchoredRect(detailsEnterStart, detailsPinnedTarget, progress)
+  if (!transition.loggedFirstFrame) {
+    transition.loggedFirstFrame = true
+    const sessionFromRight = fromWorkspace.session.left + fromWorkspace.session.width
+    const sessionTargetRight = sessionMiniTarget.left + sessionMiniTarget.width
+    const sessionCurrentRight = sessionRect.left + sessionRect.width
+    const detailsStartRight = detailsEnterStart.left + detailsEnterStart.width
+    const detailsTargetRight = detailsPinnedTarget.left + detailsPinnedTarget.width
+    const detailsCurrentRight = detailsRect.left + detailsRect.width
+    void appendWorkspaceDebugLog("transition_first_frame", {
+      from: transition.from,
+      to: transition.to,
+      progress,
+      viewportWidth: process.stdout.columns || 120,
+      viewportHeight: process.stdout.rows || 36,
+      overlayContainer: { top: 1, left: 1, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+      session: {
+        from: fromWorkspace.session,
+        target: sessionMiniTarget,
+        current: sessionRect,
+        rightEdges: { from: sessionFromRight, target: sessionTargetRight, current: sessionCurrentRight },
+      },
+      details: {
+        start: detailsEnterStart,
+        target: detailsPinnedTarget,
+        current: detailsRect,
+        rightEdges: { start: detailsStartRight, target: detailsTargetRight, current: detailsCurrentRight },
+      },
+    })
+  }
   return [
     Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
     Box(

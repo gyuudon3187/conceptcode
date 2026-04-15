@@ -166,6 +166,7 @@ export type WorkspaceTransitionState = {
   to: WorkspaceFocus
   progress: number
   startedAt: number
+  loggedFirstFrame?: boolean
 }
 
 export type AppState = {
