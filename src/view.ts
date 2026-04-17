@@ -419,13 +419,17 @@ type WideWorkspaceGeometry = {
 }
 
 function wideWorkspaceGeometry(state: AppState): WideWorkspaceGeometry | null {
+  return wideWorkspaceGeometryForRatio(state, state.promptPaneRatio)
+}
+
+function wideWorkspaceGeometryForRatio(state: AppState, promptPaneRatio: number): WideWorkspaceGeometry | null {
   if (state.layoutMode !== "wide") return null
   const viewportWidth = process.stdout.columns || 120
   const viewportHeight = process.stdout.rows || 36
   const rootPadding = 1
   const frameInnerWidth = Math.max(40, viewportWidth - 4)
   const frameHeight = Math.max(12, viewportHeight - (rootPadding * 2))
-  const promptPaneWidth = Math.max(28, Math.floor((frameInnerWidth - 1) * state.promptPaneRatio))
+  const promptPaneWidth = Math.max(28, Math.floor((frameInnerWidth - 1) * promptPaneRatio))
   const sidebarWidth = Math.max(24, frameInnerWidth - 1 - promptPaneWidth)
   const supportHeight = 22
   const previewHeight = Math.max(5, frameHeight - supportHeight - 1)
@@ -442,7 +446,11 @@ function wideWorkspaceGeometry(state: AppState): WideWorkspaceGeometry | null {
 }
 
 function workspaceRects(state: AppState): WorkspaceRects | null {
-  const geometry = wideWorkspaceGeometry(state)
+  return workspaceRectsForRatio(state, state.promptPaneRatio)
+}
+
+function workspaceRectsForRatio(state: AppState, promptPaneRatio: number): WorkspaceRects | null {
+  const geometry = wideWorkspaceGeometryForRatio(state, promptPaneRatio)
   if (!geometry) return null
   const rowGap = 1
   const contentTop = 0
@@ -476,7 +484,7 @@ function interpolateRect(from: PaneRect, to: PaneRect, progress: number): PaneRe
 }
 
 function rightAlignedLeft(containerWidth: number, paneWidth: number): number {
-  return containerWidth - paneWidth + 1
+  return containerWidth - paneWidth
 }
 
 function interpolateValue(from: number, to: number, progress: number): number {
@@ -565,15 +573,48 @@ function interpolateTopRightAnchoredRect(from: PaneRect, to: PaneRect, progress:
   }
 }
 
+function interpolateTopLeftAnchoredRect(from: PaneRect, to: PaneRect, progress: number): PaneRect {
+  const left = Math.round(from.left + (to.left - from.left) * progress)
+  const top = Math.round(from.top + (to.top - from.top) * progress)
+  const width = Math.max(8, Math.round(from.width + (to.width - from.width) * progress))
+  const height = Math.max(3, Math.round(from.height + (to.height - from.height) * progress))
+  return {
+    left,
+    top,
+    width,
+    height,
+  }
+}
+
+function interpolateBottomLeftAnchoredRect(from: PaneRect, to: PaneRect, progress: number): PaneRect {
+  const left = Math.round(from.left + (to.left - from.left) * progress)
+  const width = Math.max(8, Math.round(from.width + (to.width - from.width) * progress))
+  const height = Math.max(3, Math.round(from.height + (to.height - from.height) * progress))
+  const fromBottom = from.top + from.height
+  const toBottom = to.top + to.height
+  const bottom = Math.round(fromBottom + (toBottom - fromBottom) * progress)
+  return {
+    left,
+    top: bottom - height,
+    width,
+    height,
+  }
+}
+
 function renderAnimatedPane(rect: PaneRect, child: Renderable | VNode<any, any[]>, borderColor: string, title?: string): Renderable | VNode<any, any[]> {
   return Box(
-    { position: "absolute", left: rect.left, top: rect.top, width: rect.width + 1, height: rect.height, borderStyle: "rounded", borderColor, title, padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" },
+    { position: "absolute", left: rect.left, top: rect.top, width: rect.width, height: rect.height, borderStyle: "rounded", borderColor, title, padding: 1, backgroundColor: COLORS.panel, flexDirection: "column" },
     child,
   )
 }
 
 function renderTransitionPaneContent(state: AppState, focus: WorkspaceFocus, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): WorkspaceRects & { sessionNode: Renderable | VNode<any, any[]>; contextNode: Renderable | VNode<any, any[]>; conceptPreviewNode: Renderable | VNode<any, any[]>; detailsNode: Renderable | VNode<any, any[]>; conceptsNode: Renderable | VNode<any, any[]> } | null {
   const rects = workspaceRects(state)
+  if (!rects) return null
+  return renderTransitionPaneContentWithRects(state, focus, rects, listScroll, mainScroll, promptScroll)
+}
+
+function renderTransitionPaneContentWithRects(state: AppState, focus: WorkspaceFocus, rects: WorkspaceRects, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): WorkspaceRects & { sessionNode: Renderable | VNode<any, any[]>; contextNode: Renderable | VNode<any, any[]>; conceptPreviewNode: Renderable | VNode<any, any[]>; detailsNode: Renderable | VNode<any, any[]>; conceptsNode: Renderable | VNode<any, any[]> } | null {
   if (!rects) return null
   return {
     ...rects,
@@ -588,26 +629,132 @@ function renderTransitionPaneContent(state: AppState, focus: WorkspaceFocus, lis
 function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): Array<Renderable | VNode<any, any[]>> {
   const transition = state.workspaceTransition
   if (!transition) return []
-  const fromWorkspace = renderTransitionPaneContent(state, transition.from, listScroll, mainScroll, promptScroll)
-  const toWorkspace = renderTransitionPaneContent(state, transition.to, listScroll, mainScroll, promptScroll)
+  const collapsedWorkspaceRects = workspaceRectsForRatio(state, 0.34)
+  const expandedWorkspaceRects = workspaceRectsForRatio(state, 0.58)
+  if (!collapsedWorkspaceRects || !expandedWorkspaceRects) return []
+  const fromRects = transition.from === "concepts" ? collapsedWorkspaceRects : expandedWorkspaceRects
+  const toRects = transition.to === "concepts" ? collapsedWorkspaceRects : expandedWorkspaceRects
+  const fromWorkspace = renderTransitionPaneContentWithRects(state, transition.from, fromRects, listScroll, mainScroll, promptScroll)
+  const toWorkspace = renderTransitionPaneContentWithRects(state, transition.to, toRects, listScroll, mainScroll, promptScroll)
   if (!fromWorkspace || !toWorkspace) return []
   const progress = transition.progress
+  if (transition.from === "concepts" && transition.to === "session") {
+    const conceptsMiniTarget: PaneRect = {
+      left: 0,
+      top: toWorkspace.conceptPreview.top,
+      width: toWorkspace.conceptPreview.width,
+      height: toWorkspace.conceptPreview.height,
+    }
+    const contextPinnedTarget: PaneRect = {
+      left: 0,
+      top: toWorkspace.context.top,
+      width: toWorkspace.context.width,
+      height: toWorkspace.context.height,
+    }
+    const sessionEnterStart: PaneRect = {
+      left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.conceptPreview.width),
+      top: fromWorkspace.frameHeight - conceptsMiniTarget.height,
+      width: toWorkspace.conceptPreview.width,
+      height: conceptsMiniTarget.height,
+    }
+    const detailsSourceRect: PaneRect = {
+      left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.session.width),
+      top: fromWorkspace.details.top,
+      width: fromWorkspace.details.width,
+      height: fromWorkspace.details.height,
+    }
+    const detailsExitTarget: PaneRect = { left: rightAlignedLeft(fromWorkspace.frameWidth, 8), top: 0, width: 8, height: 3 }
+    const rightStackProgress = acceleratedProgress(progress, 1.22)
+    const detailsRect = interpolateTopRightAnchoredRect(detailsSourceRect, detailsExitTarget, rightStackProgress)
+    const detailsVisibleProgress = blendProgress(rightStackProgress, 0.78, 0.92)
+    const showDetailsPane = detailsVisibleProgress < 1
+    const sessionRectWithSoloGrowth = interpolateBottomRightAnchoredRect(sessionEnterStart, toWorkspace.session, rightStackProgress)
+    const contextEnterStart: PaneRect = { left: 0, top: 0, width: 8, height: 3 }
+    const leftStackProgress = acceleratedProgress(progress, 1.22)
+    const contextDelay = 0.115
+    const contextProgress = delayedProgress(leftStackProgress, contextDelay)
+    const showContextPane = revealAfter(leftStackProgress, contextDelay)
+    const conceptsAnimatedRect = interpolateBottomRightAnchoredRect(fromWorkspace.concepts, conceptsMiniTarget, leftStackProgress)
+    const contextHeight = Math.max(3, interpolateValue(contextEnterStart.height, contextPinnedTarget.height, contextProgress))
+    const contextWidth = interpolateValue(contextEnterStart.width, contextPinnedTarget.width, contextProgress)
+    const contextLeft = interpolateValue(contextEnterStart.left, contextPinnedTarget.left, contextProgress)
+    const contextRect: PaneRect = {
+      left: contextLeft,
+      top: contextPinnedTarget.top,
+      width: contextWidth,
+      height: contextHeight,
+    }
+    const conceptsRectWithSharedGap = showContextPane
+      ? {
+          left: conceptsAnimatedRect.left,
+          top: contextRect.top + contextRect.height + 1,
+          width: conceptsAnimatedRect.width,
+          height: Math.max(3, fromWorkspace.frameHeight - (contextRect.top + contextRect.height + 1)),
+        }
+      : conceptsAnimatedRect
+    if (!transition.loggedFirstFrame) {
+      transition.loggedFirstFrame = true
+      void appendWorkspaceDebugLog("transition_first_frame", {
+        from: transition.from,
+        to: transition.to,
+        progress,
+        viewportWidth: process.stdout.columns || 120,
+        viewportHeight: process.stdout.rows || 36,
+        concepts: {
+          from: fromWorkspace.concepts,
+          miniTarget: conceptsMiniTarget,
+          current: conceptsRectWithSharedGap,
+        },
+        session: {
+          from: sessionEnterStart,
+          target: toWorkspace.session,
+          current: sessionRectWithSoloGrowth,
+        },
+        details: {
+          from: fromWorkspace.details,
+          exitTarget: detailsExitTarget,
+          current: detailsRect,
+        },
+        context: {
+          enterStart: contextEnterStart,
+          target: contextPinnedTarget,
+          current: contextRect,
+        },
+      })
+    }
+    return [
+      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
+      Box(
+        { position: "absolute", top: fromWorkspace.frameTop, left: fromWorkspace.frameLeft, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+        renderAnimatedPane(sessionRectWithSoloGrowth, fromWorkspace.sessionNode, COLORS.borderActive, progress > 0.35 ? "Session" : undefined),
+        ...(showDetailsPane ? [renderAnimatedPane(detailsRect, fromWorkspace.detailsNode, COLORS.border, progress > 0.7 ? undefined : "Details")] : []),
+        renderAnimatedPane(conceptsRectWithSharedGap, fromWorkspace.conceptsNode, COLORS.borderActive, "Concepts"),
+        ...(showContextPane ? [renderAnimatedPane(contextRect, toWorkspace.contextNode, COLORS.border, progress > 0.45 ? "Context" : undefined)] : []),
+      ),
+    ]
+  }
   const sessionMiniTarget: PaneRect = {
-    left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.conceptPreview.width),
-    top: fromWorkspace.session.top + fromWorkspace.session.height - toWorkspace.conceptPreview.height,
-    width: toWorkspace.conceptPreview.width,
+    left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.session.width),
+    top: fromWorkspace.frameHeight - toWorkspace.conceptPreview.height,
+    width: toWorkspace.session.width,
     height: toWorkspace.conceptPreview.height,
+  }
+  const conceptsPinnedTarget: PaneRect = {
+    left: 0,
+    top: toWorkspace.concepts.top,
+    width: toWorkspace.context.width,
+    height: toWorkspace.concepts.height,
   }
   const contextExitTarget: PaneRect = { left: 0, top: 0, width: 8, height: 3 }
   const leftStackProgress = acceleratedProgress(progress, 1.22)
-  const leftStack = interpolateVerticalStack(fromWorkspace.context, fromWorkspace.conceptPreview, contextExitTarget, toWorkspace.concepts, leftStackProgress, 1)
+  const leftStack = interpolateVerticalStack(fromWorkspace.context, fromWorkspace.conceptPreview, contextExitTarget, conceptsPinnedTarget, leftStackProgress, 1)
   const contextRect = leftStack.topRect
   const conceptRect = leftStack.bottomRect
   const contextVisibleProgress = blendProgress(leftStackProgress, 0.78, 0.92)
   const showContextPane = contextVisibleProgress < 1
   const conceptSoloBlend = blendProgress(leftStackProgress, 0.72, 0.9)
-  const conceptSoloTop = interpolateValue(fromWorkspace.conceptPreview.top, toWorkspace.concepts.top, leftStackProgress)
-  const conceptBottom = interpolateValue(fromWorkspace.conceptPreview.top + fromWorkspace.conceptPreview.height, toWorkspace.concepts.top + toWorkspace.concepts.height, leftStackProgress)
+  const conceptSoloTop = interpolateValue(fromWorkspace.conceptPreview.top, conceptsPinnedTarget.top, leftStackProgress)
+  const conceptBottom = interpolateValue(fromWorkspace.conceptPreview.top + fromWorkspace.conceptPreview.height, conceptsPinnedTarget.top + conceptsPinnedTarget.height, leftStackProgress)
   const maxConceptTopWhileContextVisible = contextRect.top + contextRect.height + 1
   const blendedConceptTop = interpolateValue(conceptRect.top, conceptSoloTop, conceptSoloBlend)
   const clampedConceptTop = Math.max(blendedConceptTop, maxConceptTopWhileContextVisible)
@@ -620,9 +767,9 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
   }
   const detailsEnterStart: PaneRect = { left: rightAlignedLeft(fromWorkspace.frameWidth, 8), top: 0, width: 8, height: 3 }
   const detailsPinnedTarget: PaneRect = {
-    left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.details.width),
+    left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.session.width),
     top: toWorkspace.details.top,
-    width: toWorkspace.details.width,
+    width: toWorkspace.session.width,
     height: toWorkspace.details.height,
   }
   const rightStackProgress = acceleratedProgress(progress, 1.22)
@@ -783,7 +930,7 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   const geometry = wideWorkspaceGeometry(state)
   const promptPaneWidth = geometry?.promptPaneWidth ?? null
   const sidebarWidth = geometry?.sidebarWidth ?? null
-  const promptFocused = state.editorModal?.target.kind === "prompt"
+  const promptFocused = state.editorModal?.target.kind === "prompt" && state.editorModal.renderable.focused
   const conceptsContent = renderConceptsPaneContent(state, listScroll)
   const sidebarOptions = state.layoutMode === "wide" && sidebarWidth !== null
     ? { width: sidebarWidth, flexBasis: sidebarWidth, minWidth: 24, flexGrow: 1, flexShrink: 1, flexDirection: "column" as const, gap: 1 }
