@@ -10,6 +10,12 @@ ui_layout:
   # Increasing this makes the large Session pane wider and the left column narrower.
   expandedPromptRatio: 0.58
 
+  # Alternate Session-side main-pane width ratio used only while animating from
+  # the Concepts-side workspace to the Session-side workspace.
+  # Increase this to make the Concepts pane narrower during that transition
+  # without changing the steady-state Session-side workspace or the reverse animation.
+  conceptsToSessionTransitionExpandedPromptRatio: 0.565
+
   # Stops prompt-pane width animation when the current ratio is close enough to target.
   promptAnimationEpsilon: 0.015
 

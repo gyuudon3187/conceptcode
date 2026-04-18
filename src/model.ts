@@ -176,6 +176,7 @@ function uiLayoutConfigFromOptions(optionsPath: string | undefined): Partial<UiL
   const numericKeys: Array<keyof UiLayoutConfig> = [
     "collapsedPromptRatio",
     "expandedPromptRatio",
+    "conceptsToSessionTransitionExpandedPromptRatio",
     "promptAnimationEpsilon",
     "promptAnimationStepMs",
     "promptAnimationLerp",
