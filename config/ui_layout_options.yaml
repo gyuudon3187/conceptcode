@@ -4,7 +4,7 @@ kind_definitions:
 ui_layout:
   # Main-pane width ratio when Concepts is the dominant workspace.
   # Increasing this makes the large Concepts pane wider and the right column narrower.
-  collapsedPromptRatio: 0.34
+  collapsedPromptRatio: 0.373
 
   # Main-pane width ratio when Session is the dominant workspace.
   # Increasing this makes the large Session pane wider and the left column narrower.

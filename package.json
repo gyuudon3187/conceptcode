@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "example": "bun run src/index.ts --concepts-path examples/book_ops_tui_concepts.json",
-    "browse": "bun run src/index.ts",
+    "example": "bun run src/index.ts --concepts-path examples/book_ops_tui_concepts.json --options-path config/ui_layout_options.yaml",
+    "browse": "bun run src/index.ts --options-path config/ui_layout_options.yaml",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
     "check": "bun run typecheck && bun run test",
