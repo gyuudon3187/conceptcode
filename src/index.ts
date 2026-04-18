@@ -22,6 +22,7 @@ type ActivePromptSuggestion = { prefix: "@" | "&"; query: string; start: number;
 
 const DEFAULT_UI_LAYOUT_CONFIG: UiLayoutConfig = {
   collapsedPromptRatio: 0.34,
+  conceptsToSessionTransitionCollapsedPromptRatio: 0.34,
   expandedPromptRatio: 0.58,
   conceptsToSessionTransitionExpandedPromptRatio: 0.58,
   promptAnimationEpsilon: 0.015,

@@ -171,6 +171,7 @@ export type WorkspaceTransitionState = {
 
 export type UiLayoutConfig = {
   collapsedPromptRatio: number
+  conceptsToSessionTransitionCollapsedPromptRatio: number
   expandedPromptRatio: number
   conceptsToSessionTransitionExpandedPromptRatio: number
   promptAnimationEpsilon: number

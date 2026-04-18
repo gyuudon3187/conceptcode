@@ -634,10 +634,13 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
   if (!transition) return []
   const config = state.uiLayoutConfig
   const collapsedWorkspaceRects = workspaceRectsForRatio(state, state.uiLayoutConfig.collapsedPromptRatio)
+  const conceptsToSessionTransitionSourceRects = workspaceRectsForRatio(state, state.uiLayoutConfig.conceptsToSessionTransitionCollapsedPromptRatio)
   const expandedWorkspaceRects = workspaceRectsForRatio(state, state.uiLayoutConfig.expandedPromptRatio)
   const conceptsToSessionTransitionRects = workspaceRectsForRatio(state, state.uiLayoutConfig.conceptsToSessionTransitionExpandedPromptRatio)
-  if (!collapsedWorkspaceRects || !expandedWorkspaceRects || !conceptsToSessionTransitionRects) return []
-  const fromRects = transition.from === "concepts" ? collapsedWorkspaceRects : expandedWorkspaceRects
+  if (!collapsedWorkspaceRects || !conceptsToSessionTransitionSourceRects || !expandedWorkspaceRects || !conceptsToSessionTransitionRects) return []
+  const fromRects = transition.from === "concepts" && transition.to === "session"
+    ? conceptsToSessionTransitionSourceRects
+    : (transition.from === "concepts" ? collapsedWorkspaceRects : expandedWorkspaceRects)
   const toRects = transition.from === "concepts" && transition.to === "session"
     ? conceptsToSessionTransitionRects
     : (transition.to === "concepts" ? collapsedWorkspaceRects : expandedWorkspaceRects)

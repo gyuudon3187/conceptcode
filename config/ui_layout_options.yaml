@@ -6,6 +6,13 @@ ui_layout:
   # Increasing this makes the large Concepts pane wider and the right column narrower.
   collapsedPromptRatio: 0.373
 
+  # Alternate Concepts-side main-pane width ratio used only while animating from
+  # the Concepts-side workspace to the Session-side workspace.
+  # Increase this to make the large opening Concepts pane wider during that
+  # transition without changing the steady-state Concepts-side workspace or the
+  # reverse transition.
+  conceptsToSessionTransitionCollapsedPromptRatio: 0.635
+
   # Main-pane width ratio when Session is the dominant workspace.
   # Increasing this makes the large Session pane wider and the left column narrower.
   expandedPromptRatio: 0.58
