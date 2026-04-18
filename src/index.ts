@@ -10,7 +10,7 @@ import { buildClipboardPayload, clipboardSelection, copyToClipboard, effectivePr
 import { loadConceptGraph } from "./model"
 import { activeSession, createNamedSession, loadSessions, saveSessions, syncSessionMetadata } from "./session"
 import { applySelectionChange, clampCursor, currentNode, currentPath, handleResize, moveCursor, pageSize, scrollMain, visiblePaths } from "./state"
-import type { AppState, ChatSession, ConceptNode, CreateConceptDraft, EditorModalState, InspectorKind, KindDefinition, PromptMessage } from "./types"
+import type { AppState, ChatSession, ConceptNode, CreateConceptDraft, EditorModalState, InspectorKind, KindDefinition, PromptMessage, UiLayoutConfig } from "./types"
 import { repaint, renderPromptThreadContent, replaceChildren, scrollListForCursor } from "./view"
 
 const FILE_REFERENCE_TOKEN = /&[^\s&]+/g
@@ -19,6 +19,33 @@ const DEBUG_WORKSPACE_TRANSITION = true
 const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")
 type PromptReferenceToken = { token: string; start: number; end: number }
 type ActivePromptSuggestion = { prefix: "@" | "&"; query: string; start: number; end: number; suggestions: string[] }
+
+const DEFAULT_UI_LAYOUT_CONFIG: UiLayoutConfig = {
+  collapsedPromptRatio: 0.34,
+  expandedPromptRatio: 0.58,
+  promptAnimationEpsilon: 0.015,
+  promptAnimationStepMs: 16,
+  promptAnimationLerp: 0.28,
+  workspaceTransitionStepMs: 16,
+  workspaceTransitionDurationMs: 5000,
+  workspaceTransitionAcceleration: 1.22,
+  workspaceTransitionStaggerDelay: 0.115,
+  workspaceTransitionFadeStart: 0.78,
+  workspaceTransitionFadeEnd: 0.92,
+  viewportHorizontalInset: 4,
+  rootPadding: 1,
+  interPaneGap: 1,
+  minFrameWidth: 40,
+  minFrameHeight: 12,
+  minPromptPaneWidth: 28,
+  minSidebarWidth: 24,
+  supportHeight: 22,
+  minPreviewHeight: 5,
+  minPaneWidth: 8,
+  minPaneHeight: 3,
+  transitionChipWidth: 8,
+  transitionChipHeight: 3,
+}
 
 async function appendWorkspaceDebugLog(event: string, payload: Record<string, unknown>): Promise<void> {
   if (!DEBUG_WORKSPACE_TRANSITION) return
@@ -873,14 +900,9 @@ function removeDraftConcept(state: AppState, path: string): void {
 }
 
 async function main(): Promise<void> {
-  const COLLAPSED_PROMPT_RATIO = 0.34
-  const EXPANDED_PROMPT_RATIO = 0.58
-  const PROMPT_ANIMATION_EPSILON = 0.015
-  const PROMPT_ANIMATION_STEP_MS = 16
-  const WORKSPACE_TRANSITION_STEP_MS = 16
-  const WORKSPACE_TRANSITION_DURATION_MS = 5000
   const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
-  const { graphPayload, nodes, kindDefinitions } = loadConceptGraph(conceptsPath, optionsPath)
+  const { graphPayload, nodes, kindDefinitions, uiLayoutConfig } = loadConceptGraph(conceptsPath, optionsPath)
+  const resolvedUiLayoutConfig: UiLayoutConfig = { ...DEFAULT_UI_LAYOUT_CONFIG, ...uiLayoutConfig }
   const dummyChatServer = await startDummyChatServer()
   const trackedPaths = (await readFile(join(process.cwd(), ".gitignore"), "utf8").catch(() => ""), await Bun.$`git ls-files -co --exclude-standard`.text())
   const projectFiles = trackedPaths.replace(/\r\n/g, "\n").split("\n").map((line) => line.trim()).filter(Boolean)
@@ -914,9 +936,10 @@ async function main(): Promise<void> {
     contextLegendItems: [],
     sessions,
     activeSessionId,
-    promptPaneRatio: EXPANDED_PROMPT_RATIO,
-    promptPaneTargetRatio: EXPANDED_PROMPT_RATIO,
+    promptPaneRatio: resolvedUiLayoutConfig.expandedPromptRatio,
+    promptPaneTargetRatio: resolvedUiLayoutConfig.expandedPromptRatio,
     promptPaneMode: "expanded",
+    uiLayoutConfig: resolvedUiLayoutConfig,
     promptScrollTop: 0,
     promptViewportHeight: 12,
     conceptNavigationFocused: false,
@@ -986,7 +1009,7 @@ async function main(): Promise<void> {
 
   function desiredPromptPaneRatio(): number {
     if (state.layoutMode !== "wide") return 1
-    return state.promptPaneMode === "expanded" ? EXPANDED_PROMPT_RATIO : COLLAPSED_PROMPT_RATIO
+    return state.promptPaneMode === "expanded" ? state.uiLayoutConfig.expandedPromptRatio : state.uiLayoutConfig.collapsedPromptRatio
   }
 
   function stopPromptPaneAnimation(): void {
@@ -1045,7 +1068,7 @@ async function main(): Promise<void> {
       const transition = state.workspaceTransition
       if (!transition) return
       const elapsed = Date.now() - transition.startedAt
-      transition.progress = Math.min(1, elapsed / WORKSPACE_TRANSITION_DURATION_MS)
+      transition.progress = Math.min(1, elapsed / state.uiLayoutConfig.workspaceTransitionDurationMs)
       if (transition.progress >= 1) {
         void appendWorkspaceDebugLog("transition_end", {
           from: transition.from,
@@ -1059,10 +1082,10 @@ async function main(): Promise<void> {
         return
       }
       draw()
-      state.workspaceTransitionTimeout = setTimeout(step, WORKSPACE_TRANSITION_STEP_MS)
+      state.workspaceTransitionTimeout = setTimeout(step, state.uiLayoutConfig.workspaceTransitionStepMs)
     }
     draw()
-    state.workspaceTransitionTimeout = setTimeout(step, WORKSPACE_TRANSITION_STEP_MS)
+    state.workspaceTransitionTimeout = setTimeout(step, state.uiLayoutConfig.workspaceTransitionStepMs)
   }
 
   function animatePromptPane(): void {
@@ -1075,18 +1098,18 @@ async function main(): Promise<void> {
     }
     const step = () => {
       const delta = state.promptPaneTargetRatio - state.promptPaneRatio
-      if (Math.abs(delta) <= PROMPT_ANIMATION_EPSILON) {
+      if (Math.abs(delta) <= state.uiLayoutConfig.promptAnimationEpsilon) {
         state.promptPaneRatio = state.promptPaneTargetRatio
         state.promptPaneAnimationTimeout = null
         draw()
         return
       }
-      state.promptPaneRatio += delta * 0.28
+      state.promptPaneRatio += delta * state.uiLayoutConfig.promptAnimationLerp
       draw()
-      state.promptPaneAnimationTimeout = setTimeout(step, PROMPT_ANIMATION_STEP_MS)
+      state.promptPaneAnimationTimeout = setTimeout(step, state.uiLayoutConfig.promptAnimationStepMs)
     }
     draw()
-    state.promptPaneAnimationTimeout = setTimeout(step, PROMPT_ANIMATION_STEP_MS)
+    state.promptPaneAnimationTimeout = setTimeout(step, state.uiLayoutConfig.promptAnimationStepMs)
   }
 
   refreshPromptPaneTarget = (): void => {
@@ -1097,13 +1120,13 @@ async function main(): Promise<void> {
       state.promptPaneRatio = 1
       return
     }
-    if (Math.abs(nextTarget - state.promptPaneRatio) <= PROMPT_ANIMATION_EPSILON) {
+    if (Math.abs(nextTarget - state.promptPaneRatio) <= state.uiLayoutConfig.promptAnimationEpsilon) {
       stopPromptPaneAnimation()
       state.promptPaneTargetRatio = nextTarget
       state.promptPaneRatio = nextTarget
       return
     }
-    if (Math.abs(nextTarget - state.promptPaneTargetRatio) <= PROMPT_ANIMATION_EPSILON) {
+    if (Math.abs(nextTarget - state.promptPaneTargetRatio) <= state.uiLayoutConfig.promptAnimationEpsilon) {
       state.promptPaneTargetRatio = nextTarget
       return
     }

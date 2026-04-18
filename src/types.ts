@@ -169,6 +169,33 @@ export type WorkspaceTransitionState = {
   loggedFirstFrame?: boolean
 }
 
+export type UiLayoutConfig = {
+  collapsedPromptRatio: number
+  expandedPromptRatio: number
+  promptAnimationEpsilon: number
+  promptAnimationStepMs: number
+  promptAnimationLerp: number
+  workspaceTransitionStepMs: number
+  workspaceTransitionDurationMs: number
+  workspaceTransitionAcceleration: number
+  workspaceTransitionStaggerDelay: number
+  workspaceTransitionFadeStart: number
+  workspaceTransitionFadeEnd: number
+  viewportHorizontalInset: number
+  rootPadding: number
+  interPaneGap: number
+  minFrameWidth: number
+  minFrameHeight: number
+  minPromptPaneWidth: number
+  minSidebarWidth: number
+  supportHeight: number
+  minPreviewHeight: number
+  minPaneWidth: number
+  minPaneHeight: number
+  transitionChipWidth: number
+  transitionChipHeight: number
+}
+
 export type AppState = {
   jsonPath: string
   graphPayload: GraphPayload
@@ -193,6 +220,7 @@ export type AppState = {
   promptPaneRatio: number
   promptPaneTargetRatio: number
   promptPaneMode: "collapsed" | "expanded"
+  uiLayoutConfig: UiLayoutConfig
   promptScrollTop: number
   promptViewportHeight: number
   conceptNavigationFocused: boolean

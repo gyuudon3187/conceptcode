@@ -1,0 +1,73 @@
+kind_definitions:
+  region: "Broad grouping or screen region"
+
+ui_layout:
+  # Main-pane width ratio when Concepts is the dominant workspace.
+  # Increasing this makes the large Concepts pane wider and the right column narrower.
+  collapsedPromptRatio: 0.34
+
+  # Main-pane width ratio when Session is the dominant workspace.
+  # Increasing this makes the large Session pane wider and the left column narrower.
+  expandedPromptRatio: 0.58
+
+  # Stops prompt-pane width animation when the current ratio is close enough to target.
+  promptAnimationEpsilon: 0.015
+
+  # Milliseconds between prompt-pane animation steps.
+  promptAnimationStepMs: 16
+
+  # Fraction of remaining distance applied on each prompt-pane animation step.
+  promptAnimationLerp: 0.28
+
+  # Milliseconds between workspace-transition animation steps.
+  workspaceTransitionStepMs: 16
+
+  # Total workspace-transition duration in milliseconds.
+  workspaceTransitionDurationMs: 5000
+
+  # Multiplier applied to transition progress inside pane choreography.
+  # Higher values make panes reach their targets sooner within the overall transition.
+  workspaceTransitionAcceleration: 1.22
+
+  # Delay before secondary panes (Details/Context) fully join the transition.
+  workspaceTransitionStaggerDelay: 0.115
+
+  # Start and end points for fading/revealing secondary panes during workspace transitions.
+  workspaceTransitionFadeStart: 0.78
+  workspaceTransitionFadeEnd: 0.92
+
+  # Total horizontal inset removed from the terminal width before pane widths are computed.
+  # Increasing this makes every wide-layout pane narrower.
+  viewportHorizontalInset: 4
+
+  # Padding around the outer frame. Increasing this reduces total vertical space.
+  rootPadding: 1
+
+  # Shared gap between main pane and side column, and between top/bottom panes in a column.
+  interPaneGap: 1
+
+  # Minimum overall wide-layout frame size.
+  minFrameWidth: 40
+  minFrameHeight: 12
+
+  # Minimum width of the dominant right/left pane in wide layout.
+  minPromptPaneWidth: 28
+
+  # Minimum width of the supporting side column.
+  minSidebarWidth: 24
+
+  # Height of the top support pane.
+  # Affects Details in the Concepts-side workspace and Context in the Session-side workspace.
+  supportHeight: 22
+
+  # Minimum height of the lower preview pane.
+  # Affects Session preview and Concepts preview.
+  minPreviewHeight: 5
+
+  # Minimum pane size clamps used by transition rect interpolation.
+  minPaneWidth: 8
+  minPaneHeight: 3
+
+  # Size of the tiny entering/exiting chip used by some transition phases.
+  transitionChipWidth: 8
+  transitionChipHeight: 3
