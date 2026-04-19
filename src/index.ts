@@ -5,6 +5,7 @@ import { spawn } from "node:child_process"
 
 import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, type Highlight, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
+import { handleCreateConceptModalKey, isDraftConcept, openCreateConceptModal, promptToRemoveDraft, removeDraftConcept } from "./app/concepts"
 import { createInitialAppState, loadProjectPaths, parseArgs } from "./app/init"
 import { createAndSwitchSession, closeSessionModal, flushActiveSession, openSessionModal, persistSessions, sessionModalEntries, switchToSession } from "./app/sessions"
 import { createSseChatTransport, startDummyChatServer } from "./chat"
@@ -12,7 +13,7 @@ import { buildClipboardPayload, clipboardSelection, copyToClipboard, effectivePr
 import { loadConceptGraph } from "./model"
 import { activeSession, syncSessionMetadata } from "./session"
 import { applySelectionChange, clampCursor, currentNode, currentPath, handleResize, moveCursor, pageSize, scrollMain, visiblePaths } from "./state"
-import type { AppState, ChatSession, ConceptNode, CreateConceptDraft, EditorModalState, InspectorKind, KindDefinition, PromptMessage, UiLayoutConfig } from "./types"
+import type { AppState, ChatSession, EditorModalState, InspectorKind, PromptMessage, UiLayoutConfig } from "./types"
 import { repaint, renderPromptThreadContent, replaceChildren, scrollListForCursor } from "./view"
 
 const FILE_REFERENCE_TOKEN = /&[^\s&]+/g
@@ -31,10 +32,6 @@ async function appendWorkspaceDebugLog(event: string, payload: Record<string, un
   }
 }
 
-function emptyCreateDraft(): CreateConceptDraft {
-  return { title: "", summary: "" }
-}
-
 function easeOutPower(progress: number, power: number): number {
   const clamped = Math.max(0, Math.min(1, progress))
   const normalizedPower = Math.max(1, power)
@@ -47,11 +44,6 @@ function easeOutPower(progress: number, power: number): number {
   return lateEaseStart + (easedTailProgress * (1 - lateEaseStart))
 }
 
-
-function slugifyTitle(title: string): string {
-  const normalized = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
-  return normalized || "new_concept"
-}
 
 function allAliasSuggestions(state: AppState, query: string): string[] {
   const paths = [...state.nodes.keys()].sort((left, right) => left.localeCompare(right))
@@ -738,61 +730,6 @@ function closeInspector(state: AppState): void {
   state.inspector = null
 }
 
-function uniqueChildPath(state: AppState, parentPath: string, title: string): string {
-  const base = slugifyTitle(title)
-  let candidate = `${parentPath}.${base}`
-  let counter = 2
-  while (state.nodes.has(candidate)) {
-    candidate = `${parentPath}.${base}_${counter}`
-    counter += 1
-  }
-  return candidate
-}
-
-function isDraftConcept(state: AppState, path: string): boolean {
-  return Boolean(state.nodes.get(path)?.isDraft)
-}
-
-function insertDraftConcept(state: AppState, draft: CreateConceptDraft, kindDefinition: KindDefinition | null): string {
-  const parent = state.nodes.get(state.currentParentPath)
-  if (!parent) throw new Error("Current parent concept not found")
-  const path = uniqueChildPath(state, state.currentParentPath, draft.title)
-  const metadata: ConceptNode["metadata"] = kindDefinition?.description ? { kind_description: kindDefinition.description } : {}
-  const node: ConceptNode = {
-    path,
-    title: draft.title.trim(),
-    kind: kindDefinition?.kind ?? null,
-    summary: draft.summary.trim(),
-    parentPath: state.currentParentPath,
-    metadata,
-    loc: null,
-    childPaths: [],
-    isDraft: true,
-  }
-  state.nodes.set(path, node)
-  parent.childPaths = [...parent.childPaths, path]
-  state.cursor = parent.childPaths.indexOf(path)
-  applySelectionChange(state)
-  if (kindDefinition && !state.kindDefinitions.some((item) => item.kind === kindDefinition.kind)) {
-    state.kindDefinitions = [...state.kindDefinitions, kindDefinition].sort((left, right) => left.kind.localeCompare(right.kind))
-  }
-  return path
-}
-
-function removeDraftConcept(state: AppState, path: string): void {
-  const node = state.nodes.get(path)
-  if (!node?.isDraft) return
-  if (node.parentPath) {
-    const parent = state.nodes.get(node.parentPath)
-    if (parent) {
-      parent.childPaths = parent.childPaths.filter((item) => item !== path)
-    }
-  }
-  state.nodes.delete(path)
-  clampCursor(state)
-  applySelectionChange(state)
-}
-
 async function main(): Promise<void> {
   const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
   const { graphPayload, nodes, kindDefinitions, uiLayoutConfig } = loadConceptGraph(conceptsPath, optionsPath)
@@ -843,14 +780,6 @@ async function main(): Promise<void> {
       refreshPromptPaneTarget()
       draw()
     })
-  }
-
-  function openCreateConceptModal(): void {
-    state.createConceptModal = { draft: emptyCreateDraft(), fieldIndex: 0, kindExpanded: false, kindCursor: 0, kindQuery: "" }
-  }
-
-  function closeCreateConceptModal(): void {
-    state.createConceptModal = null
   }
 
   function closeConfirmModal(): void {
@@ -1041,146 +970,6 @@ async function main(): Promise<void> {
     return false
   }
 
-  function fuzzyKindScore(candidate: string, query: string): number {
-    if (!query) return 1
-    const normalizedCandidate = candidate.toLowerCase()
-    if (normalizedCandidate.includes(query)) return 100 - normalizedCandidate.indexOf(query)
-    let queryIndex = 0
-    let score = 0
-    for (let index = 0; index < normalizedCandidate.length && queryIndex < query.length; index += 1) {
-      if (normalizedCandidate[index] === query[queryIndex]) {
-        score += 2
-        queryIndex += 1
-      }
-    }
-    return queryIndex === query.length ? score : 0
-  }
-
-  function createKindOptions(query: string): KindDefinition[] {
-    const normalizedQuery = query.trim().toLowerCase()
-    const filtered = state.kindDefinitions
-      .map((item) => ({ item, score: fuzzyKindScore(item.kind, normalizedQuery) }))
-      .filter((entry) => normalizedQuery.length === 0 || entry.score > 0)
-      .sort((left, right) => right.score - left.score || left.item.kind.localeCompare(right.item.kind))
-      .map((entry) => entry.item)
-    const noneOption: KindDefinition = { kind: "None", description: "Create this concept without assigning a kind.", source: "options" }
-    return normalizedQuery.length === 0 || fuzzyKindScore(noneOption.kind, normalizedQuery) > 0 ? [noneOption, ...filtered] : filtered
-  }
-
-  function exactKindMatch(query: string): KindDefinition | null {
-    const normalizedQuery = query.trim().toLowerCase()
-    if (!normalizedQuery) return null
-    return state.kindDefinitions.find((item) => item.kind.toLowerCase() === normalizedQuery) ?? null
-  }
-
-  function submitCreateConceptModal(): boolean {
-    const modal = state.createConceptModal
-    if (!modal) return false
-    if (!modal.draft.title.trim() || !modal.draft.summary.trim()) {
-      state.confirmModal = {
-        kind: "remove-draft",
-        title: "Missing Fields",
-        message: ["Concept name and summary are required"],
-        confirmLabel: "dismisses this message",
-        path: currentPath(state),
-      }
-      return true
-    }
-    const options = createKindOptions(modal.kindQuery)
-    const selectedKind = modal.kindExpanded
-      ? options.length > 0
-        ? options[Math.max(0, Math.min(modal.kindCursor, options.length - 1))]
-        : exactKindMatch(modal.kindQuery)
-      : exactKindMatch(modal.kindQuery)
-    const resolvedKind = selectedKind?.kind === "None" ? null : selectedKind
-    const createdPath = insertDraftConcept(state, modal.draft, resolvedKind)
-    closeCreateConceptModal()
-    clampCursor(state)
-    draw()
-    return true
-  }
-
-  function handleCreateConceptModalKey(key: KeyEvent): boolean {
-    const modal = state.createConceptModal
-    if (!modal) return false
-    if (key.name === "escape" || (key.ctrl && key.name === "q")) {
-      closeCreateConceptModal()
-      draw()
-      return true
-    }
-    const fieldCount = 3
-    const kindFieldSelected = modal.fieldIndex === 1
-    if (kindFieldSelected && modal.kindExpanded) {
-      const options = createKindOptions(modal.kindQuery)
-      modal.kindCursor = Math.min(modal.kindCursor, Math.max(0, options.length - 1))
-      if (key.name === "up") {
-        modal.kindCursor = Math.max(0, modal.kindCursor - 1)
-        draw()
-        return true
-      }
-      if (key.name === "down") {
-        modal.kindCursor = Math.min(Math.max(0, options.length - 1), modal.kindCursor + 1)
-        draw()
-        return true
-      }
-      if (key.name === "return") {
-        modal.kindExpanded = false
-        draw()
-        return true
-      }
-      if (key.name === "backspace") {
-        modal.kindQuery = modal.kindQuery.slice(0, -1)
-        modal.kindCursor = 0
-        draw()
-        return true
-      }
-      if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) {
-        modal.kindQuery += key.sequence
-        modal.kindCursor = 0
-        draw()
-        return true
-      }
-      return true
-    }
-    if (key.name === "tab") {
-      modal.fieldIndex = (modal.fieldIndex + 1) % fieldCount
-      draw()
-      return true
-    }
-    if (key.shift && key.name === "tab") {
-      modal.fieldIndex = (modal.fieldIndex + fieldCount - 1) % fieldCount
-      draw()
-      return true
-    }
-    if (kindFieldSelected) {
-      if (key.name === "return") {
-        modal.kindExpanded = true
-        modal.kindCursor = 0
-        draw()
-        return true
-      }
-      if (key.name === "backspace") {
-        modal.kindQuery = ""
-        draw()
-        return true
-      }
-      if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) {
-        modal.kindExpanded = true
-        modal.kindQuery += key.sequence
-        modal.kindCursor = 0
-        draw()
-        return true
-      }
-      return true
-    }
-    if (key.name === "return") return submitCreateConceptModal()
-    if (updateCreateDraftText(key)) {
-      draw()
-      return true
-    }
-    return true
-  }
-
   function handleConfirmModalKey(key: KeyEvent): boolean {
     const modal = state.confirmModal
     if (!modal) return false
@@ -1241,16 +1030,6 @@ async function main(): Promise<void> {
       return true
     }
     return true
-  }
-
-  function promptToRemoveDraft(path: string): void {
-    state.confirmModal = {
-      kind: "remove-draft",
-      title: "Remove Draft",
-      message: [`Remove draft ${path}?`, "This removes the draft from the current TUI session."],
-      confirmLabel: "removes this draft concept",
-      path,
-    }
   }
 
   function bindKeyHandler(): void {
@@ -1319,7 +1098,7 @@ async function main(): Promise<void> {
         return
       }
       if (state.createConceptModal) {
-        handleCreateConceptModalKey(key)
+        handleCreateConceptModalKey(state, key, { draw, updateCreateDraftText })
         return
       }
       if (state.editorModal) {
@@ -1527,13 +1306,13 @@ async function main(): Promise<void> {
       }
       if (key.name === "space") {
         if (isDraftConcept(state, currentPath(state))) {
-          promptToRemoveDraft(currentPath(state))
+          promptToRemoveDraft(state, currentPath(state))
           draw()
         }
         return
       }
       if (key.name === "n") {
-        openCreateConceptModal()
+        openCreateConceptModal(state)
         draw()
         return
       }
