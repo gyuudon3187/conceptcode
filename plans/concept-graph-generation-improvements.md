@@ -11,6 +11,11 @@ This note captures the context and implementation guidance for improving `Concep
 
 This document is intended to be sufficient context for a future session that has access to the repository but not to prior conversation history.
 
+Related ticket set:
+
+- ticket guide: `plans/tickets/README.md`
+- ticket index: `plans/tickets/INDEX.md`
+
 ## Current project context
 
 `ConceptCode` is a concept-aware interface for working with hierarchical concept graphs while composing prompts for coding agents.

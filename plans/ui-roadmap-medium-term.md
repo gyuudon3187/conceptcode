@@ -15,6 +15,11 @@ The medium-term goal is to extend the TUI from a strong context-selection surfac
 
 This roadmap focuses on medium-term changes with meaningful user impact, but still tries to avoid graph bloat and avoid turning the UI into a general-purpose analytics tool.
 
+Related ticket set:
+
+- ticket guide: `plans/ui-medium-term-tickets/README.md`
+- ticket index: `plans/ui-medium-term-tickets/INDEX.md`
+
 ## Main premise
 
 If the short-term roadmap succeeds, `ConceptCode` should already be better at:

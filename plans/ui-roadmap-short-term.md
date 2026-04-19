@@ -14,6 +14,11 @@ The roadmap assumes the graph generation workflow will move toward:
 
 This roadmap focuses on short-term, medium/high-impact UI work only. It intentionally avoids UI complexity whose main purpose would be compensating for a weak or bloated graph.
 
+Related ticket set:
+
+- ticket guide: `plans/ui-short-term-tickets/README.md`
+- ticket index: `plans/ui-short-term-tickets/INDEX.md`
+
 ## Main premise
 
 The UI should treat the concept graph as the main interaction surface for:
