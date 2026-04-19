@@ -5,10 +5,12 @@ import { spawn } from "node:child_process"
 
 import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, type Highlight, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
+import { createInitialAppState, loadProjectPaths, parseArgs } from "./app/init"
+import { createAndSwitchSession, closeSessionModal, flushActiveSession, openSessionModal, persistSessions, sessionModalEntries, switchToSession } from "./app/sessions"
 import { createSseChatTransport, startDummyChatServer } from "./chat"
 import { buildClipboardPayload, clipboardSelection, copyToClipboard, effectivePromptTokenBreakdown, EMPTY_PROMPT_TOKEN_BREAKDOWN } from "./clipboard"
 import { loadConceptGraph } from "./model"
-import { activeSession, createNamedSession, loadSessions, saveSessions, syncSessionMetadata } from "./session"
+import { activeSession, syncSessionMetadata } from "./session"
 import { applySelectionChange, clampCursor, currentNode, currentPath, handleResize, moveCursor, pageSize, scrollMain, visiblePaths } from "./state"
 import type { AppState, ChatSession, ConceptNode, CreateConceptDraft, EditorModalState, InspectorKind, KindDefinition, PromptMessage, UiLayoutConfig } from "./types"
 import { repaint, renderPromptThreadContent, replaceChildren, scrollListForCursor } from "./view"
@@ -20,38 +22,6 @@ const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug
 type PromptReferenceToken = { token: string; start: number; end: number }
 type ActivePromptSuggestion = { prefix: "@" | "&"; query: string; start: number; end: number; suggestions: string[] }
 
-const DEFAULT_UI_LAYOUT_CONFIG: UiLayoutConfig = {
-  collapsedPromptRatio: 0.34,
-  conceptsToSessionTransitionCollapsedPromptRatio: 0.34,
-  expandedPromptRatio: 0.58,
-  conceptsToSessionTransitionExpandedPromptRatio: 0.58,
-  conceptsToSessionRightStackStartWidthRatio: 1,
-  conceptsToSessionDetailsHeightAcceleration: 1,
-  promptAnimationEpsilon: 0.015,
-  promptAnimationStepMs: 16,
-  promptAnimationLerp: 0.28,
-  workspaceTransitionStepMs: 16,
-  workspaceTransitionDurationMs: 5000,
-  workspaceTransitionAcceleration: 1.22,
-  workspaceTransitionEndEasePower: 3,
-  workspaceTransitionStaggerDelay: 0.115,
-  workspaceTransitionFadeStart: 0.78,
-  workspaceTransitionFadeEnd: 0.92,
-  viewportHorizontalInset: 4,
-  rootPadding: 1,
-  interPaneGap: 1,
-  minFrameWidth: 40,
-  minFrameHeight: 12,
-  minPromptPaneWidth: 28,
-  minSidebarWidth: 24,
-  supportHeight: 22,
-  minPreviewHeight: 5,
-  minPaneWidth: 8,
-  minPaneHeight: 3,
-  transitionChipWidth: 8,
-  transitionChipHeight: 3,
-}
-
 async function appendWorkspaceDebugLog(event: string, payload: Record<string, unknown>): Promise<void> {
   if (!DEBUG_WORKSPACE_TRANSITION) return
   const line = `${JSON.stringify({ ts: new Date().toISOString(), event, ...payload })}\n`
@@ -61,47 +31,8 @@ async function appendWorkspaceDebugLog(event: string, payload: Record<string, un
   }
 }
 
-function parseArgs(argv: string[]): { conceptsPath: string; optionsPath?: string } {
-  let conceptsPath: string | null = null
-  let optionsPath: string | undefined
-  for (let index = 0; index < argv.length; index += 1) {
-    if (argv[index] === "--concepts-path") {
-      const value = argv[index + 1]
-      if (!value) throw new Error("Missing value for --concepts-path")
-      conceptsPath = value
-    }
-    if (argv[index] === "--options-path") {
-      const value = argv[index + 1]
-      if (!value) throw new Error("Missing value for --options-path")
-      optionsPath = value
-    }
-  }
-  if (!conceptsPath) throw new Error("Expected --concepts-path <path>")
-  return { conceptsPath, optionsPath }
-}
-
 function emptyCreateDraft(): CreateConceptDraft {
   return { title: "", summary: "" }
-}
-
-function sessionModalEntries(state: AppState): ChatSession[] {
-  return [...state.sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-}
-
-function openSessionModal(state: AppState): void {
-  const entries = sessionModalEntries(state)
-  const activeIndex = Math.max(0, entries.findIndex((session) => session.id === state.activeSessionId))
-  if (state.editorModal?.target.kind === "prompt") {
-    state.editorModal.renderable.blur()
-  }
-  state.sessionModal = { selectedIndex: activeIndex }
-}
-
-function closeSessionModal(state: AppState): void {
-  state.sessionModal = null
-  if (state.editorModal?.target.kind === "prompt") {
-    state.editorModal.renderable.focus()
-  }
 }
 
 function easeOutPower(progress: number, power: number): number {
@@ -116,60 +47,6 @@ function easeOutPower(progress: number, power: number): number {
   return lateEaseStart + (easedTailProgress * (1 - lateEaseStart))
 }
 
-async function persistSessions(state: AppState): Promise<void> {
-  for (const session of state.sessions) {
-    syncSessionMetadata(session)
-  }
-  await saveSessions(state.jsonPath, state.sessions, state.activeSessionId)
-}
-
-async function switchToSession(state: AppState, sessionId: string, renderer: CliRenderer, redraw: () => void): Promise<void> {
-  const session = state.sessions.find((candidate) => candidate.id === sessionId)
-  if (!session) return
-  if (state.editorModal?.target.kind === "prompt") {
-    syncPromptDraft(state, state.editorModal)
-  }
-  syncSessionMetadata(session)
-  state.activeSessionId = sessionId
-  state.uiMode = session.lastMode
-  state.activeResponseId = null
-  state.activeAssistantMessageId = null
-  state.activeAssistantNewlineCount = 0
-  state.promptScrollTop = Number.MAX_SAFE_INTEGER
-  state.lastPromptAutoScrollTop = null
-  state.editorModal = null
-  closeSessionModal(state)
-  await persistSessions(state)
-  openPromptEditor(state, renderer, redraw)
-}
-
-async function createAndSwitchSession(state: AppState, renderer: CliRenderer, redraw: () => void): Promise<void> {
-  if (state.editorModal?.target.kind === "prompt") {
-    syncPromptDraft(state, state.editorModal)
-  }
-  const session = createNamedSession(state.jsonPath, state.uiMode)
-  state.sessions.unshift(session)
-  state.activeSessionId = session.id
-  state.uiMode = session.lastMode
-  state.activeResponseId = null
-  state.activeAssistantMessageId = null
-  state.activeAssistantNewlineCount = 0
-  state.promptScrollTop = Number.MAX_SAFE_INTEGER
-  state.lastPromptAutoScrollTop = null
-  closeSessionModal(state)
-  await persistSessions(state)
-  openPromptEditor(state, renderer, redraw)
-}
-
-async function flushActiveSession(state: AppState): Promise<void> {
-  if (state.editorModal?.target.kind === "prompt") {
-    syncPromptDraft(state, state.editorModal)
-  }
-  const session = activeSession(state)
-  session.lastMode = state.uiMode
-  syncSessionMetadata(session)
-  await persistSessions(state)
-}
 
 function slugifyTitle(title: string): string {
   const normalized = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
@@ -919,62 +796,18 @@ function removeDraftConcept(state: AppState, path: string): void {
 async function main(): Promise<void> {
   const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
   const { graphPayload, nodes, kindDefinitions, uiLayoutConfig } = loadConceptGraph(conceptsPath, optionsPath)
-  const resolvedUiLayoutConfig: UiLayoutConfig = { ...DEFAULT_UI_LAYOUT_CONFIG, ...uiLayoutConfig }
   const dummyChatServer = await startDummyChatServer()
-  const trackedPaths = (await readFile(join(process.cwd(), ".gitignore"), "utf8").catch(() => ""), await Bun.$`git ls-files -co --exclude-standard`.text())
-  const projectFiles = trackedPaths.replace(/\r\n/g, "\n").split("\n").map((line) => line.trim()).filter(Boolean)
-  const projectDirectories = [...new Set(projectFiles.flatMap((file) => {
-    const parts = file.split("/")
-    const directories: string[] = []
-    for (let index = 1; index < parts.length; index += 1) {
-      directories.push(parts.slice(0, index).join("/"))
-    }
-    return directories
-  }))].sort((left, right) => left.localeCompare(right))
-  const { sessions, activeSessionId } = await loadSessions(conceptsPath, "plan")
-  const state: AppState = {
-    jsonPath: conceptsPath,
+  const { projectFiles, projectDirectories } = await loadProjectPaths(process.cwd())
+  const state: AppState = await createInitialAppState({
+    conceptsPath,
     graphPayload,
     nodes,
+    kindDefinitions,
+    uiLayoutConfig,
+    dummyChatServerBaseUrl: dummyChatServer.baseUrl,
     projectFiles,
     projectDirectories,
-    sourceFileCache: new Map(),
-    currentParentPath: "root",
-    cursor: 0,
-    kindDefinitions,
-    createConceptModal: null,
-    confirmModal: null,
-    layoutMode: "wide",
-    uiMode: "plan",
-    inspector: null,
-    mainScrollTop: 0,
-    mainViewportHeight: 18,
-    contextTitle: "Inspector",
-    contextLegendItems: [],
-    sessions,
-    activeSessionId,
-    promptPaneRatio: resolvedUiLayoutConfig.expandedPromptRatio,
-    promptPaneTargetRatio: resolvedUiLayoutConfig.expandedPromptRatio,
-    promptPaneMode: "expanded",
-    uiLayoutConfig: resolvedUiLayoutConfig,
-    promptScrollTop: 0,
-    promptViewportHeight: 12,
-    conceptNavigationFocused: false,
-    startupDrawComplete: false,
-    editorModal: null,
-    sessionModal: null,
-    pendingCtrlCExit: false,
-    ctrlCExitTimeout: null,
-    promptPaneAnimationTimeout: null,
-    promptTokenBreakdown: EMPTY_PROMPT_TOKEN_BREAKDOWN,
-    chatTransport: createSseChatTransport(dummyChatServer.baseUrl),
-    activeResponseId: null,
-    activeAssistantMessageId: null,
-    lastPromptAutoScrollTop: null,
-    activeAssistantNewlineCount: 0,
-    workspaceTransition: null,
-    workspaceTransitionTimeout: null,
-  }
+  })
   state.uiMode = activeSession(state).lastMode
 
   process.on("exit", () => {
@@ -1393,7 +1226,7 @@ async function main(): Promise<void> {
     if (key.name === "n") {
       key.preventDefault()
       key.stopPropagation()
-      await createAndSwitchSession(state, renderer, draw)
+      await createAndSwitchSession(state, renderer, draw, { syncPromptDraft, openPromptEditor })
       draw()
       return true
     }
@@ -1402,7 +1235,7 @@ async function main(): Promise<void> {
       key.stopPropagation()
       const selected = entries[modal.selectedIndex]
       if (selected) {
-        await switchToSession(state, selected.id, renderer, draw)
+        await switchToSession(state, selected.id, renderer, draw, { syncPromptDraft, openPromptEditor })
         draw()
       }
       return true
@@ -1436,7 +1269,7 @@ async function main(): Promise<void> {
           return
         }
         if (state.pendingCtrlCExit) {
-          await flushActiveSession(state)
+          await flushActiveSession(state, syncPromptDraft)
           renderer.destroy()
           process.exit(0)
         }
@@ -1624,7 +1457,7 @@ async function main(): Promise<void> {
         return
       }
       if (key.name === "q") {
-        await flushActiveSession(state)
+        await flushActiveSession(state, syncPromptDraft)
         renderer.destroy()
         process.exit(0)
       }
