@@ -178,6 +178,7 @@ function uiLayoutConfigFromOptions(optionsPath: string | undefined): Partial<UiL
     "conceptsToSessionTransitionCollapsedPromptRatio",
     "expandedPromptRatio",
     "conceptsToSessionTransitionExpandedPromptRatio",
+    "conceptsToSessionRightStackStartWidthRatio",
     "promptAnimationEpsilon",
     "promptAnimationStepMs",
     "promptAnimationLerp",

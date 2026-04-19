@@ -649,6 +649,10 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
   if (!fromWorkspace || !toWorkspace) return []
   const progress = transition.progress
   if (transition.from === "concepts" && transition.to === "session") {
+    const conceptsToSessionRightStackStartWidth = Math.max(
+      config.minPaneWidth,
+      Math.min(fromWorkspace.frameWidth, Math.round(toWorkspace.details.width * config.conceptsToSessionRightStackStartWidthRatio)),
+    )
     const conceptsMiniTarget: PaneRect = {
       left: 0,
       top: toWorkspace.conceptPreview.top,
@@ -662,15 +666,15 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
       height: toWorkspace.context.height,
     }
     const sessionEnterStart: PaneRect = {
-      left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.conceptPreview.width),
+      left: rightAlignedLeft(fromWorkspace.frameWidth, conceptsToSessionRightStackStartWidth),
       top: fromWorkspace.frameHeight - conceptsMiniTarget.height,
-      width: toWorkspace.conceptPreview.width,
+      width: conceptsToSessionRightStackStartWidth,
       height: conceptsMiniTarget.height,
     }
     const detailsSourceRect: PaneRect = {
-      left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.details.width),
+      left: rightAlignedLeft(fromWorkspace.frameWidth, conceptsToSessionRightStackStartWidth),
       top: fromWorkspace.details.top,
-      width: toWorkspace.details.width,
+      width: conceptsToSessionRightStackStartWidth,
       height: fromWorkspace.details.height,
     }
     const detailsExitTarget: PaneRect = { left: rightAlignedLeft(fromWorkspace.frameWidth, config.transitionChipWidth), top: 0, width: config.transitionChipWidth, height: config.transitionChipHeight }

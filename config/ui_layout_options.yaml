@@ -23,6 +23,12 @@ ui_layout:
   # without changing the steady-state Session-side workspace or the reverse animation.
   conceptsToSessionTransitionExpandedPromptRatio: 0.565
 
+  # Multiplier applied only to the opening width of the right-side stack
+  # (Details on top, Session on bottom) during the Concepts-to-Session transition.
+  # Lower values make those panes start narrower without affecting Concepts,
+  # Context, steady-state layouts, or the reverse transition.
+  conceptsToSessionRightStackStartWidthRatio: 0.85
+
   # Stops prompt-pane width animation when the current ratio is close enough to target.
   promptAnimationEpsilon: 0.015
 

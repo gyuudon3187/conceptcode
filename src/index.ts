@@ -25,6 +25,7 @@ const DEFAULT_UI_LAYOUT_CONFIG: UiLayoutConfig = {
   conceptsToSessionTransitionCollapsedPromptRatio: 0.34,
   expandedPromptRatio: 0.58,
   conceptsToSessionTransitionExpandedPromptRatio: 0.58,
+  conceptsToSessionRightStackStartWidthRatio: 1,
   promptAnimationEpsilon: 0.015,
   promptAnimationStepMs: 16,
   promptAnimationLerp: 0.28,
