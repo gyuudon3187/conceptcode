@@ -1030,7 +1030,7 @@ async function main(): Promise<void> {
     }
   }
 
-  function finishWorkspaceTransition(nextFocus: boolean): void {
+  function finishWorkspaceTransition(nextFocus: boolean, openPromptEditorAfterTransition = false): void {
     stopWorkspaceTransition()
     stopPromptPaneAnimation()
     if (nextFocus && state.editorModal?.target.kind === "prompt") {
@@ -1044,11 +1044,22 @@ async function main(): Promise<void> {
     state.promptPaneTargetRatio = desiredPromptPaneRatio()
     state.promptPaneRatio = state.promptPaneTargetRatio
     draw()
+    if (openPromptEditorAfterTransition && !nextFocus) {
+      setTimeout(() => {
+        if (state.workspaceTransition || state.conceptNavigationFocused) return
+        if (state.editorModal?.target.kind === "prompt") {
+          state.editorModal.renderable.focus()
+          draw()
+          return
+        }
+        openPromptEditor(state, renderer, draw)
+      }, 0)
+    }
   }
 
-  function startWorkspaceTransition(nextFocus: boolean): void {
+  function startWorkspaceTransition(nextFocus: boolean, openPromptEditorAfterTransition = false): void {
     if (state.layoutMode !== "wide") {
-      finishWorkspaceTransition(nextFocus)
+      finishWorkspaceTransition(nextFocus, openPromptEditorAfterTransition)
       return
     }
     stopWorkspaceTransition()
@@ -1082,7 +1093,7 @@ async function main(): Promise<void> {
           viewportWidth: process.stdout.columns || 120,
           viewportHeight: process.stdout.rows || 36,
         })
-        finishWorkspaceTransition(nextFocus)
+        finishWorkspaceTransition(nextFocus, openPromptEditorAfterTransition)
         return
       }
       draw()
@@ -1148,7 +1159,7 @@ async function main(): Promise<void> {
       return
     }
     if (state.conceptNavigationFocused) {
-      startWorkspaceTransition(false)
+      startWorkspaceTransition(false, true)
       return
     }
     openPromptEditor(state, renderer, redraw)
@@ -1157,7 +1168,7 @@ async function main(): Promise<void> {
   function focusPromptPane(state: AppState, renderer: CliRenderer, redraw: () => void): void {
     if (state.workspaceTransition) return
     if (state.editorModal?.target.kind === "prompt") {
-      startWorkspaceTransition(false)
+      startWorkspaceTransition(false, true)
       return
     }
     openPromptEditor(state, renderer, redraw)
