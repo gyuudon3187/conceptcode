@@ -1043,18 +1043,15 @@ async function main(): Promise<void> {
     state.promptPaneMode = nextFocus ? "collapsed" : "expanded"
     state.promptPaneTargetRatio = desiredPromptPaneRatio()
     state.promptPaneRatio = state.promptPaneTargetRatio
-    draw()
     if (openPromptEditorAfterTransition && !nextFocus) {
-      setTimeout(() => {
-        if (state.workspaceTransition || state.conceptNavigationFocused) return
-        if (state.editorModal?.target.kind === "prompt") {
-          state.editorModal.renderable.focus()
-          draw()
-          return
-        }
+      if (state.editorModal?.target.kind === "prompt") {
+        state.editorModal.renderable.focus()
+      } else {
         openPromptEditor(state, renderer, draw)
-      }, 0)
+        return
+      }
     }
+    draw()
   }
 
   function startWorkspaceTransition(nextFocus: boolean, openPromptEditorAfterTransition = false): void {
