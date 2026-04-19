@@ -4,7 +4,7 @@ kind_definitions:
 ui_layout:
   # Main-pane width ratio when Concepts is the dominant workspace.
   # Increasing this makes the large Concepts pane wider and the right column narrower.
-  collapsedPromptRatio: 0.373
+  collapsedPromptRatio: 0.383
 
   # Alternate Concepts-side main-pane width ratio used only while animating from
   # the Concepts-side workspace to the Session-side workspace.
@@ -21,13 +21,13 @@ ui_layout:
   # the Concepts-side workspace to the Session-side workspace.
   # Increase this to make the Concepts pane narrower during that transition
   # without changing the steady-state Session-side workspace or the reverse animation.
-  conceptsToSessionTransitionExpandedPromptRatio: 0.565
+  conceptsToSessionTransitionExpandedPromptRatio: 0.58
 
   # Multiplier applied only to the opening width of the right-side stack
   # (Details on top, Session on bottom) during the Concepts-to-Session transition.
   # Lower values make those panes start narrower without affecting Concepts,
   # Context, steady-state layouts, or the reverse transition.
-  conceptsToSessionRightStackStartWidthRatio: 0.85
+  conceptsToSessionRightStackStartWidthRatio: 0.87287
 
   # Extra acceleration applied only to Details-pane height shrink during the
   # Concepts-to-Session transition. Higher values make the Details pane collapse
@@ -47,7 +47,7 @@ ui_layout:
   workspaceTransitionStepMs: 16
 
   # Total workspace-transition duration in milliseconds.
-  workspaceTransitionDurationMs: 5000
+  workspaceTransitionDurationMs: 1000
 
   # Multiplier applied to transition progress inside pane choreography.
   # Higher values make panes reach their targets sooner within the overall transition.
@@ -62,7 +62,7 @@ ui_layout:
 
   # Total horizontal inset removed from the terminal width before pane widths are computed.
   # Increasing this makes every wide-layout pane narrower.
-  viewportHorizontalInset: 4
+  viewportHorizontalInset: 2.0
 
   # Padding around the outer frame. Increasing this reduces total vertical space.
   rootPadding: 1
