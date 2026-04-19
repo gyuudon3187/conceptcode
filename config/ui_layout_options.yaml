@@ -29,6 +29,11 @@ ui_layout:
   # Context, steady-state layouts, or the reverse transition.
   conceptsToSessionRightStackStartWidthRatio: 0.85
 
+  # Extra acceleration applied only to Details-pane height shrink during the
+  # Concepts-to-Session transition. Higher values make the Details pane collapse
+  # vertically sooner without changing its width timing or other panes.
+  conceptsToSessionDetailsHeightAcceleration: 1.15
+
   # Stops prompt-pane width animation when the current ratio is close enough to target.
   promptAnimationEpsilon: 0.015
 

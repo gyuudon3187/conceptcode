@@ -175,6 +175,7 @@ export type UiLayoutConfig = {
   expandedPromptRatio: number
   conceptsToSessionTransitionExpandedPromptRatio: number
   conceptsToSessionRightStackStartWidthRatio: number
+  conceptsToSessionDetailsHeightAcceleration: number
   promptAnimationEpsilon: number
   promptAnimationStepMs: number
   promptAnimationLerp: number

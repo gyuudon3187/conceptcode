@@ -576,6 +576,21 @@ function interpolateTopRightAnchoredRect(from: PaneRect, to: PaneRect, progress:
   }
 }
 
+function interpolateTopRightAnchoredRectWithIndependentHeightProgress(from: PaneRect, to: PaneRect, progress: number, heightProgress: number): PaneRect {
+  const width = Math.max(8, Math.round(from.width + (to.width - from.width) * progress))
+  const height = Math.max(3, Math.round(from.height + (to.height - from.height) * heightProgress))
+  const fromRight = from.left + from.width
+  const toRight = to.left + to.width
+  const right = Math.round(fromRight + (toRight - fromRight) * progress)
+  const top = Math.round(from.top + (to.top - from.top) * progress)
+  return {
+    left: right - width,
+    top,
+    width,
+    height,
+  }
+}
+
 function interpolateTopLeftAnchoredRect(from: PaneRect, to: PaneRect, progress: number): PaneRect {
   const left = Math.round(from.left + (to.left - from.left) * progress)
   const top = Math.round(from.top + (to.top - from.top) * progress)
@@ -679,7 +694,8 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
     }
     const detailsExitTarget: PaneRect = { left: rightAlignedLeft(fromWorkspace.frameWidth, config.transitionChipWidth), top: 0, width: config.transitionChipWidth, height: config.transitionChipHeight }
     const rightStackProgress = acceleratedProgress(progress, config.workspaceTransitionAcceleration)
-    const detailsRect = interpolateTopRightAnchoredRect(detailsSourceRect, detailsExitTarget, rightStackProgress)
+    const detailsHeightProgress = acceleratedProgress(rightStackProgress, config.conceptsToSessionDetailsHeightAcceleration)
+    const detailsRect = interpolateTopRightAnchoredRectWithIndependentHeightProgress(detailsSourceRect, detailsExitTarget, rightStackProgress, detailsHeightProgress)
     const detailsVisibleProgress = blendProgress(rightStackProgress, config.workspaceTransitionFadeStart, config.workspaceTransitionFadeEnd)
     const showDetailsPane = detailsVisibleProgress < 1
     const sessionRectWithSoloGrowth = interpolateBottomRightAnchoredRect(sessionEnterStart, toWorkspace.session, rightStackProgress)
