@@ -668,9 +668,9 @@ function renderWorkspaceTransitionOverlay(state: AppState, listScroll: ScrollBox
       height: conceptsMiniTarget.height,
     }
     const detailsSourceRect: PaneRect = {
-      left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.session.width),
+      left: rightAlignedLeft(fromWorkspace.frameWidth, toWorkspace.details.width),
       top: fromWorkspace.details.top,
-      width: fromWorkspace.details.width,
+      width: toWorkspace.details.width,
       height: fromWorkspace.details.height,
     }
     const detailsExitTarget: PaneRect = { left: rightAlignedLeft(fromWorkspace.frameWidth, config.transitionChipWidth), top: 0, width: config.transitionChipWidth, height: config.transitionChipHeight }
