@@ -159,6 +159,48 @@ export type SessionModalState = {
   selectedIndex: number
 }
 
+export type WorkspaceFocus = "session" | "concepts"
+
+export type WorkspaceTransitionState = {
+  from: WorkspaceFocus
+  to: WorkspaceFocus
+  progress: number
+  startedAt: number
+  loggedFirstFrame?: boolean
+}
+
+export type UiLayoutConfig = {
+  collapsedPromptRatio: number
+  conceptsToSessionTransitionCollapsedPromptRatio: number
+  expandedPromptRatio: number
+  conceptsToSessionTransitionExpandedPromptRatio: number
+  conceptsToSessionRightStackStartWidthRatio: number
+  conceptsToSessionDetailsHeightAcceleration: number
+  promptAnimationEpsilon: number
+  promptAnimationStepMs: number
+  promptAnimationLerp: number
+  workspaceTransitionStepMs: number
+  workspaceTransitionDurationMs: number
+  workspaceTransitionAcceleration: number
+  workspaceTransitionEndEasePower: number
+  workspaceTransitionStaggerDelay: number
+  workspaceTransitionFadeStart: number
+  workspaceTransitionFadeEnd: number
+  viewportHorizontalInset: number
+  rootPadding: number
+  interPaneGap: number
+  minFrameWidth: number
+  minFrameHeight: number
+  minPromptPaneWidth: number
+  minSidebarWidth: number
+  supportHeight: number
+  minPreviewHeight: number
+  minPaneWidth: number
+  minPaneHeight: number
+  transitionChipWidth: number
+  transitionChipHeight: number
+}
+
 export type AppState = {
   jsonPath: string
   graphPayload: GraphPayload
@@ -183,6 +225,7 @@ export type AppState = {
   promptPaneRatio: number
   promptPaneTargetRatio: number
   promptPaneMode: "collapsed" | "expanded"
+  uiLayoutConfig: UiLayoutConfig
   promptScrollTop: number
   promptViewportHeight: number
   conceptNavigationFocused: boolean
@@ -198,4 +241,6 @@ export type AppState = {
   activeAssistantMessageId: string | null
   lastPromptAutoScrollTop: number | null
   activeAssistantNewlineCount: number
+  workspaceTransition: WorkspaceTransitionState | null
+  workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
 }

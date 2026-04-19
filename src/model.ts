@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs"
-import { dirname, isAbsolute, resolve } from "node:path"
+import { dirname, extname, isAbsolute, resolve } from "node:path"
 
-import type { ConceptNode, GraphPayload, JsonValue, KindDefinition, SourceLoc } from "./types"
+import type { ConceptNode, GraphPayload, JsonValue, KindDefinition, SourceLoc, UiLayoutConfig } from "./types"
 
 function asObject(value: JsonValue | undefined): Record<string, JsonValue> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -109,13 +109,108 @@ function kindDefinitionsFromOptions(optionsPath: string | undefined): KindDefini
   if (!optionsPath) {
     return []
   }
-  const payload = JSON.parse(readFileSync(optionsPath, "utf8")) as JsonValue
+  const payload = optionsPayloadFromPath(optionsPath)
   const root = asObject(payload)
   const kindDefinitions = asObject(root.kind_definitions)
   return Object.entries(kindDefinitions)
     .filter(([, value]) => typeof value === "string")
     .map(([kind, description]) => ({ kind, description: String(description), source: "options" as const }))
     .sort((left, right) => left.kind.localeCompare(right.kind))
+}
+
+function parseScalarYamlValue(rawValue: string): JsonValue {
+  const value = rawValue.trim()
+  if (value === "true") return true
+  if (value === "false") return false
+  if (value === "null") return null
+  if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1)
+  }
+  const numeric = Number(value)
+  if (!Number.isNaN(numeric) && value !== "") return numeric
+  return value
+}
+
+function parseSimpleYaml(text: string): Record<string, JsonValue> {
+  const root: Record<string, JsonValue> = {}
+  const stack: Array<{ indent: number; value: Record<string, JsonValue> }> = [{ indent: -1, value: root }]
+  for (const rawLine of text.replace(/\r\n/g, "\n").split("\n")) {
+    const withoutComment = rawLine.replace(/\s+#.*$/, "")
+    if (!withoutComment.trim()) continue
+    const indent = withoutComment.match(/^\s*/)?.[0].length ?? 0
+    const trimmed = withoutComment.trim()
+    const separatorIndex = trimmed.indexOf(":")
+    if (separatorIndex === -1) continue
+    const key = trimmed.slice(0, separatorIndex).trim()
+    const rawValue = trimmed.slice(separatorIndex + 1).trim()
+    while (stack.length > 1 && indent <= stack[stack.length - 1].indent) {
+      stack.pop()
+    }
+    const parent = stack[stack.length - 1]?.value ?? root
+    if (!rawValue) {
+      const child: Record<string, JsonValue> = {}
+      parent[key] = child
+      stack.push({ indent, value: child })
+      continue
+    }
+    parent[key] = parseScalarYamlValue(rawValue)
+  }
+  return root
+}
+
+function optionsPayloadFromPath(optionsPath: string): JsonValue {
+  const text = readFileSync(optionsPath, "utf8")
+  const extension = extname(optionsPath).toLowerCase()
+  if (extension === ".yaml" || extension === ".yml") {
+    return parseSimpleYaml(text)
+  }
+  return JSON.parse(text) as JsonValue
+}
+
+function uiLayoutConfigFromOptions(optionsPath: string | undefined): Partial<UiLayoutConfig> {
+  if (!optionsPath) return {}
+  const payload = optionsPayloadFromPath(optionsPath)
+  const root = asObject(payload)
+  const uiLayout = asObject(root.ui_layout)
+  const result: Partial<UiLayoutConfig> = {}
+  const numericKeys: Array<keyof UiLayoutConfig> = [
+    "collapsedPromptRatio",
+    "conceptsToSessionTransitionCollapsedPromptRatio",
+    "expandedPromptRatio",
+    "conceptsToSessionTransitionExpandedPromptRatio",
+    "conceptsToSessionRightStackStartWidthRatio",
+    "conceptsToSessionDetailsHeightAcceleration",
+    "promptAnimationEpsilon",
+    "promptAnimationStepMs",
+    "promptAnimationLerp",
+    "workspaceTransitionStepMs",
+    "workspaceTransitionDurationMs",
+    "workspaceTransitionAcceleration",
+    "workspaceTransitionEndEasePower",
+    "workspaceTransitionStaggerDelay",
+    "workspaceTransitionFadeStart",
+    "workspaceTransitionFadeEnd",
+    "viewportHorizontalInset",
+    "rootPadding",
+    "interPaneGap",
+    "minFrameWidth",
+    "minFrameHeight",
+    "minPromptPaneWidth",
+    "minSidebarWidth",
+    "supportHeight",
+    "minPreviewHeight",
+    "minPaneWidth",
+    "minPaneHeight",
+    "transitionChipWidth",
+    "transitionChipHeight",
+  ]
+  for (const key of numericKeys) {
+    const value = uiLayout[key]
+    if (typeof value === "number" && Number.isFinite(value)) {
+      result[key] = value
+    }
+  }
+  return result
 }
 
 function mergeKindDefinitions(inferred: KindDefinition[], configured: KindDefinition[]): KindDefinition[] {
@@ -140,12 +235,17 @@ export function bulletList(value: JsonValue | undefined): string[] {
   return value.filter((item): item is string | number => typeof item === "string" || typeof item === "number").map(String)
 }
 
-export function loadConceptGraph(jsonPath: string, optionsPath?: string): { graphPayload: GraphPayload; nodes: Map<string, ConceptNode>; kindDefinitions: KindDefinition[] } {
+export function loadConceptGraph(jsonPath: string, optionsPath?: string): { graphPayload: GraphPayload; nodes: Map<string, ConceptNode>; kindDefinitions: KindDefinition[]; uiLayoutConfig: Partial<UiLayoutConfig> } {
   const payload = JSON.parse(readFileSync(jsonPath, "utf8")) as GraphPayload
   const rootPayload = asObject(payload.root as JsonValue | undefined)
   if (Object.keys(rootPayload).length === 0) {
     throw new Error(`Concept graph at ${jsonPath} is missing a root object`)
   }
   const nodes = buildNodes(rootPayload, "root", null)
-  return { graphPayload: payload, nodes, kindDefinitions: mergeKindDefinitions(inferredKindDefinitions(nodes), kindDefinitionsFromOptions(optionsPath)) }
+  return {
+    graphPayload: payload,
+    nodes,
+    kindDefinitions: mergeKindDefinitions(inferredKindDefinitions(nodes), kindDefinitionsFromOptions(optionsPath)),
+    uiLayoutConfig: uiLayoutConfigFromOptions(optionsPath),
+  }
 }
