@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, TextNodeRenderable, type TextChunk } from "@opentui/core"
 
 import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview, type PreviewLegendItem } from "./snippet"
-import { visibleAliasSuggestions } from "./index"
+import { visibleAliasSuggestions } from "./app/prompt-editor"
 import { activeSession } from "./session"
 import { currentNode, currentPath, visiblePaths } from "./state"
 import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "./types"
