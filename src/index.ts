@@ -33,6 +33,7 @@ const DEFAULT_UI_LAYOUT_CONFIG: UiLayoutConfig = {
   workspaceTransitionStepMs: 16,
   workspaceTransitionDurationMs: 5000,
   workspaceTransitionAcceleration: 1.22,
+  workspaceTransitionEndEasePower: 3,
   workspaceTransitionStaggerDelay: 0.115,
   workspaceTransitionFadeStart: 0.78,
   workspaceTransitionFadeEnd: 0.92,
@@ -101,6 +102,18 @@ function closeSessionModal(state: AppState): void {
   if (state.editorModal?.target.kind === "prompt") {
     state.editorModal.renderable.focus()
   }
+}
+
+function easeOutPower(progress: number, power: number): number {
+  const clamped = Math.max(0, Math.min(1, progress))
+  const normalizedPower = Math.max(1, power)
+  const lateEaseStart = 0.72
+  if (clamped <= lateEaseStart) {
+    return clamped
+  }
+  const tailProgress = (clamped - lateEaseStart) / (1 - lateEaseStart)
+  const easedTailProgress = 1 - ((1 - tailProgress) ** (1 / normalizedPower))
+  return lateEaseStart + (easedTailProgress * (1 - lateEaseStart))
 }
 
 async function persistSessions(state: AppState): Promise<void> {
@@ -1080,12 +1093,14 @@ async function main(): Promise<void> {
       const transition = state.workspaceTransition
       if (!transition) return
       const elapsed = Date.now() - transition.startedAt
-      transition.progress = Math.min(1, elapsed / state.uiLayoutConfig.workspaceTransitionDurationMs)
+      const linearProgress = Math.min(1, elapsed / state.uiLayoutConfig.workspaceTransitionDurationMs)
+      transition.progress = easeOutPower(linearProgress, state.uiLayoutConfig.workspaceTransitionEndEasePower)
       if (transition.progress >= 1) {
         void appendWorkspaceDebugLog("transition_end", {
           from: transition.from,
           to: transition.to,
           progress: transition.progress,
+          linearProgress,
           elapsed,
           viewportWidth: process.stdout.columns || 120,
           viewportHeight: process.stdout.rows || 36,

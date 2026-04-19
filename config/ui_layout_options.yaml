@@ -47,11 +47,15 @@ ui_layout:
   workspaceTransitionStepMs: 16
 
   # Total workspace-transition duration in milliseconds.
-  workspaceTransitionDurationMs: 1000
+  workspaceTransitionDurationMs: 800
 
   # Multiplier applied to transition progress inside pane choreography.
   # Higher values make panes reach their targets sooner within the overall transition.
   workspaceTransitionAcceleration: 1.22
+
+  # Ease-out strength applied to overall workspace-transition progress.
+  # Higher values make the transition decelerate more noticeably near the end.
+  workspaceTransitionEndEasePower: 3
 
   # Delay before secondary panes (Details/Context) fully join the transition.
   workspaceTransitionStaggerDelay: 0.115

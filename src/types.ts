@@ -182,6 +182,7 @@ export type UiLayoutConfig = {
   workspaceTransitionStepMs: number
   workspaceTransitionDurationMs: number
   workspaceTransitionAcceleration: number
+  workspaceTransitionEndEasePower: number
   workspaceTransitionStaggerDelay: number
   workspaceTransitionFadeStart: number
   workspaceTransitionFadeEnd: number

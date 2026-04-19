@@ -186,6 +186,7 @@ function uiLayoutConfigFromOptions(optionsPath: string | undefined): Partial<UiL
     "workspaceTransitionStepMs",
     "workspaceTransitionDurationMs",
     "workspaceTransitionAcceleration",
+    "workspaceTransitionEndEasePower",
     "workspaceTransitionStaggerDelay",
     "workspaceTransitionFadeStart",
     "workspaceTransitionFadeEnd",
