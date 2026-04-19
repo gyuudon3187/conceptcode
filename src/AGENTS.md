@@ -23,6 +23,30 @@ These instructions apply when working in this directory and its subdirectories.
 - `src/clipboard.ts` builds the current clipboard export payload from prompt-referenced concept aliases and integrates with `wl-copy`.
 - `src/types.ts` defines shared application and schema types.
 
+## Workspace terminology
+
+In wide layout, the UI has two focus-driven workspace compositions:
+
+- Concepts-side workspace:
+  - `state.conceptNavigationFocused === true`
+  - The Concepts pane is the dominant pane.
+  - The supporting column shows Details on top and Session preview below.
+
+- Session-side workspace:
+  - `state.conceptNavigationFocused === false`
+  - The Session pane is the dominant pane.
+  - The supporting column shows Context on top and Concepts preview below.
+
+Workspace transitions use the same terminology as their `from` and `to` values in `state.workspaceTransition`:
+
+- Concepts-to-Session transition:
+  - `from === "concepts"` and `to === "session"`
+
+- Session-to-Concepts transition:
+  - `from === "session"` and `to === "concepts"`
+
+When discussing layout tuning, "source" refers to the `from` workspace geometry and "destination" refers to the `to` workspace geometry.
+
 ## Streaming integration guidance
 
 - Keep provider-specific wire protocols out of the TUI rendering path when possible; normalize them at the chat transport boundary first.
