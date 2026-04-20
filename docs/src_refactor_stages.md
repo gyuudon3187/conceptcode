@@ -191,6 +191,8 @@ Files expected to remain:
 - `src/app/init.ts`
 - `src/app/keybindings.ts`
 - `src/app/workspace.ts`
+- [x] `src/app/platform.ts`
+- [x] `src/app/clipboard.ts`
 
 Possible cleanup tasks:
 

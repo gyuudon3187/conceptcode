@@ -82,11 +82,13 @@ Example options file:
 ## Architecture
 
 - `src/index.ts` boots the OpenTUI app and wires keyboard input to state transitions
-- `src/chat.ts` defines the minimal streaming transport boundary and the disposable local dummy SSE server
-- `src/model.ts` loads and normalizes concept graphs
-- `src/state.ts` manages navigation, status, layout mode, and scroll state
-- `src/view.ts` renders the prompt-first interface, concept summary surfaces, and inspector overlays
-- `src/clipboard.ts` builds the current clipboard export payload from prompt-referenced concept aliases, adds concept-field guidance for LLMs, and integrates with `wl-copy`
+- `src/core/model.ts`, `src/core/state.ts`, and `src/core/types.ts` define the shared concept graph and state foundations
+- `src/platform/chat.ts` defines the minimal streaming transport boundary and the disposable local dummy SSE server
+- `src/prompt/` groups prompt editing, prompt-thread coordination, and effective prompt payload construction
+- `src/sessions/` groups session persistence and app-facing session workflows
+- `src/concepts/drafts.ts` holds draft concept creation and removal flows
+- `src/ui/view.ts` and `src/ui/snippet.ts` render the prompt-first TUI and inspector previews
+- `src/app/` is the thin application orchestration layer for init, keybindings, workspace transitions, and app-state clipboard status handling
 
 See `docs/src_architecture_proposal.md` for a proposed target `src/` directory layout and the rationale for where files should live.
 

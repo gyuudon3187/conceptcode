@@ -16,12 +16,13 @@ These instructions apply when working in this directory and its subdirectories.
 ## Architecture reminders
 
 - `src/index.ts` boots the OpenTUI app and wires keyboard input to state transitions.
-- `src/chat.ts` is the provider-facing streaming transport boundary and the current home of the disposable local dummy SSE chat server.
-- `src/model.ts` loads and normalizes concept graphs.
-- `src/state.ts` manages navigation, status, layout mode, and scroll state.
-- `src/view.ts` renders the prompt-first interface, concept summary surfaces, and inspector overlays.
-- `src/clipboard.ts` builds the current clipboard export payload from prompt-referenced concept aliases and integrates with `wl-copy`.
-- `src/types.ts` defines shared application and schema types.
+- `src/platform/chat.ts` is the provider-facing streaming transport boundary and the current home of the disposable local dummy SSE chat server.
+- `src/core/model.ts` loads and normalizes concept graphs.
+- `src/core/state.ts` manages navigation, status, layout mode, and scroll state.
+- `src/ui/view.ts` renders the prompt-first interface, concept summary surfaces, and inspector overlays.
+- `src/prompt/payload.ts` builds the effective prompt payload from prompt-referenced concept aliases, while `src/platform/clipboard.ts` integrates with `wl-copy`.
+- `src/core/types.ts` defines shared application and schema types.
+- `src/app/` is the thin orchestration layer for app init, keybindings, workspace transitions, and app-state wrappers around platform adapters.
 
 ## Workspace terminology
 

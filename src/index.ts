@@ -1,8 +1,9 @@
 import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
+import { copyWithStatus } from "./app/clipboard"
 import { createInitialAppState, loadProjectPaths, parseArgs } from "./app/init"
 import { bindKeyHandler } from "./app/keybindings"
-import { clearCtrlCExitState, copyWithStatus } from "./app/platform"
+import { clearCtrlCExitState } from "./app/platform"
 import { createWorkspaceController } from "./app/workspace"
 import { loadConceptGraph } from "./core/model"
 import { clampCursor, handleResize } from "./core/state"
