@@ -33,9 +33,9 @@ Goal: move the most stable shared modules first.
 
 Moves:
 
-- `src/model.ts` -> `src/core/model.ts`
-- `src/state.ts` -> `src/core/state.ts`
-- `src/types.ts` -> `src/core/types.ts`
+- [x] `src/model.ts` -> `src/core/model.ts`
+- [x] `src/state.ts` -> `src/core/state.ts`
+- [x] `src/types.ts` -> `src/core/types.ts`
 
 Import updates:
 
@@ -58,12 +58,12 @@ Goal: separate provider and OS integration from core app logic.
 
 Moves:
 
-- `src/chat.ts` -> `src/platform/chat.ts`
+- [x] `src/chat.ts` -> `src/platform/chat.ts`
 
 Partial moves:
 
-- move external editor logic from `src/app/platform.ts` into `src/platform/editor.ts`
-- move process clipboard integration from `src/clipboard.ts` and `src/app/platform.ts` into `src/platform/clipboard.ts`
+- [x] move external editor logic from `src/app/platform.ts` into `src/platform/editor.ts`
+- [x] move process clipboard integration from `src/clipboard.ts` and `src/app/platform.ts` into `src/platform/clipboard.ts`
 
 Likely exports after this stage:
 

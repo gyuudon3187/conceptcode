@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
@@ -255,25 +254,4 @@ export function clipboardSelection(state: AppState, _currentPath: string): { pat
   const promptText = activeSession(state).draftPromptText.trim()
   const paths = [...referencedConceptPaths(promptText, state.nodes), ...referencedFilePaths(promptText).filter((path) => state.projectFiles.includes(path) || state.projectDirectories.includes(path))]
   return { paths, count: paths.length }
-}
-
-export function copyToClipboard(text: string): Promise<{ ok: boolean; message: string }> {
-  return new Promise((resolvePromise) => {
-    const child = spawn("wl-copy", ["--foreground"], { stdio: ["pipe", "ignore", "pipe"] })
-    let stderr = ""
-    child.stderr.on("data", (chunk) => {
-      stderr += String(chunk)
-    })
-    child.on("error", () => {
-      resolvePromise({ ok: false, message: "wl-copy not found on PATH" })
-    })
-    child.on("close", (code) => {
-      if (code === 0 || code === null) {
-        resolvePromise({ ok: true, message: "Copied to clipboard" })
-      } else {
-        resolvePromise({ ok: false, message: `wl-copy failed: ${stderr.trim() || `exit code ${code}`}` })
-      }
-    })
-    child.stdin.end(text)
-  })
 }
