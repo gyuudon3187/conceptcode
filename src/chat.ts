@@ -1,4 +1,4 @@
-import type { ChatStreamEvent, ChatTransport, ChatTurnRequest } from "./types"
+import type { ChatStreamEvent, ChatTransport, ChatTurnRequest } from "./core/types"
 
 type ParsedSseEvent = {
   event: string

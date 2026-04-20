@@ -5,9 +5,9 @@ import { resolve } from "node:path"
 
 import { encodingForModel } from "js-tiktoken"
 
-import { asMetadataObject, bulletList } from "./model"
+import { asMetadataObject, bulletList } from "./core/model"
+import type { AppState, ConceptNode, JsonValue, UiMode } from "./core/types"
 import { activeSession } from "./session"
-import type { AppState, ConceptNode, JsonValue, UiMode } from "./types"
 
 const CLIPBOARD_PREAMBLE = `${readFileSync(resolve(import.meta.dir, "../prompts/clipboard_preamble.md"), "utf8").trim()}\n`
 const CONCEPTUALIZE_CLIPBOARD_PREAMBLE = `${readFileSync(resolve(import.meta.dir, "../prompts/clipboard_preamble_conceptualize.md"), "utf8").trim()}\n`

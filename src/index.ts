@@ -7,10 +7,10 @@ import { clearCtrlCExitState, copyWithStatus, openExternalEditor } from "./app/p
 import { createPromptThreadController } from "./app/prompt-thread"
 import { createWorkspaceController } from "./app/workspace"
 import { createSseChatTransport, startDummyChatServer } from "./chat"
-import { loadConceptGraph } from "./model"
+import { loadConceptGraph } from "./core/model"
+import { clampCursor, handleResize } from "./core/state"
+import type { AppState, InspectorKind } from "./core/types"
 import { activeSession } from "./session"
-import { clampCursor, handleResize } from "./state"
-import type { AppState, InspectorKind } from "./types"
 import { repaint, scrollListForCursor } from "./view"
 
 function buildPromptEditorDeps(

@@ -88,6 +88,8 @@ Example options file:
 - `src/view.ts` renders the prompt-first interface, concept summary surfaces, and inspector overlays
 - `src/clipboard.ts` builds the current clipboard export payload from prompt-referenced concept aliases, adds concept-field guidance for LLMs, and integrates with `wl-copy`
 
+See `docs/src_architecture_proposal.md` for a proposed target `src/` directory layout and the rationale for where files should live.
+
 ## Prompt workflows
 
 - `prompts/generate_concept_graph.md` is the main prompt for generating a concept graph from code.

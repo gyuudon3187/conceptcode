@@ -4,8 +4,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { copyToClipboard } from "../clipboard"
-import { currentPath } from "../state"
-import type { AppState } from "../types"
+import { currentPath } from "../core/state"
+import type { AppState } from "../core/types"
 
 export async function openExternalEditor(initialText: string): Promise<string> {
   const editor = process.env.EDITOR?.trim()

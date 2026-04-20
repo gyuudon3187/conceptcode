@@ -1,7 +1,7 @@
 import type { KeyEvent } from "@opentui/core"
 
-import { applySelectionChange, clampCursor, currentPath } from "../state"
-import type { AppState, ConceptNode, CreateConceptDraft, KindDefinition } from "../types"
+import { applySelectionChange, clampCursor, currentPath } from "../core/state"
+import type { AppState, ConceptNode, CreateConceptDraft, KindDefinition } from "../core/types"
 
 export function emptyCreateDraft(): CreateConceptDraft {
   return { title: "", summary: "" }

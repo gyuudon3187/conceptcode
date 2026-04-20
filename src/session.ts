@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises"
 import { createHash, randomUUID } from "node:crypto"
 import { basename, join, resolve } from "node:path"
 
-import type { ChatSession, ChatSessionSummary, PromptMessage, SessionStoreIndex, UiMode } from "./types"
+import type { ChatSession, ChatSessionSummary, PromptMessage, SessionStoreIndex, UiMode } from "./core/types"
 
 const SESSION_SCHEMA_VERSION = 1
 

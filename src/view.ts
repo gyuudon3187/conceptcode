@@ -5,9 +5,9 @@ import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, Text
 
 import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview, type PreviewLegendItem } from "./snippet"
 import { visibleAliasSuggestions } from "./app/prompt-editor"
+import { currentNode, currentPath, visiblePaths } from "./core/state"
+import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "./core/types"
 import { activeSession } from "./session"
-import { currentNode, currentPath, visiblePaths } from "./state"
-import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "./types"
 
 export const COLORS = {
   bg: "#111417",

@@ -3,9 +3,9 @@ import { createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/cor
 import { handleCreateConceptModalKey, isDraftConcept, openCreateConceptModal, promptToRemoveDraft, removeDraftConcept } from "./concepts"
 import { acceptAliasSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, moveAliasSuggestionSelection, openSummaryEditor, refreshAliasSuggestion, refreshAliasSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "./prompt-editor"
 import { closeSessionModal, createAndSwitchSession, flushActiveSession, openSessionModal, sessionModalEntries, switchToSession } from "./sessions"
-import type { AppState, InspectorKind } from "../types"
 import { buildClipboardPayload, clipboardSelection } from "../clipboard"
-import { applySelectionChange, currentNode, currentPath, moveCursor, pageSize, scrollMain, visiblePaths } from "../state"
+import { applySelectionChange, currentNode, currentPath, moveCursor, pageSize, scrollMain, visiblePaths } from "../core/state"
+import type { AppState, InspectorKind } from "../core/types"
 
 type PromptEditorDeps = {
   redraw: () => void
