@@ -36,6 +36,18 @@ function closeInspector(state: AppState): void {
   state.inspector = null
 }
 
+function createScrollBox(renderer: CliRenderer): ScrollBoxRenderable {
+  const scroll = new ScrollBoxRenderable(renderer, {
+    width: "100%",
+    height: "100%",
+    viewportCulling: false,
+    scrollbarOptions: { showArrows: false },
+  })
+  scroll.verticalScrollBar.visible = false
+  scroll.horizontalScrollBar.visible = false
+  return scroll
+}
+
 async function main(): Promise<void> {
   const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
   const { graphPayload, nodes, kindDefinitions, uiLayoutConfig } = loadConceptGraph(conceptsPath, optionsPath)
@@ -64,8 +76,17 @@ async function main(): Promise<void> {
   const promptThread = createPromptThreadController()
   let workspace!: ReturnType<typeof createWorkspaceController>
 
+  const promptEditorDepsFor = (nextState = state, nextRedraw = draw) => buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace)
+
   function openPromptEditorWithDeps(nextState = state, nextRenderer = renderer, nextRedraw = draw): void {
-    openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace))
+    openPromptEditor(nextState, nextRenderer, promptEditorDepsFor(nextState, nextRedraw))
+  }
+
+  function submitPromptMessage(): void {
+    promptThread.submitPromptMessage(state, renderer, draw, {
+      syncPromptDraft,
+      openPromptEditor: (nextState, nextRenderer, nextRedraw) => openPromptEditor(nextState, nextRenderer, promptEditorDepsFor(nextState, nextRedraw)),
+    })
   }
 
   workspace = createWorkspaceController({
@@ -76,16 +97,10 @@ async function main(): Promise<void> {
 
   function mountRenderer(nextRenderer: CliRenderer): void {
     renderer = nextRenderer
-    listScroll = new ScrollBoxRenderable(renderer, { width: "100%", height: "100%", viewportCulling: false, scrollbarOptions: { showArrows: false } })
-    mainScroll = new ScrollBoxRenderable(renderer, { width: "100%", height: "100%", viewportCulling: false, scrollbarOptions: { showArrows: false } })
-    promptScroll = new ScrollBoxRenderable(renderer, { width: "100%", height: "100%", viewportCulling: false, scrollbarOptions: { showArrows: false } })
+    listScroll = createScrollBox(renderer)
+    mainScroll = createScrollBox(renderer)
+    promptScroll = createScrollBox(renderer)
     promptThread.setPromptScrollRenderable(promptScroll)
-    listScroll.verticalScrollBar.visible = false
-    listScroll.horizontalScrollBar.visible = false
-    mainScroll.verticalScrollBar.visible = false
-    mainScroll.horizontalScrollBar.visible = false
-    promptScroll.verticalScrollBar.visible = false
-    promptScroll.horizontalScrollBar.visible = false
     renderer.on("resize", (width) => {
       handleResize(state, width)
       workspace.handleResize()
@@ -132,12 +147,9 @@ async function main(): Promise<void> {
       closeInspector: () => closeInspector(state),
       refreshPromptScroll: () => promptThread.refreshPromptScroll(state),
       refreshPromptTokenBreakdown: () => promptThread.refreshPromptTokenBreakdown(state, draw),
-      submitPromptMessage: () => promptThread.submitPromptMessage(state, renderer, draw, {
-        syncPromptDraft,
-        openPromptEditor: (nextState, nextRenderer, nextRedraw) => openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace)),
-      }),
-      openPromptEditor: (nextState: AppState, nextRenderer: CliRenderer, nextRedraw: () => void) => openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace)),
-      buildPromptEditorDeps: () => buildPromptEditorDeps(state, draw, promptThread, workspace),
+      submitPromptMessage,
+      openPromptEditor: (nextState: AppState, nextRenderer: CliRenderer, nextRedraw: () => void) => openPromptEditor(nextState, nextRenderer, promptEditorDepsFor(nextState, nextRedraw)),
+      buildPromptEditorDeps: () => promptEditorDepsFor(),
       workspace,
       remountRenderer: async () => {
         mountRenderer(await createCliRenderer({ exitOnCtrlC: false }))
@@ -163,7 +175,7 @@ async function main(): Promise<void> {
 
   handleResize(state, initialRenderer.terminalWidth || process.stdout.columns || 120)
   workspace.applyStartupPromptPaneRatio()
-  openPromptEditor(state, initialRenderer, buildPromptEditorDeps(state, draw, promptThread, workspace))
+  openPromptEditor(state, initialRenderer, promptEditorDepsFor())
   promptThread.refreshPromptTokenBreakdown(state, draw)
   draw()
   state.startupDrawComplete = true
