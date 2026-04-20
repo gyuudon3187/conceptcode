@@ -1,4 +1,4 @@
-import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawn } from "node:child_process"
@@ -7,9 +7,10 @@ import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, type Highli
 
 import { handleCreateConceptModalKey, isDraftConcept, openCreateConceptModal, promptToRemoveDraft, removeDraftConcept } from "./app/concepts"
 import { createInitialAppState, loadProjectPaths, parseArgs } from "./app/init"
-import { acceptAliasSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, moveAliasSuggestionSelection, openEditor, openPromptEditor, openSummaryEditor, refreshAliasSuggestion, refreshAliasSuggestionSoon, refreshEditorModalHeight, syncPromptDraft, visibleAliasSuggestions } from "./app/prompt-editor"
+import { acceptAliasSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, moveAliasSuggestionSelection, openPromptEditor, openSummaryEditor, refreshAliasSuggestion, refreshAliasSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "./app/prompt-editor"
 import { createPromptThreadController } from "./app/prompt-thread"
 import { createAndSwitchSession, closeSessionModal, flushActiveSession, openSessionModal, persistSessions, sessionModalEntries, switchToSession } from "./app/sessions"
+import { createWorkspaceController } from "./app/workspace"
 import { createSseChatTransport, startDummyChatServer } from "./chat"
 import { buildClipboardPayload, clipboardSelection, copyToClipboard, EMPTY_PROMPT_TOKEN_BREAKDOWN } from "./clipboard"
 import { loadConceptGraph } from "./model"
@@ -18,45 +19,18 @@ import { applySelectionChange, clampCursor, currentNode, currentPath, handleResi
 import type { AppState, ChatSession, InspectorKind, UiLayoutConfig } from "./types"
 import { repaint, scrollListForCursor } from "./view"
 
-const DEBUG_WORKSPACE_TRANSITION = true
-const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")
-
-async function appendWorkspaceDebugLog(event: string, payload: Record<string, unknown>): Promise<void> {
-  if (!DEBUG_WORKSPACE_TRANSITION) return
-  const line = `${JSON.stringify({ ts: new Date().toISOString(), event, ...payload })}\n`
-  try {
-    await appendFile(WORKSPACE_DEBUG_LOG_PATH, line, "utf8")
-  } catch {
-  }
-}
-
-function easeOutPower(progress: number, power: number): number {
-  const clamped = Math.max(0, Math.min(1, progress))
-  const normalizedPower = Math.max(1, power)
-  const lateEaseStart = 0.72
-  if (clamped <= lateEaseStart) {
-    return clamped
-  }
-  const tailProgress = (clamped - lateEaseStart) / (1 - lateEaseStart)
-  const easedTailProgress = 1 - ((1 - tailProgress) ** (1 / normalizedPower))
-  return lateEaseStart + (easedTailProgress * (1 - lateEaseStart))
-}
-
-
-
-let refreshPromptPaneTarget: () => void = () => {}
-
 function buildPromptEditorDeps(
   state: AppState,
   redraw: () => void,
   promptThread: ReturnType<typeof createPromptThreadController>,
+  workspace: ReturnType<typeof createWorkspaceController>,
 ) {
   return {
     redraw,
     refreshPromptTokenBreakdown: () => promptThread.refreshPromptTokenBreakdown(state, redraw),
     refreshPromptScroll: () => promptThread.refreshPromptScroll(state),
     schedulePromptScrollSync: (reason: string) => promptThread.schedulePromptScrollSync(state, redraw, reason),
-    refreshPromptPaneTarget,
+    refreshPromptPaneTarget: () => workspace.refreshPromptPaneTarget(),
   }
 }
 
@@ -94,6 +68,17 @@ async function main(): Promise<void> {
   let mainScroll!: ScrollBoxRenderable
   let promptScroll!: ScrollBoxRenderable
   const promptThread = createPromptThreadController()
+  let workspace!: ReturnType<typeof createWorkspaceController>
+
+  function openPromptEditorWithDeps(nextState = state, nextRenderer = renderer, nextRedraw = draw): void {
+    openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace))
+  }
+
+  workspace = createWorkspaceController({
+    state,
+    redraw: draw,
+    openPromptEditor: () => openPromptEditorWithDeps(),
+  })
 
   function mountRenderer(nextRenderer: CliRenderer): void {
     renderer = nextRenderer
@@ -109,182 +94,12 @@ async function main(): Promise<void> {
     promptScroll.horizontalScrollBar.visible = false
     renderer.on("resize", (width) => {
       handleResize(state, width)
-      if (!state.startupDrawComplete) {
-        state.promptPaneTargetRatio = desiredPromptPaneRatio()
-        state.promptPaneRatio = state.promptPaneTargetRatio
-        draw()
-        state.startupDrawComplete = true
-        return
-      }
-      refreshPromptPaneTarget()
-      draw()
+      workspace.handleResize()
     })
   }
 
   function closeConfirmModal(): void {
     state.confirmModal = null
-  }
-
-  function desiredPromptPaneRatio(): number {
-    if (state.layoutMode !== "wide") return 1
-    return state.promptPaneMode === "expanded" ? state.uiLayoutConfig.expandedPromptRatio : state.uiLayoutConfig.collapsedPromptRatio
-  }
-
-  function stopPromptPaneAnimation(): void {
-    if (state.promptPaneAnimationTimeout) {
-      clearTimeout(state.promptPaneAnimationTimeout)
-      state.promptPaneAnimationTimeout = null
-    }
-  }
-
-  function stopWorkspaceTransition(): void {
-    if (state.workspaceTransitionTimeout) {
-      clearTimeout(state.workspaceTransitionTimeout)
-      state.workspaceTransitionTimeout = null
-    }
-  }
-
-  function finishWorkspaceTransition(nextFocus: boolean, openPromptEditorAfterTransition = false): void {
-    stopWorkspaceTransition()
-    stopPromptPaneAnimation()
-    if (nextFocus && state.editorModal?.target.kind === "prompt") {
-      applyEditorText(state, state.editorModal)
-      state.editorModal.renderable.blur()
-      state.editorModal = null
-    }
-    state.workspaceTransition = null
-    state.conceptNavigationFocused = nextFocus
-    state.promptPaneMode = nextFocus ? "collapsed" : "expanded"
-    state.promptPaneTargetRatio = desiredPromptPaneRatio()
-    state.promptPaneRatio = state.promptPaneTargetRatio
-    if (openPromptEditorAfterTransition && !nextFocus) {
-      if (state.editorModal?.target.kind === "prompt") {
-        state.editorModal.renderable.focus()
-      } else {
-        openPromptEditor(state, renderer, buildPromptEditorDeps(state, draw, promptThread))
-        return
-      }
-    }
-    draw()
-  }
-
-  function startWorkspaceTransition(nextFocus: boolean, openPromptEditorAfterTransition = false): void {
-    if (state.layoutMode !== "wide") {
-      finishWorkspaceTransition(nextFocus, openPromptEditorAfterTransition)
-      return
-    }
-    stopWorkspaceTransition()
-    state.workspaceTransition = {
-      from: state.conceptNavigationFocused ? "concepts" : "session",
-      to: nextFocus ? "concepts" : "session",
-      progress: 0,
-      startedAt: Date.now(),
-      loggedFirstFrame: false,
-    }
-    void appendWorkspaceDebugLog("transition_start", {
-      from: state.workspaceTransition.from,
-      to: state.workspaceTransition.to,
-      viewportWidth: process.stdout.columns || 120,
-      viewportHeight: process.stdout.rows || 36,
-      promptPaneRatio: state.promptPaneRatio,
-      promptPaneTargetRatio: state.promptPaneTargetRatio,
-      layoutMode: state.layoutMode,
-    })
-    const step = () => {
-      const transition = state.workspaceTransition
-      if (!transition) return
-      const elapsed = Date.now() - transition.startedAt
-      const linearProgress = Math.min(1, elapsed / state.uiLayoutConfig.workspaceTransitionDurationMs)
-      transition.progress = easeOutPower(linearProgress, state.uiLayoutConfig.workspaceTransitionEndEasePower)
-      if (transition.progress >= 1) {
-        void appendWorkspaceDebugLog("transition_end", {
-          from: transition.from,
-          to: transition.to,
-          progress: transition.progress,
-          linearProgress,
-          elapsed,
-          viewportWidth: process.stdout.columns || 120,
-          viewportHeight: process.stdout.rows || 36,
-        })
-        finishWorkspaceTransition(nextFocus, openPromptEditorAfterTransition)
-        return
-      }
-      draw()
-      state.workspaceTransitionTimeout = setTimeout(step, state.uiLayoutConfig.workspaceTransitionStepMs)
-    }
-    draw()
-    state.workspaceTransitionTimeout = setTimeout(step, state.uiLayoutConfig.workspaceTransitionStepMs)
-  }
-
-  function animatePromptPane(): void {
-    stopPromptPaneAnimation()
-    if (state.layoutMode !== "wide") {
-      state.promptPaneRatio = 1
-      state.promptPaneTargetRatio = 1
-      draw()
-      return
-    }
-    const step = () => {
-      const delta = state.promptPaneTargetRatio - state.promptPaneRatio
-      if (Math.abs(delta) <= state.uiLayoutConfig.promptAnimationEpsilon) {
-        state.promptPaneRatio = state.promptPaneTargetRatio
-        state.promptPaneAnimationTimeout = null
-        draw()
-        return
-      }
-      state.promptPaneRatio += delta * state.uiLayoutConfig.promptAnimationLerp
-      draw()
-      state.promptPaneAnimationTimeout = setTimeout(step, state.uiLayoutConfig.promptAnimationStepMs)
-    }
-    draw()
-    state.promptPaneAnimationTimeout = setTimeout(step, state.uiLayoutConfig.promptAnimationStepMs)
-  }
-
-  refreshPromptPaneTarget = (): void => {
-    const nextTarget = desiredPromptPaneRatio()
-    if (state.layoutMode !== "wide") {
-      stopPromptPaneAnimation()
-      state.promptPaneTargetRatio = 1
-      state.promptPaneRatio = 1
-      return
-    }
-    if (Math.abs(nextTarget - state.promptPaneRatio) <= state.uiLayoutConfig.promptAnimationEpsilon) {
-      stopPromptPaneAnimation()
-      state.promptPaneTargetRatio = nextTarget
-      state.promptPaneRatio = nextTarget
-      return
-    }
-    if (Math.abs(nextTarget - state.promptPaneTargetRatio) <= state.uiLayoutConfig.promptAnimationEpsilon) {
-      state.promptPaneTargetRatio = nextTarget
-      return
-    }
-    state.promptPaneTargetRatio = nextTarget
-    animatePromptPane()
-  }
-
-  function togglePaneFocus(state: AppState, renderer: CliRenderer, redraw: () => void): void {
-    if (state.workspaceTransition) return
-    if (state.editorModal?.target.kind === "prompt") {
-      applyEditorText(state, state.editorModal)
-      state.editorModal.renderable.blur()
-      state.editorModal = null
-      startWorkspaceTransition(true)
-      return
-    }
-    if (state.conceptNavigationFocused) {
-      startWorkspaceTransition(false, true)
-      return
-    }
-    openPromptEditor(state, renderer, buildPromptEditorDeps(state, redraw, promptThread))
-  }
-
-  function focusPromptPane(state: AppState, renderer: CliRenderer, redraw: () => void): void {
-    if (state.workspaceTransition) return
-    if (state.editorModal?.target.kind === "prompt") {
-      startWorkspaceTransition(false, true)
-      return
-    }
-    openPromptEditor(state, renderer, buildPromptEditorDeps(state, redraw, promptThread))
   }
 
   function updateCreateDraftText(key: KeyEvent): boolean {
@@ -354,7 +169,7 @@ async function main(): Promise<void> {
     if (key.name === "n") {
       key.preventDefault()
       key.stopPropagation()
-      await createAndSwitchSession(state, renderer, draw, { syncPromptDraft, openPromptEditor: (nextState, nextRenderer, nextRedraw) => openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread)) })
+      await createAndSwitchSession(state, renderer, draw, { syncPromptDraft, openPromptEditor: (nextState, nextRenderer, nextRedraw) => openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace)) })
       draw()
       return true
     }
@@ -363,7 +178,7 @@ async function main(): Promise<void> {
       key.stopPropagation()
       const selected = entries[modal.selectedIndex]
       if (selected) {
-        await switchToSession(state, selected.id, renderer, draw, { syncPromptDraft, openPromptEditor: (nextState, nextRenderer, nextRedraw) => openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread)) })
+        await switchToSession(state, selected.id, renderer, draw, { syncPromptDraft, openPromptEditor: (nextState, nextRenderer, nextRedraw) => openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace)) })
         draw()
       }
       return true
@@ -467,7 +282,7 @@ async function main(): Promise<void> {
         if (key.shift && key.name === "tab") {
           key.preventDefault()
           key.stopPropagation()
-          togglePaneFocus(state, renderer, draw)
+          workspace.togglePaneFocus()
           return
         }
         if (state.editorModal.target.kind === "prompt" && key.name === "return" && !key.shift && !key.ctrl && !state.editorModal.aliasSuggestion) {
@@ -475,7 +290,7 @@ async function main(): Promise<void> {
           key.stopPropagation()
           promptThread.submitPromptMessage(state, renderer, draw, {
             syncPromptDraft,
-            openPromptEditor: (nextState, nextRenderer, nextRedraw) => openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread)),
+            openPromptEditor: (nextState, nextRenderer, nextRedraw) => openPromptEditor(nextState, nextRenderer, buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace)),
           })
           draw()
           return
@@ -490,11 +305,11 @@ async function main(): Promise<void> {
           state.editorModal.renderable.blur()
           if (state.editorModal.target.kind === "prompt") {
             state.editorModal = null
-            startWorkspaceTransition(true)
+            workspace.togglePaneFocus()
             return
           }
           state.editorModal = null
-          refreshPromptPaneTarget()
+          workspace.refreshPromptPaneTarget()
           draw()
           return
         }
@@ -553,7 +368,7 @@ async function main(): Promise<void> {
       if (key.shift && key.name === "tab") {
         key.preventDefault()
         key.stopPropagation()
-        togglePaneFocus(state, renderer, draw)
+        workspace.togglePaneFocus()
         return
       }
       if (key.ctrl && key.name === "s") {
@@ -663,7 +478,7 @@ async function main(): Promise<void> {
         return
       }
       if (key.name === "return") {
-        openSummaryEditor(state, renderer, buildPromptEditorDeps(state, draw, promptThread))
+        openSummaryEditor(state, renderer, buildPromptEditorDeps(state, draw, promptThread, workspace))
         draw()
         return
       }
@@ -743,9 +558,8 @@ async function main(): Promise<void> {
   }
 
   handleResize(state, initialRenderer.terminalWidth || process.stdout.columns || 120)
-  state.promptPaneTargetRatio = desiredPromptPaneRatio()
-  state.promptPaneRatio = state.promptPaneTargetRatio
-  openPromptEditor(state, initialRenderer, buildPromptEditorDeps(state, draw, promptThread))
+  workspace.applyStartupPromptPaneRatio()
+  openPromptEditor(state, initialRenderer, buildPromptEditorDeps(state, draw, promptThread, workspace))
   promptThread.refreshPromptTokenBreakdown(state, draw)
   draw()
   state.startupDrawComplete = true
