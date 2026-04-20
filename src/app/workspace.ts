@@ -190,15 +190,6 @@ export function createWorkspaceController(deps: WorkspaceControllerDeps) {
     deps.openPromptEditor()
   }
 
-  function focusPromptPane(): void {
-    if (state.workspaceTransition) return
-    if (state.editorModal?.target.kind === "prompt") {
-      startWorkspaceTransition(false, true)
-      return
-    }
-    deps.openPromptEditor()
-  }
-
   function applyStartupPromptPaneRatio(): void {
     state.promptPaneTargetRatio = desiredPromptPaneRatio()
     state.promptPaneRatio = state.promptPaneTargetRatio
@@ -217,7 +208,6 @@ export function createWorkspaceController(deps: WorkspaceControllerDeps) {
 
   return {
     applyStartupPromptPaneRatio,
-    focusPromptPane,
     handleResize,
     refreshPromptPaneTarget,
     togglePaneFocus,

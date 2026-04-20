@@ -73,6 +73,7 @@ async function main(): Promise<void> {
   let listScroll!: ScrollBoxRenderable
   let mainScroll!: ScrollBoxRenderable
   let promptScroll!: ScrollBoxRenderable
+  let unbindRendererResize: (() => void) | null = null
   const promptThread = createPromptThreadController()
   let workspace!: ReturnType<typeof createWorkspaceController>
 
@@ -96,15 +97,20 @@ async function main(): Promise<void> {
   })
 
   function mountRenderer(nextRenderer: CliRenderer): void {
+    unbindRendererResize?.()
     renderer = nextRenderer
     listScroll = createScrollBox(renderer)
     mainScroll = createScrollBox(renderer)
     promptScroll = createScrollBox(renderer)
     promptThread.setPromptScrollRenderable(promptScroll)
-    renderer.on("resize", (width) => {
+    const handleRendererResize = (width: number) => {
       handleResize(state, width)
       workspace.handleResize()
-    })
+    }
+    renderer.on("resize", handleRendererResize)
+    unbindRendererResize = () => {
+      renderer.off("resize", handleRendererResize)
+    }
   }
 
   function closeConfirmModal(): void {
@@ -165,12 +171,6 @@ async function main(): Promise<void> {
   function draw(): void {
     clampCursor(state)
     repaint(state, listScroll, mainScroll, promptScroll, renderer.root)
-  }
-
-  function scrollMainToState(): void {
-    scrollListForCursor(state, listScroll)
-    state.mainViewportHeight = Math.max(8, mainScroll.viewport.height || (state.layoutMode === "wide" ? 18 : 12))
-    mainScroll.scrollTo({ x: 0, y: state.mainScrollTop })
   }
 
   handleResize(state, initialRenderer.terminalWidth || process.stdout.columns || 120)
