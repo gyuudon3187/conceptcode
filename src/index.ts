@@ -12,7 +12,7 @@ import { startDummyChatServer } from "./platform/chat"
 import { openPromptEditor, syncPromptDraft } from "./prompt/editor"
 import { createPromptThreadController } from "./prompt/thread"
 import { activeSession } from "./sessions/store"
-import { repaint, scrollListForCursor } from "./view"
+import { repaint, scrollListForCursor } from "./ui/view"
 
 function buildPromptEditorDeps(
   state: AppState,

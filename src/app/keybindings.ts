@@ -1,8 +1,8 @@
 import { createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
-import { handleCreateConceptModalKey, isDraftConcept, openCreateConceptModal, promptToRemoveDraft, removeDraftConcept } from "./concepts"
 import { applySelectionChange, currentNode, currentPath, moveCursor, pageSize, scrollMain, visiblePaths } from "../core/state"
 import type { AppState, InspectorKind } from "../core/types"
+import { handleCreateConceptModalKey, isDraftConcept, openCreateConceptModal, promptToRemoveDraft, removeDraftConcept } from "../concepts/drafts"
 import { buildClipboardPayload, clipboardSelection } from "../prompt/payload"
 import { acceptAliasSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, moveAliasSuggestionSelection, openSummaryEditor, refreshAliasSuggestion, refreshAliasSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
 import { closeSessionModal, createAndSwitchSession, flushActiveSession, openSessionModal, sessionModalEntries, switchToSession } from "../sessions/commands"

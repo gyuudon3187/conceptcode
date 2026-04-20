@@ -4,7 +4,7 @@ import { currentPath } from "../core/state"
 import type { AppState, EditorModalState, PromptMessage } from "../core/types"
 import { effectivePromptTokenBreakdown } from "./payload"
 import { activeSession, syncSessionMetadata } from "../sessions/store"
-import { renderPromptThreadContent, replaceChildren } from "../view"
+import { renderPromptThreadContent, replaceChildren } from "../ui/view"
 
 type PromptThreadDeps = {
   syncPromptDraft: (state: AppState, editor: EditorModalState) => void

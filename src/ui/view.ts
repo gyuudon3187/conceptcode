@@ -3,11 +3,11 @@ import { join } from "node:path"
 
 import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, TextNodeRenderable, type TextChunk } from "@opentui/core"
 
+import { currentNode, currentPath, visiblePaths } from "../core/state"
+import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "../core/types"
+import { visibleAliasSuggestions } from "../prompt/editor"
+import { activeSession } from "../sessions/store"
 import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview, type PreviewLegendItem } from "./snippet"
-import { currentNode, currentPath, visiblePaths } from "./core/state"
-import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "./core/types"
-import { visibleAliasSuggestions } from "./prompt/editor"
-import { activeSession } from "./sessions/store"
 
 export const COLORS = {
   bg: "#111417",

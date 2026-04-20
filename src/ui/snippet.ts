@@ -6,8 +6,8 @@ import { bundledThemes, codeToTokens } from "shiki"
 import type { BundledLanguage, ThemeRegistrationResolved, ThemedToken, TokensResult } from "shiki"
 import type { RawThemeSetting } from "@shikijs/types"
 
-import { sourceLinesForNode, sourcePathForNode } from "./core/model"
-import type { AppState, ConceptNode } from "./core/types"
+import { sourceLinesForNode, sourcePathForNode } from "../core/model"
+import type { AppState, ConceptNode } from "../core/types"
 
 const SHIKI_THEME = "dark-plus"
 const DEFAULT_CODE_FG = RGBA.fromHex("#e5e9f0")

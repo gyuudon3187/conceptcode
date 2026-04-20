@@ -145,7 +145,7 @@ Goal: give concept-editing behavior a named home.
 
 Moves:
 
-- `src/app/concepts.ts` -> `src/concepts/drafts.ts`
+- [x] `src/app/concepts.ts` -> `src/concepts/drafts.ts`
 
 Scope for this stage:
 
@@ -169,8 +169,8 @@ Goal: make rendering concerns easy to identify and edit.
 
 Moves:
 
-- `src/view.ts` -> `src/ui/view.ts`
-- `src/snippet.ts` -> `src/ui/snippet.ts`
+- [x] `src/view.ts` -> `src/ui/view.ts`
+- [x] `src/snippet.ts` -> `src/ui/snippet.ts`
 
 Expected benefits:
 
