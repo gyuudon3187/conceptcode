@@ -1,20 +1,15 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { spawn } from "node:child_process"
-
 import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
 import { createInitialAppState, loadProjectPaths, parseArgs } from "./app/init"
 import { openPromptEditor, syncPromptDraft } from "./app/prompt-editor"
 import { bindKeyHandler } from "./app/keybindings"
+import { clearCtrlCExitState, copyWithStatus, openExternalEditor } from "./app/platform"
 import { createPromptThreadController } from "./app/prompt-thread"
 import { createWorkspaceController } from "./app/workspace"
 import { createSseChatTransport, startDummyChatServer } from "./chat"
-import { copyToClipboard } from "./clipboard"
 import { loadConceptGraph } from "./model"
 import { activeSession } from "./session"
-import { clampCursor, currentPath, handleResize } from "./state"
+import { clampCursor, handleResize } from "./state"
 import type { AppState, InspectorKind } from "./types"
 import { repaint, scrollListForCursor } from "./view"
 
@@ -129,8 +124,8 @@ async function main(): Promise<void> {
       renderer: () => renderer,
       draw,
       openExternalEditor,
-      clearCtrlCExitState,
-      copyWithStatus,
+      clearCtrlCExitState: () => clearCtrlCExitState(state),
+      copyWithStatus: (payload: string, successMessage: string) => copyWithStatus(state, payload, successMessage, { draw }),
       updateCreateDraftText,
       closeConfirmModal,
       openInspector: (kind: InspectorKind) => openInspector(state, kind),
@@ -164,48 +159,6 @@ async function main(): Promise<void> {
     scrollListForCursor(state, listScroll)
     state.mainViewportHeight = Math.max(8, mainScroll.viewport.height || (state.layoutMode === "wide" ? 18 : 12))
     mainScroll.scrollTo({ x: 0, y: state.mainScrollTop })
-  }
-
-  async function openExternalEditor(initialText: string): Promise<string> {
-    const editor = process.env.EDITOR?.trim()
-    if (!editor) throw new Error("EDITOR is not set")
-    const tempDir = await mkdtemp(join(tmpdir(), "conceptcode-"))
-    const tempFile = join(tempDir, "buffer-note.txt")
-    await writeFile(tempFile, initialText, "utf8")
-    const [command, ...args] = editor.split(/\s+/)
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(command, [...args, tempFile], { stdio: "inherit" })
-      child.on("error", reject)
-      child.on("close", (code) => {
-        if (code === 0 || code === null) resolve()
-        else reject(new Error(`${editor} exited with code ${code}`))
-      })
-    })
-    const nextText = await readFile(tempFile, "utf8")
-    await rm(tempDir, { recursive: true, force: true })
-    return nextText
-  }
-
-  function clearCtrlCExitState(): void {
-    state.pendingCtrlCExit = false
-    if (state.ctrlCExitTimeout) {
-      clearTimeout(state.ctrlCExitTimeout)
-      state.ctrlCExitTimeout = null
-    }
-  }
-
-  async function copyWithStatus(payload: string, _successMessage: string): Promise<void> {
-    const result = await copyToClipboard(payload)
-    if (!result.ok) {
-      state.confirmModal = {
-        kind: "remove-draft",
-        title: "Clipboard Error",
-        message: [result.message],
-        confirmLabel: "dismisses this message",
-        path: currentPath(state),
-      }
-      draw()
-    }
   }
 
   handleResize(state, initialRenderer.terminalWidth || process.stdout.columns || 120)
