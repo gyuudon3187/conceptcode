@@ -7,27 +7,10 @@ import { currentNode, currentPath, visiblePaths } from "../core/state"
 import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "../core/types"
 import { visibleAliasSuggestions } from "../prompt/editor"
 import { activeSession } from "../sessions/store"
+import { renderConceptList } from "./concepts-list"
 import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview, type PreviewLegendItem } from "./snippet"
-
-export const COLORS = {
-  bg: "#111417",
-  panel: "#1b2228",
-  panelSoft: "#202930",
-  border: "#38505f",
-  borderActive: "#d08770",
-  accent: "#88c0d0",
-  accentSoft: "#8fbcbb",
-  plan: "#7aa2f7",
-  build: "#d19a66",
-  conceptualize: "#7fbf7f",
-  text: "#e5e9f0",
-  muted: "#9aa7b0",
-  success: "#a3be8c",
-  warning: "#ebcb8b",
-  error: "#bf616a",
-  selectedFg: "#101418",
-  selectedBg: "#f2cc8f",
-} as const
+import { COLORS } from "./theme"
+import { promptPreviewChunks, promptPreviewLines, promptPreviewWidth, textNodesForChunks, truncateFromStart, truncateSingleLine } from "./text"
 
 const DEBUG_WORKSPACE_TRANSITION = true
 const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")
@@ -54,10 +37,6 @@ function contextKeyForNode(path: string, loc: { file: string; startLine: number;
   return `${path}::${loc.file}:${loc.startLine}-${loc.endLine}::${summary}`
 }
 
-function textNodesForChunks(chunks: TextChunk[]): TextNodeRenderable[] {
-  return chunks.map((chunk) => TextNodeRenderable.fromString(chunk.text, { fg: chunk.fg, bg: chunk.bg, attributes: chunk.attributes }))
-}
-
 function renderLegendFooter(items: PreviewLegendItem[]): Renderable | VNode<any, any[]> {
   if (items.length === 0) return Box({ width: "100%" })
   const nodes: Array<Renderable | VNode<any, any[]>> = []
@@ -71,78 +50,6 @@ function renderLegendFooter(items: PreviewLegendItem[]): Renderable | VNode<any,
   )
 }
 
-function truncateSingleLine(text: string, width: number): string {
-  const compact = text.replace(/\s+/g, " ").trim()
-  if (compact.length <= width) return compact
-  return `${compact.slice(0, Math.max(0, width - 3))}...`
-}
-
-function truncateFromStart(text: string, width: number): string {
-  const compact = text.replace(/\s+/g, " ").trim()
-  if (compact.length <= width) return compact
-  if (width <= 3) return compact.slice(Math.max(0, compact.length - width))
-  return `...${compact.slice(Math.max(0, compact.length - (width - 3)))}`
-}
-
-function promptPreviewLines(text: string, width: number, maxLines: number): string[] {
-  const normalized = text.replace(/\r\n/g, "\n").split("\n")
-  const flattened: string[] = []
-  for (const line of normalized) {
-    const source = line || ""
-    if (source.length === 0) {
-      flattened.push("")
-      continue
-    }
-    let remaining = source
-    while (remaining.length > width) {
-      const segment = remaining.slice(0, width + 1)
-      const breakIndex = segment.lastIndexOf(" ")
-      if (breakIndex > 0) {
-        flattened.push(segment.slice(0, breakIndex))
-        remaining = remaining.slice(breakIndex + 1)
-        continue
-      }
-
-      flattened.push(remaining.slice(0, width))
-      remaining = remaining.slice(width)
-    }
-    flattened.push(remaining)
-  }
-  return flattened.slice(0, maxLines)
-}
-
-function promptPreviewWidth(state: AppState): number {
-  if (state.layoutMode === "wide") {
-    const viewportWidth = process.stdout.columns || 120
-    const frameInnerWidth = Math.max(40, viewportWidth - 4)
-    const promptPaneWidth = Math.max(28, Math.floor((frameInnerWidth - 1) * state.promptPaneRatio))
-    return Math.max(16, promptPaneWidth - 8)
-  }
-  const viewportWidth = process.stdout.columns || 120
-  const outerPadding = 10
-  const promptPanePadding = 8
-  return Math.max(16, viewportWidth - outerPadding - promptPanePadding)
-}
-
-function promptPreviewChunks(line: string): TextChunk[] {
-  const chunks: TextChunk[] = []
-  let lastIndex = 0
-  for (const match of line.matchAll(/@[a-zA-Z0-9_.-]+/g)) {
-    const start = match.index ?? 0
-    if (start > lastIndex) {
-      chunks.push({ __isChunk: true, text: line.slice(lastIndex, start), fg: RGBA.fromHex(COLORS.text) })
-    }
-    chunks.push({ __isChunk: true, text: match[0], fg: RGBA.fromHex(COLORS.warning), attributes: TextAttributes.BOLD })
-    lastIndex = start + match[0].length
-  }
-  if (lastIndex < line.length) {
-    chunks.push({ __isChunk: true, text: line.slice(lastIndex), fg: RGBA.fromHex(COLORS.text) })
-  }
-  if (chunks.length === 0) {
-    chunks.push({ __isChunk: true, text: line, fg: RGBA.fromHex(COLORS.text) })
-  }
-  return chunks
-}
 
 function latestConversationPreview(state: AppState): { text: string; role: "user" | "assistant" | "none"; status: "streaming" | "complete" | "error" | "idle" } {
   const session = activeSession(state)
@@ -1053,44 +960,6 @@ export function replaceChildren(renderable: { getChildren: () => Renderable[]; a
   renderable.add(child)
 }
 
-export function listLines(state: AppState): ListLine[] {
-  const visible = visiblePaths(state)
-  if (visible.length === 0) {
-    return [{ title: `(no child concepts under ${state.currentParentPath})`, kindLabel: "", leftMarker: "", rightMarker: "", selected: false, empty: true }]
-  }
-  return visible.map((path, index) => {
-    const node = state.nodes.get(path)!
-    return {
-      title: node.title,
-      kindLabel: node.kind ?? "(no kind)",
-      leftMarker: node.parentPath && node.parentPath !== "root" ? "<-" : "",
-      rightMarker: node.childPaths.length > 0 ? "->" : "",
-      selected: index === state.cursor,
-      tone: node.isDraft ? "draft" : undefined,
-    }
-  })
-}
-
-function conceptRowColors(item: ListLine): { background: string; title: string; kind: string; badge: string } {
-  if (item.selected) {
-    return { background: COLORS.selectedBg, title: COLORS.selectedFg, kind: COLORS.selectedFg, badge: COLORS.selectedFg }
-  }
-  if (item.empty) {
-    return { background: COLORS.panel, title: COLORS.muted, kind: COLORS.muted, badge: COLORS.muted }
-  }
-  return {
-    background: COLORS.panel,
-    title: item.tone === "draft" ? COLORS.warning : COLORS.text,
-    kind: COLORS.muted,
-    badge: item.tone === "draft" ? COLORS.warning : COLORS.border,
-  }
-}
-
-export function scrollListForCursor(state: AppState, listScroll: ScrollBoxRenderable): void {
-  const halfViewport = Math.max(2, Math.floor((listScroll.viewport.height || 10) / 2))
-  listScroll.scrollTo({ x: 0, y: Math.max(0, state.cursor - halfViewport) })
-}
-
 function renderCreateConceptModal(state: AppState, modal: CreateConceptModalState): Array<Renderable | VNode<any, any[]>> {
   const options = createKindOptions(state, modal.kindQuery)
   const selectedOption = options[Math.max(0, Math.min(modal.kindCursor, Math.max(0, options.length - 1)))]
@@ -1192,7 +1061,6 @@ function renderSessionModal(state: AppState): Array<Renderable | VNode<any, any[
 }
 
 export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null, root: { getChildren: () => Renderable[]; add: (child: Renderable | VNode<any, any[]>, index?: number) => number }): void {
-  const listItems = listLines(state)
   const selectedNode = currentNode(state)
   const nextContextKey = `${contextKeyForNode(selectedNode.path, selectedNode.loc, selectedNode.summary)}::${state.inspector?.kind ?? "none"}`
   const shouldRefreshContext = contextPreviewKey !== nextContextKey
@@ -1200,27 +1068,7 @@ export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainSc
 
   replaceChildren(
     listScroll,
-    Box(
-      { width: "100%", flexDirection: "column", gap: 0 },
-      ...listItems.map((item) => {
-        const colors = conceptRowColors(item)
-        const titleWidth = state.layoutMode === "wide" ? 24 : 20
-        const kindWidth = state.layoutMode === "wide" ? 10 : 10
-        return Box(
-          { width: "100%", paddingX: 1, backgroundColor: colors.background, flexDirection: "row", justifyContent: "space-between" },
-          Box(
-            { flexDirection: "row", gap: 1, flexGrow: 1 },
-            Text({ content: item.leftMarker ? item.leftMarker.padEnd(3, " ") : "   ", fg: colors.badge, attributes: item.selected || Boolean(item.leftMarker) ? TextAttributes.BOLD : 0 }),
-            Text({ content: truncateSingleLine(item.title, titleWidth), fg: colors.title, attributes: item.selected ? TextAttributes.BOLD : 0 }),
-          ),
-          Box(
-            { flexDirection: "row", gap: 1, flexShrink: 0 },
-            Text({ content: item.kindLabel ? truncateSingleLine(item.kindLabel, kindWidth) : "", fg: colors.kind, attributes: item.selected ? TextAttributes.BOLD : 0 }),
-            Text({ content: item.rightMarker ? item.rightMarker.padEnd(2, " ") : "  ", fg: colors.badge, attributes: item.selected || Boolean(item.rightMarker) ? TextAttributes.BOLD : 0 }),
-          ),
-        )
-      }),
-    ),
+    renderConceptList(state),
   )
 
   if (shouldRefreshContext) {
