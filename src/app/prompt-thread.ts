@@ -153,7 +153,6 @@ export function createPromptThreadController() {
           rebindActiveAssistantMessageId(state, event.messageId)
           state.activeResponseId = event.responseId
           state.activeAssistantMessageId = event.messageId
-          state.activeAssistantNewlineCount = 0
           replacePromptMessage(state, event.messageId, (message) => ({ ...message, provider: event.provider, status: "streaming" }))
         } else if (event.type === "response.output_text.delta") {
           replacePromptMessage(state, event.messageId, (message) => ({ ...message, text: `${message.text}${event.delta}`, status: "streaming" }))
@@ -167,7 +166,6 @@ export function createPromptThreadController() {
           syncPromptScrollToBottom(state, redraw)
           state.activeResponseId = null
           state.activeAssistantMessageId = null
-          state.activeAssistantNewlineCount = 0
         } else {
           schedulePromptScrollSync(state, redraw, "streamAssistantResponse")
         }
@@ -181,7 +179,6 @@ export function createPromptThreadController() {
       }
       state.activeResponseId = null
       state.activeAssistantMessageId = null
-      state.activeAssistantNewlineCount = 0
       refreshPromptScroll(state)
       redraw()
     }
@@ -208,8 +205,6 @@ export function createPromptThreadController() {
     session.lastMode = state.uiMode
     syncSessionMetadata(session)
     state.activeAssistantMessageId = assistantMessageId
-    state.activeAssistantNewlineCount = 0
-    state.lastPromptAutoScrollTop = null
     deps.openPromptEditor(state, renderer, redraw)
     state.promptScrollTop = Number.MAX_SAFE_INTEGER
     refreshPromptScroll(state)

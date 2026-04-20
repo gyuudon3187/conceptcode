@@ -122,8 +122,6 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     chatTransport: createSseChatTransport(input.dummyChatServerBaseUrl),
     activeResponseId: null,
     activeAssistantMessageId: null,
-    lastPromptAutoScrollTop: null,
-    activeAssistantNewlineCount: 0,
     workspaceTransition: null,
     workspaceTransitionTimeout: null,
   }

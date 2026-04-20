@@ -55,9 +55,7 @@ export async function switchToSession(
   state.uiMode = session.lastMode
   state.activeResponseId = null
   state.activeAssistantMessageId = null
-  state.activeAssistantNewlineCount = 0
   state.promptScrollTop = Number.MAX_SAFE_INTEGER
-  state.lastPromptAutoScrollTop = null
   state.editorModal = null
   closeSessionModal(state)
   await persistSessions(state)
@@ -79,9 +77,7 @@ export async function createAndSwitchSession(
   state.uiMode = session.lastMode
   state.activeResponseId = null
   state.activeAssistantMessageId = null
-  state.activeAssistantNewlineCount = 0
   state.promptScrollTop = Number.MAX_SAFE_INTEGER
-  state.lastPromptAutoScrollTop = null
   closeSessionModal(state)
   await persistSessions(state)
   deps.openPromptEditor(state, renderer, redraw)
