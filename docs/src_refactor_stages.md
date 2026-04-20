@@ -216,12 +216,16 @@ Goal: improve internal cohesion only after the directory structure is clear.
 
 Recommended follow-up splits:
 
-- split `src/ui/view.ts` into smaller rendering modules such as:
+- [x] split `src/ui/view.ts` foundations into:
   - `theme.ts`
+  - `text.ts`
+  - `concepts-list.ts`
+  - `modals.ts`
+  - `workspace-transition.ts`
+- [ ] split `src/ui/view.ts` further into:
   - `panes.ts`
   - `inspector.ts`
-  - `modals.ts`
-- split `src/prompt/payload.ts` into:
+- [ ] split `src/prompt/payload.ts` into:
   - `references.ts`
   - `token-breakdown.ts`
   - `clipboard-payload.ts`
@@ -235,6 +239,153 @@ Verification:
 
 - run `bun run typecheck`
 - run `bun run check`
+
+## Next Session Plan
+
+This section captures the remaining refactor work after the completed directory migration and initial Stage 8 UI splits.
+
+### Current End State
+
+Completed:
+
+- Stage 1 through Stage 7
+- Stage 8 partial split of `src/ui/view.ts`
+
+Committed Stage 8 slices so far:
+
+- `Split UI rendering helpers`
+- `Split UI modal rendering`
+- `Split workspace transition rendering`
+
+The remaining work is now mostly internal cohesion work rather than directory layout work.
+
+### Recommended Order For Tomorrow
+
+1. Split `src/prompt/payload.ts`
+2. Split the remaining non-transition rendering code in `src/ui/view.ts`
+3. Run broader verification with `bun run check`
+4. Update docs only if the resulting module names materially change the architecture descriptions
+
+### Task 1: Split `src/prompt/payload.ts`
+
+Goal: separate prompt reference parsing, prompt assembly, and token accounting.
+
+Recommended target modules:
+
+- `src/prompt/references.ts`
+  - `referencedConceptPaths`
+  - referenced file path parsing helpers
+  - small shared parsing helpers used by both payload assembly and token accounting
+
+- `src/prompt/token-breakdown.ts`
+  - `EffectivePromptTokenBreakdown`
+  - `EMPTY_PROMPT_TOKEN_BREAKDOWN`
+  - `effectivePromptTokenBreakdown`
+  - `countEffectivePromptTokens`
+
+- `src/prompt/clipboard-payload.ts`
+  - `buildEffectivePrompt`
+  - `buildClipboardPayload`
+  - concept/file block rendering helpers
+  - interpretation-hint flattening helpers
+
+Suggested approach:
+
+- keep the current public API stable during the split
+- either leave `src/prompt/payload.ts` as a small re-export layer, or keep only the highest-level public exports there
+- avoid changing prompt output formatting during this step
+
+Important dependency note:
+
+- `src/core/types.ts` currently imports `EffectivePromptTokenBreakdown` from `src/prompt/payload.ts`
+- after the split, prefer pointing that type import at `src/prompt/token-breakdown.ts`
+
+Verification:
+
+- run `bun run typecheck`
+- manually inspect exported symbols used by:
+  - `src/app/init.ts`
+  - `src/app/keybindings.ts`
+  - `src/prompt/thread.ts`
+  - `src/clipboard.ts`
+
+### Task 2: Split Remaining `src/ui/view.ts`
+
+Goal: leave `src/ui/view.ts` focused mainly on frame composition and top-level repaint behavior.
+
+Recommended next modules:
+
+- `src/ui/panes.ts`
+  - `renderDetailsPane`
+  - `renderPromptPreviewPane`
+  - `renderConceptPreviewPane`
+  - `renderPromptPane`
+  - `renderPromptBudgetPane`
+  - `renderTaskPane`
+  - small mode-presentation helpers if they are only used by pane rendering
+
+- `src/ui/inspector.ts`
+  - `renderInspectorOverlay`
+  - `renderLegendFooter`
+  - context title helpers if needed
+
+Possible optional extraction:
+
+- if alias suggestion overlay code still feels noisy inside `view.ts`, move it to `src/ui/overlays.ts`
+
+Suggested approach:
+
+- move pane renderers before touching `repaint`
+- keep `renderFrame` and `repaint` in `view.ts` unless they become trivially thin wrappers afterward
+- avoid changing workspace transition behavior during this step, since that was already extracted cleanly
+
+Verification:
+
+- run `bun run typecheck`
+- if practical, run the TUI and smoke-check:
+  - concept navigation view
+  - session view
+  - prompt alias suggestions
+  - inspector overlay
+
+### Task 3: Validation Pass
+
+After the code splits above:
+
+- run `bun run typecheck`
+- run `bun run check`
+- if `bun run check` surfaces formatting or lint issues caused by moved imports, fix those in a separate small commit if needed
+
+### Task 4: Doc Follow-Up
+
+Only do this if the final module names settle and you want docs to describe them more concretely.
+
+Files to review:
+
+- `README.md`
+- `src/AGENTS.md`
+- `docs/src_architecture_proposal.md`
+
+Most likely documentation change:
+
+- update the Stage 8 section and architecture bullets to mention `src/ui/panes.ts`, `src/ui/inspector.ts`, and the final `src/prompt/*` split if those files are created
+
+### Suggested Commit Boundaries
+
+To keep the history easy to review tomorrow, prefer these commit chunks:
+
+1. `Split prompt payload helpers`
+2. `Split UI pane rendering`
+3. `Split UI inspector rendering`
+4. optional docs update commit if needed
+
+### Low-Priority Optional Cleanup
+
+These are not required for the main refactor plan, but may be worth considering afterward:
+
+- remove `src/clipboard.ts` compatibility re-export if nothing still depends on it externally
+- re-check whether `src/app/clipboard.ts` and `src/app/platform.ts` should stay separate or merge into a more clearly named orchestration helper module
+- consider adding one small architecture note in `README.md` that explicitly lists the top-level `src/` subdirectories now that the split is mostly complete
 
 ## Dependency Notes
 
