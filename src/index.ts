@@ -1,16 +1,16 @@
 import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
 import { createInitialAppState, loadProjectPaths, parseArgs } from "./app/init"
-import { openPromptEditor, syncPromptDraft } from "./app/prompt-editor"
 import { bindKeyHandler } from "./app/keybindings"
 import { clearCtrlCExitState, copyWithStatus } from "./app/platform"
-import { createPromptThreadController } from "./app/prompt-thread"
 import { createWorkspaceController } from "./app/workspace"
 import { loadConceptGraph } from "./core/model"
 import { clampCursor, handleResize } from "./core/state"
 import type { AppState, InspectorKind } from "./core/types"
 import { openExternalEditor } from "./platform/editor"
 import { startDummyChatServer } from "./platform/chat"
+import { openPromptEditor, syncPromptDraft } from "./prompt/editor"
+import { createPromptThreadController } from "./prompt/thread"
 import { activeSession } from "./session"
 import { repaint, scrollListForCursor } from "./view"
 

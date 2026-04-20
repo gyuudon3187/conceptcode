@@ -4,9 +4,9 @@ import { join } from "node:path"
 import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, TextNodeRenderable, type TextChunk } from "@opentui/core"
 
 import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview, type PreviewLegendItem } from "./snippet"
-import { visibleAliasSuggestions } from "./app/prompt-editor"
 import { currentNode, currentPath, visiblePaths } from "./core/state"
 import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "./core/types"
+import { visibleAliasSuggestions } from "./prompt/editor"
 import { activeSession } from "./session"
 
 export const COLORS = {

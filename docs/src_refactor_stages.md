@@ -88,9 +88,9 @@ Goal: group prompt-first behavior into one feature area.
 
 Moves:
 
-- `src/app/prompt-editor.ts` -> `src/prompt/editor.ts`
-- `src/app/prompt-thread.ts` -> `src/prompt/thread.ts`
-- move prompt payload construction from `src/clipboard.ts` into `src/prompt/payload.ts`
+- [x] `src/app/prompt-editor.ts` -> `src/prompt/editor.ts`
+- [x] `src/app/prompt-thread.ts` -> `src/prompt/thread.ts`
+- [x] move prompt payload construction from `src/clipboard.ts` into `src/prompt/payload.ts`
 
 What should live in `src/prompt/payload.ts`:
 

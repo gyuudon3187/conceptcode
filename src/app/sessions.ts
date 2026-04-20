@@ -1,6 +1,7 @@
 import type { CliRenderer } from "@opentui/core"
 
 import type { AppState, ChatSession, EditorModalState } from "../core/types"
+import { syncPromptDraft } from "../prompt/editor"
 import { activeSession, createNamedSession, saveSessions, syncSessionMetadata } from "../session"
 
 type SyncPromptDraft = (state: AppState, editor: EditorModalState) => void

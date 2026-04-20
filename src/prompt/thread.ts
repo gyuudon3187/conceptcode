@@ -1,8 +1,8 @@
 import { ScrollBoxRenderable, type CliRenderer } from "@opentui/core"
 
-import { effectivePromptTokenBreakdown } from "../clipboard"
 import { currentPath } from "../core/state"
 import type { AppState, EditorModalState, PromptMessage } from "../core/types"
+import { effectivePromptTokenBreakdown } from "./payload"
 import { activeSession, syncSessionMetadata } from "../session"
 import { renderPromptThreadContent, replaceChildren } from "../view"
 

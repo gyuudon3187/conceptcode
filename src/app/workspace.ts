@@ -1,8 +1,8 @@
 import { appendFile } from "node:fs/promises"
 import { join } from "node:path"
 
-import { applyEditorText } from "./prompt-editor"
 import type { AppState } from "../core/types"
+import { applyEditorText } from "../prompt/editor"
 
 const DEBUG_WORKSPACE_TRANSITION = true
 const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")

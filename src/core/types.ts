@@ -1,7 +1,7 @@
 import type { TextareaRenderable } from "@opentui/core"
 
 import type { RGBA } from "@opentui/core"
-import type { EffectivePromptTokenBreakdown } from "../clipboard"
+import type { EffectivePromptTokenBreakdown } from "../prompt/payload"
 
 export type JsonPrimitive = null | boolean | number | string
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
