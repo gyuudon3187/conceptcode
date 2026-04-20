@@ -2,7 +2,7 @@ import { RGBA, SyntaxStyle, TextareaRenderable, type Highlight, type CliRenderer
 
 import { currentNode } from "../core/state"
 import type { AppState, EditorModalState } from "../core/types"
-import { activeSession } from "../session"
+import { activeSession } from "../sessions/store"
 
 const FILE_REFERENCE_TOKEN = /&[^\s&]+/g
 const CONCEPT_REFERENCE_TOKEN = /@[a-zA-Z0-9_.-]+/g

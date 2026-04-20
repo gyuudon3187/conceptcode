@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises"
 import type { AppState, KindDefinition, UiLayoutConfig } from "../core/types"
 import { createSseChatTransport } from "../platform/chat"
 import { EMPTY_PROMPT_TOKEN_BREAKDOWN } from "../prompt/payload"
-import { loadSessions } from "../session"
+import { loadSessions } from "../sessions/store"
 
 export const DEFAULT_UI_LAYOUT_CONFIG: UiLayoutConfig = {
   collapsedPromptRatio: 0.34,

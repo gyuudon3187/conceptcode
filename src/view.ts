@@ -7,7 +7,7 @@ import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, build
 import { currentNode, currentPath, visiblePaths } from "./core/state"
 import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "./core/types"
 import { visibleAliasSuggestions } from "./prompt/editor"
-import { activeSession } from "./session"
+import { activeSession } from "./sessions/store"
 
 export const COLORS = {
   bg: "#111417",

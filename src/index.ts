@@ -11,7 +11,7 @@ import { openExternalEditor } from "./platform/editor"
 import { startDummyChatServer } from "./platform/chat"
 import { openPromptEditor, syncPromptDraft } from "./prompt/editor"
 import { createPromptThreadController } from "./prompt/thread"
-import { activeSession } from "./session"
+import { activeSession } from "./sessions/store"
 import { repaint, scrollListForCursor } from "./view"
 
 function buildPromptEditorDeps(

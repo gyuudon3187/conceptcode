@@ -121,8 +121,8 @@ Goal: separate persistence from app-facing session commands.
 
 Moves:
 
-- `src/session.ts` -> `src/sessions/store.ts`
-- `src/app/sessions.ts` -> `src/sessions/commands.ts`
+- [x] `src/session.ts` -> `src/sessions/store.ts`
+- [x] `src/app/sessions.ts` -> `src/sessions/commands.ts`
 
 Expected split:
 
