@@ -6,7 +6,7 @@ type CopyWithStatusDeps = {
   draw: () => void
 }
 
-export async function copyWithStatus(state: AppState, payload: string, _successMessage: string, deps: CopyWithStatusDeps): Promise<void> {
+export async function copyWithStatus(state: AppState, payload: string, deps: CopyWithStatusDeps): Promise<void> {
   const result = await copyToClipboard(payload)
   if (!result.ok) {
     state.confirmModal = {

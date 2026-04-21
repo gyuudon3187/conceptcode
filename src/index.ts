@@ -80,23 +80,27 @@ async function main(): Promise<void> {
   const promptThread = createPromptThreadController()
   let workspace!: ReturnType<typeof createWorkspaceController>
 
-  const promptEditorDepsFor = (nextState = state, nextRedraw = draw) => buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace)
+  const getRenderer = () => renderer
+  const createPromptEditorDeps = (nextState = state, nextRedraw = draw) => buildPromptEditorDeps(nextState, nextRedraw, promptThread, workspace)
+  const clearExitState = () => clearCtrlCExitState(state)
+  const refreshPromptScroll = () => promptThread.refreshPromptScroll(state)
+  const refreshPromptTokenBreakdown = () => promptThread.refreshPromptTokenBreakdown(state, draw)
 
-  function openPromptEditorWithDeps(nextState = state, nextRenderer = renderer, nextRedraw = draw): void {
-    openPromptEditor(nextState, nextRenderer, promptEditorDepsFor(nextState, nextRedraw))
+  function openPromptEditorFor(nextState = state, nextRenderer = renderer, nextRedraw = draw): void {
+    openPromptEditor(nextState, nextRenderer, createPromptEditorDeps(nextState, nextRedraw))
   }
 
   function submitPromptMessage(): void {
     promptThread.submitPromptMessage(state, renderer, draw, {
       syncPromptDraft,
-      openPromptEditor: (nextState, nextRenderer, nextRedraw) => openPromptEditor(nextState, nextRenderer, promptEditorDepsFor(nextState, nextRedraw)),
+      openPromptEditor: openPromptEditorFor,
     })
   }
 
   workspace = createWorkspaceController({
     state,
     redraw: draw,
-    openPromptEditor: () => openPromptEditorWithDeps(),
+    openPromptEditor: () => openPromptEditorFor(),
   })
 
   function mountRenderer(nextRenderer: CliRenderer): void {
@@ -142,34 +146,34 @@ async function main(): Promise<void> {
     return false
   }
 
-  function buildKeybindingDeps() {
+  function createKeybindingDeps() {
     return {
       state,
-      renderer: () => renderer,
+      renderer: getRenderer,
       draw,
       openExternalEditor,
-      clearCtrlCExitState: () => clearCtrlCExitState(state),
-      copyWithStatus: (payload: string, successMessage: string) => copyWithStatus(state, payload, successMessage, { draw }),
+      clearCtrlCExitState: clearExitState,
+      copyWithStatus: (payload: string) => copyWithStatus(state, payload, { draw }),
       updateCreateDraftText,
       closeConfirmModal,
       openInspector: (kind: InspectorKind) => openInspector(state, kind),
       closeInspector: () => closeInspector(state),
-      refreshPromptScroll: () => promptThread.refreshPromptScroll(state),
-      refreshPromptTokenBreakdown: () => promptThread.refreshPromptTokenBreakdown(state, draw),
+      refreshPromptScroll,
+      refreshPromptTokenBreakdown,
       submitPromptMessage,
-      openPromptEditor: (nextState: AppState, nextRenderer: CliRenderer, nextRedraw: () => void) => openPromptEditor(nextState, nextRenderer, promptEditorDepsFor(nextState, nextRedraw)),
-      buildPromptEditorDeps: () => promptEditorDepsFor(),
+      openPromptEditor: openPromptEditorFor,
+      buildPromptEditorDeps: () => createPromptEditorDeps(),
       workspace,
       remountRenderer: async () => {
         mountRenderer(await createCliRenderer({ exitOnCtrlC: false }))
-        bindKeyHandler(buildKeybindingDeps())
+        bindKeyHandler(createKeybindingDeps())
       },
     }
   }
 
   const initialRenderer = await createCliRenderer({ exitOnCtrlC: false })
   mountRenderer(initialRenderer)
-  bindKeyHandler(buildKeybindingDeps())
+  bindKeyHandler(createKeybindingDeps())
 
   function draw(): void {
     clampCursor(state)
@@ -178,7 +182,7 @@ async function main(): Promise<void> {
 
   handleResize(state, initialRenderer.terminalWidth || process.stdout.columns || 120)
   workspace.applyStartupPromptPaneRatio()
-  openPromptEditor(state, initialRenderer, promptEditorDepsFor())
+  openPromptEditorFor(state, initialRenderer)
   promptThread.refreshPromptTokenBreakdown(state, draw)
   draw()
   state.startupDrawComplete = true
