@@ -10,15 +10,23 @@ const SLASH_REFERENCE_TOKEN = /(?:^|\s)(\/[a-zA-Z0-9_.-]*)/g
 
 type SlashSuggestion = { value: string; description: string }
 
-const SLASH_SUGGESTIONS: SlashSuggestion[] = [
-  { value: "/explain", description: "Explain the selected code or concept." },
-  { value: "/review", description: "Review changes for bugs, regressions, and gaps." },
-  { value: "/fix", description: "Investigate and fix the current problem." },
-  { value: "/test", description: "Run relevant tests and summarize the results." },
-  { value: "/skill-architecture", description: "Use an architecture-focused skill prompt." },
-  { value: "/skill-refactor", description: "Use a refactoring-focused skill prompt." },
-  { value: "/command-commit", description: "Draft a commit-ready change summary." },
-]
+const SLASH_SUGGESTIONS_BY_MODE: Record<AppState["uiMode"], SlashSuggestion[]> = {
+  plan: [
+    { value: "/explain", description: "Explain the selected code or concept." },
+    { value: "/review", description: "Review changes for bugs, regressions, and gaps." },
+    { value: "/skill-architecture", description: "Use an architecture-focused skill prompt." },
+  ],
+  build: [
+    { value: "/fix", description: "Investigate and fix the current problem." },
+    { value: "/test", description: "Run relevant tests and summarize the results." },
+    { value: "/command-commit", description: "Draft a commit-ready change summary." },
+  ],
+  conceptualize: [
+    { value: "/consolidate", description: "Explore a required concept path, update its graph metadata, and plan low-coverage child updates before applying them." },
+    { value: "/explain", description: "Explain the selected code or concept." },
+    { value: "/skill-refactor", description: "Use a refactoring-focused skill prompt." },
+  ],
+}
 
 type PromptReferenceToken = { token: string; start: number; end: number }
 type ActivePromptSuggestion = { prefix: "@" | "&" | "/"; query: string; start: number; end: number; suggestions: string[] }
@@ -67,8 +75,13 @@ function allFileSuggestions(state: AppState, query: string): string[] {
     .map((entry) => entry.reference)
 }
 
-function allSlashSuggestions(query: string): string[] {
-  if (!query) return SLASH_SUGGESTIONS.map((entry) => entry.value)
+function slashSuggestionsForMode(mode: AppState["uiMode"]): SlashSuggestion[] {
+  return SLASH_SUGGESTIONS_BY_MODE[mode]
+}
+
+function allSlashSuggestions(state: AppState, query: string): string[] {
+  const slashSuggestions = slashSuggestionsForMode(state.uiMode)
+  if (!query) return slashSuggestions.map((entry) => entry.value)
   const normalized = query.toLowerCase()
   const score = (value: string): number => {
     const command = value.slice(1).toLowerCase()
@@ -80,22 +93,22 @@ function allSlashSuggestions(query: string): string[] {
     if (command.includes(normalized)) return 180 - command.indexOf(normalized)
     return 0
   }
-  return SLASH_SUGGESTIONS
+  return slashSuggestions
     .map((entry) => ({ value: entry.value, score: score(entry.value) }))
     .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score || left.value.length - right.value.length || left.value.localeCompare(right.value))
     .map((entry) => entry.value)
 }
 
-export function slashSuggestionDescription(value: string): string {
-  return SLASH_SUGGESTIONS.find((entry) => entry.value === value)?.description ?? "Command or skill"
+export function slashSuggestionDescription(state: AppState, value: string): string {
+  return slashSuggestionsForMode(state.uiMode).find((entry) => entry.value === value)?.description ?? "Command or skill"
 }
 
 function suggestionEntries(state: AppState, suggestion: NonNullable<EditorModalState["promptSuggestion"]>): string[] {
   if (suggestion.mode === "resolved") return [`${suggestion.prefix}${suggestion.query}`]
   if (suggestion.prefix === "@") return allAliasSuggestions(state, suggestion.query)
   if (suggestion.prefix === "&") return allFileSuggestions(state, suggestion.query)
-  return allSlashSuggestions(suggestion.query)
+  return allSlashSuggestions(state, suggestion.query)
 }
 
 export function visiblePromptSuggestions(state: AppState, suggestion: NonNullable<EditorModalState["promptSuggestion"]>): { full: string[]; visible: string[]; selectedValue: string | null } {
@@ -220,7 +233,7 @@ function activePromptSuggestion(state: AppState, editor: EditorModalState): Acti
   const exactSlashToken = slashTokenAtCursor(text, cursor)
   if (exactSlashToken) {
     const exactValue = exactSlashToken.token
-    if (SLASH_SUGGESTIONS.some((entry) => entry.value === exactValue)) {
+    if (slashSuggestionsForMode(state.uiMode).some((entry) => entry.value === exactValue)) {
       return { prefix: "/", query: exactValue.slice(1), start: exactSlashToken.start, end: exactSlashToken.end, suggestions: [exactValue] }
     }
   }
@@ -239,7 +252,7 @@ function activePromptSuggestion(state: AppState, editor: EditorModalState): Acti
     query,
     start,
     end,
-    suggestions: prefix === "@" ? allAliasSuggestions(state, query) : prefix === "&" ? allFileSuggestions(state, query) : allSlashSuggestions(query),
+    suggestions: prefix === "@" ? allAliasSuggestions(state, query) : prefix === "&" ? allFileSuggestions(state, query) : allSlashSuggestions(state, query),
   }
 }
 

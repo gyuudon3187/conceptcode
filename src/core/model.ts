@@ -33,6 +33,12 @@ function asNumber(value: JsonValue | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null
 }
 
+function normalizedScore(value: JsonValue | undefined): number | null {
+  const score = asNumber(value)
+  if (score === null) return null
+  return Math.max(0, Math.min(1, score))
+}
+
 function normalizeLoc(value: JsonValue | undefined): SourceLoc | null {
   const loc = asObject(value)
   const file = asString(loc.file)
@@ -58,6 +64,8 @@ function buildNodes(
     title: asString(nodePayload.title, path.split(".").at(-1) ?? path),
     kind: optionalString(nodePayload.kind),
     summary: asString(nodePayload.summary),
+    explorationCoverage: normalizedScore(nodePayload.exploration_coverage),
+    summaryConfidence: normalizedScore(nodePayload.summary_confidence),
     parentPath,
     metadata,
     loc: normalizeLoc(nodePayload.loc),

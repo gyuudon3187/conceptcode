@@ -37,6 +37,8 @@ function insertDraftConcept(state: AppState, draft: CreateConceptDraft, kindDefi
     title: draft.title.trim(),
     kind: kindDefinition?.kind ?? null,
     summary: draft.summary.trim(),
+    explorationCoverage: null,
+    summaryConfidence: null,
     parentPath: state.currentParentPath,
     metadata,
     loc: null,

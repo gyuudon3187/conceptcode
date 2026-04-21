@@ -16,6 +16,11 @@
  - If mode is `generate`, use `prompts/generate_concept_graph.md` and create the main `ConceptCode` JSON concept graph for the target.
  - If mode is `anchors`, use `prompts/enrich_concept_graph_anchors.md` and return an updated graph that improves `loc` without changing stable paths or the core hierarchy unless the supplied graph is clearly wrong.
  - If mode is `kinds`, use `prompts/enrich_kind_definitions.md` and return a JSON options object with `kind_definitions` for the kinds already present in the supplied graph.
+ - When generating or revising concept summaries and metadata, also assign conservative `exploration_coverage` and `summary_confidence` scores to each updated concept.
+ - Treat `exploration_coverage` as the primary measure of how thoroughly the concept's underlying implementation has been directly inspected.
+ - Treat `summary_confidence` as the confidence that the current summary and related concept metadata are correct given that inspection.
+ - Keep both scores in the `0.0` to `1.0` range, and usually do not let `summary_confidence` exceed `exploration_coverage`.
+ - Use bucketed scoring semantics: `0.2` for light skim, `0.4` for limited direct inspection, `0.6` for main implementation inspected, `0.8` for main implementation plus key interactions, `0.9` for thorough inspection, and `1.0` only for unusually exhaustive coverage within reasonable scope.
  - If no mode is provided, run all three prompt flows in order: first `prompts/generate_concept_graph.md`, then `prompts/enrich_concept_graph_anchors.md`, then `prompts/enrich_kind_definitions.md`.
  - When running all three prompt flows, pass the generated graph into the anchors step, then pass the anchor-enriched graph into the kinds step, and return only the final fully enriched result.
  - Follow the selected prompt template's output contract exactly for the active mode, or the final prompt's output contract when running the full three-step flow.

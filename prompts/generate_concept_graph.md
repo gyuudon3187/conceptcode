@@ -13,6 +13,11 @@ Requirements:
 - Put the main concept tree under `root`.
 - Use stable, human-meaningful keys under `children` because those keys define the concept's stable derived path.
 - Prefer concise summaries.
+- Assign conservative `exploration_coverage` and `summary_confidence` scores for each concept you create.
+- Keep both scores in the `0.0` to `1.0` range.
+- Use `exploration_coverage` for how thoroughly the concept's relevant implementation has been directly inspected.
+- Use `summary_confidence` for how trustworthy the concept summary and related metadata are based on that inspection.
+- `summary_confidence` should usually not exceed `exploration_coverage`.
 - Focus on conceptual structure first: identify the most useful concepts, relationships, and hierarchy for browsing and later edits.
 - Prefer first-level concepts that a non-programmer product collaborator could understand without reading the code.
 - Prefer user-meaningful views, domain concepts, major subsystems, and independently meaningful processes over buckets that mainly mirror implementation structure.
@@ -47,6 +52,7 @@ The concept graph should help a human or LLM refer to parts of the program by pa
 - Favor conceptual names over UI label text when the concept is broader than the label.
 - Keep interface-oriented metadata compact so it supports browsing and prompt composition without overwhelming the concept hierarchy.
 - Use `related_paths` sparingly and only when they add navigational value.
+- Use bucketed scoring semantics when setting `exploration_coverage` and `summary_confidence`: `0.2` for light skim, `0.4` for limited direct inspection, `0.6` for the main implementation inspected, `0.8` for the main implementation plus key interactions, `0.9` for thorough inspection, and `1.0` only for unusually exhaustive coverage within reasonable scope.
 - Treat source-level helpers, constants, and startup glue as implementation detail unless they represent a user-meaningful subsystem or domain concept.
 - If a concept only makes sense because it belongs to a view or control, attach it to that parent instead of lifting it toward the top level.
 - Avoid using `region` as a fallback for "miscellaneous" or uncategorized parts of the code.

@@ -8,19 +8,26 @@ import { truncateSingleLine } from "./text"
 export function listLines(state: AppState): ListLine[] {
   const visible = visiblePaths(state)
   if (visible.length === 0) {
-    return [{ title: `(no child concepts under ${state.currentParentPath})`, kindLabel: "", leftMarker: "", rightMarker: "", selected: false, empty: true }]
+    return [{ title: `(no child concepts under ${state.currentParentPath})`, kindLabel: "", explorationCoverage: null, summaryConfidence: null, leftMarker: "", rightMarker: "", selected: false, empty: true }]
   }
   return visible.map((path, index) => {
     const node = state.nodes.get(path)!
     return {
       title: node.title,
       kindLabel: node.kind ?? "(no kind)",
+      explorationCoverage: node.explorationCoverage,
+      summaryConfidence: node.summaryConfidence,
       leftMarker: node.parentPath && node.parentPath !== "root" ? "<-" : "",
       rightMarker: node.childPaths.length > 0 ? "->" : "",
       selected: index === state.cursor,
       tone: node.isDraft ? "draft" : undefined,
     }
   })
+}
+
+function formatPercent(score: number | null): string {
+  if (score === null) return "--"
+  return `${Math.round(score * 100)}%`
 }
 
 function conceptRowColors(item: ListLine): { background: string; title: string; kind: string; badge: string } {
@@ -44,8 +51,8 @@ export function renderConceptList(state: AppState): Renderable | VNode<any, any[
     { width: "100%", flexDirection: "column", gap: 0 },
     ...items.map((item) => {
       const colors = conceptRowColors(item)
-      const titleWidth = state.layoutMode === "wide" ? 24 : 20
-      const kindWidth = state.layoutMode === "wide" ? 10 : 10
+      const titleWidth = state.layoutMode === "wide" ? 18 : 14
+      const kindWidth = state.layoutMode === "wide" ? 10 : 8
       return Box(
         { width: "100%", paddingX: 1, backgroundColor: colors.background, flexDirection: "row", justifyContent: "space-between" },
         Box(
@@ -56,6 +63,8 @@ export function renderConceptList(state: AppState): Renderable | VNode<any, any[
         Box(
           { flexDirection: "row", gap: 1, flexShrink: 0 },
           Text({ content: item.kindLabel ? truncateSingleLine(item.kindLabel, kindWidth) : "", fg: colors.kind, attributes: item.selected ? TextAttributes.BOLD : 0 }),
+          Text({ content: formatPercent(item.explorationCoverage).padStart(4, " "), fg: colors.kind, attributes: item.selected ? TextAttributes.BOLD : 0 }),
+          Text({ content: formatPercent(item.summaryConfidence).padStart(4, " "), fg: colors.kind, attributes: item.selected ? TextAttributes.BOLD : 0 }),
           Text({ content: item.rightMarker ? item.rightMarker.padEnd(2, " ") : "  ", fg: colors.badge, attributes: item.selected || Boolean(item.rightMarker) ? TextAttributes.BOLD : 0 }),
         ),
       )

@@ -13,6 +13,9 @@ Requirements:
 - Do not rename concept keys under `children`.
 - Keep existing summaries and conceptual decomposition unless a supplied value is clearly wrong.
 - Add or refine `loc` for leaf concepts when possible.
+- Preserve existing `exploration_coverage` and `summary_confidence` by default.
+- Increase `exploration_coverage` conservatively only when the anchor-enrichment pass required direct inspection that materially improved understanding of the concept's implementation.
+- Update `summary_confidence` only when that direct inspection also justifies a more trustworthy summary or metadata understanding.
 - Use `loc` for one best primary implementation span of the concept, with an explicit `file`, inclusive `start_line`, and inclusive `end_line`.
 - Keep `loc` compact; choose the smallest span that still represents the main part of the concept.
 - Keep one-line concepts as `start_line == end_line`.

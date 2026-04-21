@@ -67,12 +67,18 @@ function latestConversationPreview(state: AppState): { text: string; role: "user
 function renderDetailsPane(state: AppState): Renderable | VNode<any, any[]> {
   const node = currentNode(state)
   const body = node.summary.trim() || "No summary for this concept yet."
+  const metricText = (label: string, value: number | null): string => `${label} ${value === null ? "--" : `${Math.round(value * 100)}%`}`
   return Box(
     { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Details", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
     Box(
       { width: "100%", flexDirection: "row", justifyContent: "space-between" },
       Text({ content: truncateSingleLine(node.title, state.layoutMode === "wide" ? 24 : 18), fg: COLORS.text, attributes: TextAttributes.BOLD }),
       Text({ content: node.kind ?? "(no kind)", fg: COLORS.accentSoft }),
+    ),
+    Box(
+      { width: "100%", flexDirection: "row", gap: 2 },
+      Text({ content: metricText("Explored", node.explorationCoverage), fg: COLORS.muted }),
+      Text({ content: metricText("Summary", node.summaryConfidence), fg: COLORS.muted }),
     ),
     Text({ content: body, fg: node.summary.trim() ? COLORS.text : COLORS.muted }),
   )
@@ -392,7 +398,7 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
             return Box(
               { width: "100%", paddingX: 1, backgroundColor: selected ? COLORS.selectedBg : "#171d22", flexDirection: "column" },
               Text({ content: value, fg: selected ? COLORS.selectedFg : COLORS.accent, attributes: TextAttributes.BOLD }),
-              Text({ content: selected ? slashSuggestionDescription(value) : truncateSingleLine(slashSuggestionDescription(value), state.layoutMode === "wide" ? 56 : 36), fg: selected ? COLORS.selectedFg : COLORS.muted }),
+              Text({ content: selected ? slashSuggestionDescription(state, value) : truncateSingleLine(slashSuggestionDescription(state, value), state.layoutMode === "wide" ? 56 : 36), fg: selected ? COLORS.selectedFg : COLORS.muted }),
             )
           }
           if (value.startsWith("&")) {

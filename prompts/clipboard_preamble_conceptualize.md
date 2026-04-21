@@ -13,7 +13,7 @@ Use this concept graph context to update the concept graph itself. Treat the con
 - If the intended target concept is ambiguous, choose the smallest safe interpretation and make that assumption explicit in the diff or its labels.
 - Use parent context, `child_paths`, and `related_paths` to navigate nearby structure when deciding where a graph edit belongs.
 - Use `loc` only as supporting evidence about implementation anchors. Do not let uncertain or missing anchors block a good conceptual edit.
-- Treat `why_it_exists`, `state_predicate`, `aliases`, and `draft_status` as optional supporting context.
+- Treat `why_it_exists`, `state_predicate`, `aliases`, `draft_status`, `exploration_coverage`, and `summary_confidence` as optional supporting context.
 - Do not assume every concept has every field. Prefer omitted anchors over guessed anchors.
 
 ## Editing priorities
@@ -27,6 +27,8 @@ Use this concept graph context to update the concept graph itself. Treat the con
 - Remove concepts only when they are redundant, misleading, structurally wrong, or no longer represent the system well.
 - Split or merge concepts only when the current decomposition makes browsing or later edits materially worse.
 - Preserve existing summaries and hierarchy unless they are clearly wrong or the user asked for a structural change.
+- When updating a concept after direct code inspection, update `exploration_coverage` and `summary_confidence` conservatively along with the summary or related metadata.
+- Treat `exploration_coverage < 0.9` as a sign that important direct inspection may still be missing.
 - Add or refine `loc` only when you can identify one best primary implementation span confidently.
 - Omit uncertain anchors rather than guessing.
 

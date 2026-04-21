@@ -15,6 +15,8 @@
         "title": "Some Concept",
         "kind": "concept",
         "summary": "Explanation.",
+        "exploration_coverage": 0.8,
+        "summary_confidence": 0.7,
         "loc": {
           "file": "pkg/file.py",
           "start_line": 10,
@@ -43,6 +45,8 @@ The path is usually derived, not stored as a separate field on each concept.
 - `kind`
 - `summary`
 - `why_it_exists`
+- `exploration_coverage`
+- `summary_confidence`
 - `loc`
 - `related_paths`
 - `aliases`
@@ -50,6 +54,14 @@ The path is usually derived, not stored as a separate field on each concept.
 - `children`
 
 Concepts may also include additional metadata fields beyond this list. The browser preserves extra concept fields as node metadata even when it does not render them specially.
+
+## Confidence-style metrics
+
+- `exploration_coverage` is an optional `0.0` to `1.0` score for how thoroughly the relevant implementation surface for a concept has been directly inspected.
+- `summary_confidence` is an optional `0.0` to `1.0` score for how trustworthy the current summary and related concept metadata are based on that inspection.
+- Use conservative scores.
+- `summary_confidence` should usually not exceed `exploration_coverage`.
+- A practical threshold for follow-up work is `exploration_coverage < 0.9`, which means important direct inspection is likely still missing.
 
 Common `kind` values include `module`, `view`, `layout`, `region`, `workflow`, `control`, `concept`, `behavior`, `transition`, `dataclass`, `data_group`, and `guidance`.
 

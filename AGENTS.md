@@ -57,12 +57,13 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 - Canonical schema guidance lives in `docs/json_schema.md`.
 - Keep the top-level graph shape consistent with the canonical schema and schema version.
 - `source_file` is graph-level context, while `loc.file` is concept-level truth for a specific anchor.
-- Use optional fields such as `why_it_exists`, `loc`, `related_paths`, `aliases`, and `state_predicate` only when they add real value.
+- Use optional fields such as `why_it_exists`, `loc`, `related_paths`, `aliases`, `state_predicate`, `exploration_coverage`, and `summary_confidence` only when they add real value.
 
 ## Concept-graph workflow
 
 - It is acceptable to create the main concept graph and enrich source anchors in separate passes.
 - When enriching anchors later, preserve the existing hierarchy and stable concept paths unless the original graph is clearly wrong.
+- When direct inspection materially improves concept understanding, update `exploration_coverage` and `summary_confidence` conservatively along with the affected concept metadata.
 
 ## Prompt-generation goal
 

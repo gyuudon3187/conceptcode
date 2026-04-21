@@ -260,6 +260,8 @@ export async function buildMetadataPreview(_state: AppState, node: ConceptNode):
     { chunks: [createChunk(`path: ${node.path}`, DEFAULT_CODE_FG)] },
     { chunks: [createChunk(`title: ${node.title}`, DEFAULT_CODE_FG)] },
     { chunks: [createChunk(`kind: ${node.kind ?? "(no kind)"}`, DEFAULT_CODE_FG)] },
+    { chunks: [createChunk(`exploration_coverage: ${node.explorationCoverage == null ? "-" : node.explorationCoverage}`, DEFAULT_CODE_FG)] },
+    { chunks: [createChunk(`summary_confidence: ${node.summaryConfidence == null ? "-" : node.summaryConfidence}`, DEFAULT_CODE_FG)] },
     { chunks: [createChunk(`parent_path: ${node.parentPath ?? "-"}`, DEFAULT_CODE_FG)] },
     { chunks: [createChunk(`children: ${node.childPaths.length}`, DEFAULT_CODE_FG)] },
   ]

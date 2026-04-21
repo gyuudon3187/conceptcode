@@ -11,6 +11,8 @@ export type ConceptNode = {
   title: string
   kind: string | null
   summary: string
+  explorationCoverage: number | null
+  summaryConfidence: number | null
   parentPath: string | null
   metadata: Record<string, JsonValue>
   loc: SourceLoc | null
@@ -43,6 +45,8 @@ export type MainLine = {
 export type ListLine = {
   title: string
   kindLabel: string
+  explorationCoverage: number | null
+  summaryConfidence: number | null
   leftMarker: string
   rightMarker: string
   selected: boolean
