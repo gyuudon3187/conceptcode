@@ -18,13 +18,7 @@ function clipboardPreambleForMode(mode: UiMode): string {
 
 function referencedPaths(text: string): string[] {
   const matches = [...text.matchAll(/@([a-zA-Z0-9_.-]+)/g)]
-  return [...new Set(matches.map((match) => {
-    const raw = match[1]
-    if (raw === "root" || raw.startsWith("root.")) {
-      return raw
-    }
-    return `root.${raw}`
-  }))]
+  return [...new Set(matches.map((match) => match[1]).filter((raw) => raw === "root" || raw.startsWith("root.") || raw === "domain" || raw.startsWith("domain.")))]
 }
 
 export function referencedConceptPaths(text: string, nodes: Map<string, ConceptNode>): string[] {
@@ -68,16 +62,16 @@ function renderClipboardBlock(node: ConceptNode): string {
   return `${lines.join("\n")}\n`
 }
 
-function renderSystemOverviewBlock(rootNode: ConceptNode | undefined): string | null {
-  if (!rootNode) {
+function renderSystemOverviewBlock(node: ConceptNode | undefined, label: string): string | null {
+  if (!node) {
     return null
   }
-  const lines = ["# System Overview", `- title: ${rootNode.title}`]
-  if (rootNode.kind) {
-    lines.push(`- kind: ${rootNode.kind}`)
+  const lines = [`# ${label} Overview`, `- title: ${node.title}`]
+  if (node.kind) {
+    lines.push(`- kind: ${node.kind}`)
   }
-  if (rootNode.summary) {
-    lines.push(`- summary: ${rootNode.summary}`)
+  if (node.summary) {
+    lines.push(`- summary: ${node.summary}`)
   }
   return lines.length > 1 ? `${lines.join("\n")}\n` : null
 }
@@ -181,10 +175,10 @@ export async function buildEffectivePrompt(state: AppState, _currentPath: string
   const interpretationHint = normalizedInterpretationHint(state)
   const hintLines = flattenInterpretationHints(interpretationHint)
   const sections = [clipboardPreambleForMode(state.uiMode)]
-  const systemOverview = renderSystemOverviewBlock(state.nodes.get("root"))
-  if (systemOverview) {
-    sections.push(systemOverview.trimEnd())
-  }
+  const implementationOverview = renderSystemOverviewBlock(state.nodes.get("root"), "Implementation")
+  const domainOverview = renderSystemOverviewBlock(state.nodes.get("domain"), "Domain")
+  if (implementationOverview) sections.push(implementationOverview.trimEnd())
+  if (domainOverview) sections.push(domainOverview.trimEnd())
   if (promptText) {
     sections.push(["# Main Instructions", promptText].join("\n\n"))
   }
@@ -207,10 +201,10 @@ export async function effectivePromptTokenBreakdown(state: AppState, _currentPat
   const interpretationHint = normalizedInterpretationHint(state)
   const hintLines = flattenInterpretationHints(interpretationHint)
   const staticSections = [clipboardPreambleForMode(state.uiMode)]
-  const systemOverview = renderSystemOverviewBlock(state.nodes.get("root"))
-  if (systemOverview) {
-    staticSections.push(systemOverview.trimEnd())
-  }
+  const implementationOverview = renderSystemOverviewBlock(state.nodes.get("root"), "Implementation")
+  const domainOverview = renderSystemOverviewBlock(state.nodes.get("domain"), "Domain")
+  if (implementationOverview) staticSections.push(implementationOverview.trimEnd())
+  if (domainOverview) staticSections.push(domainOverview.trimEnd())
   if (hintLines.length > 0) {
     staticSections.push(["# Shared Interpretation Hints", ...hintLines].join("\n"))
   }

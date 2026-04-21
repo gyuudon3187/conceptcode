@@ -10,10 +10,14 @@ Analyze the target code and produce a JSON concept graph for use with the `Conce
 Requirements:
 - Output valid JSON only.
 - Use schema_version 1.
-- Put the main concept tree under `root`.
+- Put implementation-backed concepts under `root`.
+- Put non-code domain concepts under `domain` when they materially help browsing and prompt composition.
+- Include at least one of `root` or `domain`.
 - Use stable, human-meaningful keys under `children` because those keys define the concept's stable derived path.
 - Prefer concise summaries.
 - Assign conservative `exploration_coverage` and `summary_confidence` scores for each concept you create.
+- Only assign `exploration_coverage` and `summary_confidence` to `root` concepts.
+- Do not add `loc`, `exploration_coverage`, or `summary_confidence` to `domain` concepts.
 - Keep both scores in the `0.0` to `1.0` range.
 - Use `exploration_coverage` for how thoroughly the concept's relevant implementation has been directly inspected.
 - Use `summary_confidence` for how trustworthy the concept summary and related metadata are based on that inspection.
@@ -23,7 +27,9 @@ Requirements:
 - Prefer user-meaningful views, domain concepts, major subsystems, and independently meaningful processes over buckets that mainly mirror implementation structure.
 - Do not create top-level buckets like constants, helpers, utils, entrypoints, or generic workflows unless they are themselves meaningful concepts for understanding the system.
 - Include `related_paths` when another concept materially affects understanding.
-- Use `kind` values such as module, view, layout, region, workflow, control, concept, behavior, transition, dataclass, data_group, or guidance when appropriate.
+- Use implementation-oriented `kind` values such as module, view, layout, region, workflow, control, concept, behavior, transition, dataclass, data_group, or guidance under `root`.
+- Use domain-oriented `kind` values such as domain_area, business_concept, actor, goal, policy, rule, constraint, state, event, workflow, capability, metric, or term under `domain`.
+- Do not mix implementation-oriented and domain-oriented kinds within the same namespace.
 - Use `region` for a bounded, tangible area within a view, layout, or other clearly comprehensible surface. Use `control` instead for focused interactive elements. Do not use `region` as a generic grouping kind for arbitrary code sections.
 - Use `control` for a focused interactive element or tight control cluster such as a button, dropdown, input, toggle, tab set, picker, or action list.
 - Use `behavior` when the concept is an action, interaction flow, or reaction owned by a parent concept such as a view, control, or stateful surface.
@@ -39,10 +45,11 @@ Output shape:
 {
   "schema_version": 1,
   "source_file": "...",
-  "root": {...}
+  "root": {...},
+  "domain": {...}
 }
 
-The concept graph should help a human or LLM refer to parts of the program by paths like `root.views.merge_view.pending_selection`.
+The concept graph should help a human or LLM refer to parts of the program by explicit paths like `root.views.merge_view.pending_selection` and `domain.business_rules.refund_policy`.
 ```
 
 ## Authoring advice

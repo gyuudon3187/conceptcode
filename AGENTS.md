@@ -19,7 +19,7 @@ The project is not limited to TUIs or to source code modules. It should work wel
 - state machines
 - data models
 
-The core idea is that a human or LLM can refer to a concept by a stable derived path like `root.views.merge_view.pending_selection` instead of relying on vague natural-language descriptions, and can mention those paths directly while composing prompts for an agent.
+The core idea is that a human or LLM can refer to a concept by a stable derived path like `root.views.merge_view.pending_selection` or `domain.business_rules.refund_policy` instead of relying on vague natural-language descriptions, and can mention those paths directly while composing prompts for an agent.
 
 ## Product invariants
 
@@ -58,6 +58,7 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 - Keep the top-level graph shape consistent with the canonical schema and schema version.
 - `source_file` is graph-level context, while `loc.file` is concept-level truth for a specific anchor.
 - Use optional fields such as `why_it_exists`, `loc`, `related_paths`, `aliases`, `state_predicate`, `exploration_coverage`, and `summary_confidence` only when they add real value.
+- Restrict `loc`, `exploration_coverage`, and `summary_confidence` to `root` concepts; do not add them to `domain` concepts.
 
 ## Concept-graph workflow
 

@@ -17,6 +17,7 @@ Use this skill in conceptualize mode to remove an existing concept from the conc
 
 ```text
 /delete @root.some.concept
+/delete @domain.some.concept
 ```
 
 - The command requires an existing concept path.
@@ -32,5 +33,5 @@ Use this skill in conceptualize mode to remove an existing concept from the conc
 ## Constraints
 
 - Do not run without an explicit existing concept path.
-- Do not silently delete `root`.
+- Do not silently delete `root` or `domain`.
 - Report the deleted path and any cleaned `related_paths` references.

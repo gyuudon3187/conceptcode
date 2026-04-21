@@ -20,6 +20,7 @@ Use this skill in conceptualize mode to improve a concept graph entry after dire
 ```
 
 - The command requires exactly one target concept reference.
+- The target must be an implementation concept under `root`, not a `domain` concept.
 - Do not run this skill without an explicit concept path.
 - If the user does not provide a concept path, ask for one instead of guessing.
 

@@ -27,13 +27,33 @@
         "children": {}
       }
     }
+  },
+  "domain": {
+    "title": "Domain",
+    "kind": "domain_area",
+    "summary": "Top-level domain concepts.",
+    "children": {
+      "business_rule": {
+        "title": "Business Rule",
+        "kind": "rule",
+        "summary": "A non-code domain concept.",
+        "related_paths": ["root.some_concept"],
+        "children": {}
+      }
+    }
   }
 }
 ```
 
+- A graph must include at least one of `root` or `domain`.
+- `root` is for implementation-backed concepts.
+- `domain` is for non-code domain concepts.
+
 ## Stable paths
 
 If a child appears as `root.children.views.children.merge_view`, the browser path becomes `root.views.merge_view`.
+
+If a child appears as `domain.children.rules.children.billing_policy`, the browser path becomes `domain.rules.billing_policy`.
 
 Paths are derived from object keys under `children`, so keep those keys stable.
 
@@ -54,6 +74,19 @@ The path is usually derived, not stored as a separate field on each concept.
 - `children`
 
 Concepts may also include additional metadata fields beyond this list. The browser preserves extra concept fields as node metadata even when it does not render them specially.
+
+## Namespace-specific metadata
+
+- `root` concepts may use implementation-facing metadata such as `loc`, `exploration_coverage`, and `summary_confidence`.
+- `domain` concepts must not use `loc`, `exploration_coverage`, or `summary_confidence`.
+- Cross-namespace `related_paths` are allowed when they add real navigational value.
+
+## Kind spaces
+
+- Use one shared field name: `kind`.
+- Do not mix implementation-oriented kinds and domain-oriented kinds within the same namespace.
+- `root` should use implementation-oriented kinds such as `module`, `view`, `layout`, `region`, `control`, `behavior`, `transition`, `dataclass`, and `data_group`.
+- `domain` should use domain-oriented kinds such as `domain_area`, `business_concept`, `actor`, `goal`, `policy`, `rule`, `constraint`, `state`, `event`, `workflow`, `capability`, `metric`, and `term`.
 
 ## Confidence-style metrics
 

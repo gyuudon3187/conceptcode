@@ -1,6 +1,6 @@
 import { createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
-import { applySelectionChange, currentNode, currentPath, moveCursor, pageSize, scrollMain, visiblePaths } from "../core/state"
+import { applySelectionChange, currentNode, currentPath, cycleConceptNamespaceMode, moveCursor, pageSize, scrollMain, visiblePaths } from "../core/state"
 import type { AppState, InspectorKind } from "../core/types"
 import { handleCreateConceptModalKey, isDraftConcept, openCreateConceptModal, promptToRemoveDraft, removeDraftConcept } from "../concepts/drafts"
 import { buildClipboardPayload, clipboardSelection } from "../prompt/payload"
@@ -282,6 +282,13 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
       key.preventDefault()
       key.stopPropagation()
       deps.workspace.togglePaneFocus()
+      return
+    }
+    if (key.name === "tab") {
+      key.preventDefault()
+      key.stopPropagation()
+      cycleConceptNamespaceMode(state)
+      deps.draw()
       return
     }
     if (key.ctrl && key.name === "s") {

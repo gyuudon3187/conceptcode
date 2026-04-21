@@ -10,16 +10,16 @@ function isObject(value: JsonValue | undefined): value is JsonObject {
 
 function pathSegments(conceptPath: string): string[] {
   const parts = conceptPath.split(".").filter(Boolean)
-  if (parts[0] !== "root") {
-    throw new Error(`Concept path must start with root: ${conceptPath}`)
+  if (parts[0] !== "root" && parts[0] !== "domain") {
+    throw new Error(`Concept path must start with root or domain: ${conceptPath}`)
   }
   return parts
 }
 
 export async function readGraph(graphPath: string): Promise<JsonObject> {
   const raw = JSON.parse(await readFile(graphPath, "utf8")) as JsonValue
-  if (!isObject(raw) || !isObject(raw.root)) {
-    throw new Error(`Concept graph at ${graphPath} is missing a root object`)
+  if (!isObject(raw) || (!isObject(raw.root) && !isObject(raw.domain))) {
+    throw new Error(`Concept graph at ${graphPath} must include at least one of root or domain`)
   }
   return raw
 }
@@ -30,7 +30,7 @@ export async function writeGraph(graphPath: string, graph: JsonObject): Promise<
 
 export function conceptAtPath(graph: JsonObject, conceptPath: string): JsonObject | null {
   const parts = pathSegments(conceptPath)
-  let current: JsonValue | undefined = graph.root
+  let current: JsonValue | undefined = graph[parts[0]]
   if (!isObject(current)) return null
   for (let index = 1; index < parts.length; index += 1) {
     const children: JsonValue | undefined = current.children

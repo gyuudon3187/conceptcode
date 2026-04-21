@@ -5,6 +5,9 @@
  Instructions for the LLM:
  - Prefer a concept hierarchy that a non-programmer product collaborator can browse and discuss without needing source-level implementation categories.
  - During graph generation, prefer user-meaningful views, domain concepts, major subsystems, and independently meaningful processes over buckets that mainly mirror code organization.
+ - The graph may contain top-level `root` and `domain` namespaces, and must include at least one of them.
+ - Use `root` for implementation-backed concepts and `domain` for non-code domain concepts.
+ - Do not add implementation-only metadata such as `loc`, `exploration_coverage`, or `summary_confidence` to `domain` concepts.
  - Do not default to top-level categories like constants, utils, entrypoints, or generic workflows unless they are themselves meaningful concepts for understanding the system.
  - Treat `region` as a bounded, tangible area within a view, layout, or other clearly comprehensible surface, not as a fallback bucket for arbitrary code sections.
  - Treat `control` as a focused interactive element or tight control cluster such as a button, dropdown, input, toggle, tab set, picker, or action list.
@@ -20,6 +23,7 @@
  - Treat `exploration_coverage` as the primary measure of how thoroughly the concept's underlying implementation has been directly inspected.
  - Treat `summary_confidence` as the confidence that the current summary and related concept metadata are correct given that inspection.
  - Keep both scores in the `0.0` to `1.0` range, and usually do not let `summary_confidence` exceed `exploration_coverage`.
+ - Apply those coverage and confidence scores only to `root` concepts.
  - Use bucketed scoring semantics: `0.2` for light skim, `0.4` for limited direct inspection, `0.6` for main implementation inspected, `0.8` for main implementation plus key interactions, `0.9` for thorough inspection, and `1.0` only for unusually exhaustive coverage within reasonable scope.
  - If no mode is provided, run all three prompt flows in order: first `prompts/generate_concept_graph.md`, then `prompts/enrich_concept_graph_anchors.md`, then `prompts/enrich_kind_definitions.md`.
  - When running all three prompt flows, pass the generated graph into the anchors step, then pass the anchor-enriched graph into the kinds step, and return only the final fully enriched result.

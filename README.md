@@ -2,7 +2,7 @@
 
 `ConceptCode` is a concept-aware interface for working with hierarchical concept graphs while composing prompts for coding agents.
 
-The current application is an OpenTUI workspace for concept-aware prompt composition. It reads a JSON concept graph, lets you navigate by stable concept path, edit concept summaries, mention concepts directly in a prompt with `@root...` aliases, and currently exports compact LLM-ready context plus interpretation guidance through the clipboard for use with external coding agents.
+The current application is an OpenTUI workspace for concept-aware prompt composition. It reads a JSON concept graph, lets you navigate by stable concept path, edit concept summaries, mention concepts directly in a prompt with explicit namespaced aliases such as `@root...` and `@domain...`, and currently exports compact LLM-ready context plus interpretation guidance through the clipboard for use with external coding agents.
 
 It now also includes a minimal provider-shaped streaming chat path: prompt submission goes through a local SSE dummy server, and assistant text is rendered incrementally in the TUI so the future ChatGPT integration can reuse the same event flow with minimal changes.
 
@@ -113,11 +113,12 @@ See `docs/src_architecture_proposal.md` for a proposed target `src/` directory l
 - `G` / `end`: jump to bottom
 - `l` / right: drill down
 - `h` / left: go back
-- `tab`: move focus between concepts and prompt
+- `tab`: switch the Concepts-side workspace between IMPLEMENTATION and DOMAIN namespaces
+- `shift+tab`: move focus between concepts and prompt
 - `i`: edit the prompt
 - `enter`: edit the highlighted concept summary or, when prompt-focused, edit the prompt
 - `enter` while prompt editing: submit the prompt and watch the assistant response stream in real time
-- `@` while editing the prompt: fuzzy-search full concept paths and insert a stable alias such as `@root.views.layout.sidebar`
+- `@` while editing the prompt: fuzzy-search full concept paths and insert a stable alias such as `@root.views.layout.sidebar` or `@domain.business_rules.refund_policy`
 - `ctrl+n` / `ctrl+p`: move through alias suggestions while editing the prompt
 - `s`: open snippet inspector for the highlighted concept
 - `t`: open subtree inspector for the highlighted concept
@@ -127,7 +128,7 @@ See `docs/src_architecture_proposal.md` for a proposed target `src/` directory l
 - `?`: show key help in the status bar
 - `q`: quit
 
-Current clipboard exports include a short instruction preamble loaded from `prompts/clipboard_preamble.md`, a compact `# System Overview` section derived from the root concept, a clearly labeled `# Main Instructions` section when prompt text is present, and concept blocks for the concepts explicitly referenced in the prompt by alias. If no concept alias is referenced, the highlighted concept is used as the fallback context. The preamble explains that stable paths come from `children` keys, that the graph models conceptual structure first, that fields such as `summary`, `related_paths`, `why_it_exists`, `aliases`, and `loc` are optional and should be used opportunistically, that missing anchors are preferable to guessed ones, and that if the agent's work changes the represented system it should update the concept graph only as its very last step.
+Current clipboard exports include a short instruction preamble loaded from `prompts/clipboard_preamble.md`, compact overview sections for the top-level `root` and `domain` concepts when present, a clearly labeled `# Main Instructions` section when prompt text is present, and concept blocks for the concepts explicitly referenced in the prompt by alias. If no concept alias is referenced, the highlighted concept is used as the fallback context. The preamble explains that stable paths come from `children` keys, that the graph models conceptual structure first, that fields such as `summary`, `related_paths`, `why_it_exists`, `aliases`, and `loc` are optional and should be used opportunistically, that missing anchors are preferable to guessed ones, and that if the agent's work changes the represented system it should update the concept graph only as its very last step.
 
 ## Included example
 

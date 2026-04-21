@@ -8,6 +8,7 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 
 export type ConceptNode = {
   path: string
+  namespace: "root" | "domain"
   title: string
   kind: string | null
   summary: string
@@ -29,7 +30,11 @@ export type SourceLoc = {
 export type GraphPayload = {
   interpretation_hint?: Record<string, JsonValue>
   root?: Record<string, JsonValue>
+  domain?: Record<string, JsonValue>
 }
+
+export type ConceptNamespace = "root" | "domain"
+export type ConceptNamespaceMode = "implementation" | "domain"
 
 export type LayoutMode = "wide" | "narrow"
 
@@ -212,6 +217,7 @@ export type AppState = {
   projectFiles: string[]
   projectDirectories: string[]
   sourceFileCache: Map<string, string[]>
+  conceptNamespaceMode: ConceptNamespaceMode
   currentParentPath: string
   cursor: number
   kindDefinitions: KindDefinition[]

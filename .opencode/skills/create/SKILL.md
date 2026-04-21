@@ -17,6 +17,7 @@ Use this skill in conceptualize mode to add a new concept to the concept graph.
 
 ```text
 /create @root.existing.parent.new_concept <concept fields>
+/create @domain.existing.parent.new_concept <concept fields>
 ```
 
 - The provided path must name a concept that does not yet exist.
@@ -31,10 +32,13 @@ Use this skill in conceptualize mode to add a new concept to the concept graph.
 - That script verifies that the full target path does not exist yet and that the parent path does exist.
 - Parse the user-provided fields into concept-graph metadata and pass them to that script as JSON.
 - Always create the concept with `not_yet_implemented: false` by default.
+- For `domain` concepts, do not pass implementation-only metadata such as `loc`, `exploration_coverage`, or `summary_confidence`.
 
 ## After creation
 
-- Inspect the new concept's parent context and nearby code.
+- Inspect the new concept's parent context and nearby evidence.
+- For `root` concepts, that evidence may include nearby implementation code.
+- For `domain` concepts, prefer nearby domain concepts and linked implementation concepts when they add real support.
 - Suggest:
   - metadata that could be added or refined
   - related concepts that the new concept should reference via `related_paths`

@@ -1,6 +1,6 @@
 import { Box, ScrollBoxRenderable, Text, TextAttributes, type Renderable, type VNode } from "@opentui/core"
 
-import { visiblePaths } from "../core/state"
+import { namespaceRootPath, visiblePaths } from "../core/state"
 import type { AppState, ListLine } from "../core/types"
 import { COLORS } from "./theme"
 import { truncateSingleLine } from "./text"
@@ -8,7 +8,11 @@ import { truncateSingleLine } from "./text"
 export function listLines(state: AppState): ListLine[] {
   const visible = visiblePaths(state)
   if (visible.length === 0) {
-    return [{ title: `(no child concepts under ${state.currentParentPath})`, kindLabel: "", explorationCoverage: null, summaryConfidence: null, leftMarker: "", rightMarker: "", selected: false, empty: true }]
+    const rootPath = namespaceRootPath(state.conceptNamespaceMode)
+    const message = state.nodes.has(rootPath)
+      ? `(no child concepts under ${state.currentParentPath})`
+      : `(no ${state.conceptNamespaceMode} concepts in this graph)`
+    return [{ title: message, kindLabel: "", explorationCoverage: null, summaryConfidence: null, leftMarker: "", rightMarker: "", selected: false, empty: true }]
   }
   return visible.map((path, index) => {
     const node = state.nodes.get(path)!
@@ -17,7 +21,7 @@ export function listLines(state: AppState): ListLine[] {
       kindLabel: node.kind ?? "(no kind)",
       explorationCoverage: node.explorationCoverage,
       summaryConfidence: node.summaryConfidence,
-      leftMarker: node.parentPath && node.parentPath !== "root" ? "<-" : "",
+      leftMarker: node.parentPath && node.parentPath !== namespaceRootPath(state.conceptNamespaceMode) ? "<-" : "",
       rightMarker: node.childPaths.length > 0 ? "->" : "",
       selected: index === state.cursor,
       tone: node.isDraft ? "draft" : undefined,

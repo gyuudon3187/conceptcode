@@ -11,12 +11,13 @@ metadata:
 
 # Elaborate
 
-Use this skill in conceptualize mode when the user provides an explanation for an existing concept and wants that explanation checked against the code.
+Use this skill in conceptualize mode when the user provides an explanation for an existing concept and wants that explanation checked against the best available evidence.
 
 ## Invocation
 
 ```text
 /elaborate @root.some.concept <user explanation>
+/elaborate @domain.some.concept <user explanation>
 ```
 
 - The command requires both an existing concept path and a user-provided explanation.
@@ -25,8 +26,9 @@ Use this skill in conceptualize mode when the user provides an explanation for a
 
 ## What I do
 
-- Inspect the code behind the target concept.
-- Compare the user-provided explanation against that code.
+- For `root` concepts, inspect the code behind the target concept.
+- For `domain` concepts, inspect nearby domain graph context and any linked implementation concepts that materially support the explanation.
+- Compare the user-provided explanation against that evidence.
 - Identify which parts are supported, unclear, contradictory, or missing.
 - Update the concept `summary` to reflect the verified explanation when the evidence supports doing so.
 - Update `summary_confidence` conservatively based on that verification.
@@ -49,4 +51,5 @@ Use this skill in conceptualize mode when the user provides an explanation for a
 - Do not run without an explicit existing concept path.
 - Do not edit implementation code.
 - Only update the concept summary when the verified explanation materially improves or corrects it.
-- Update `summary_confidence` conservatively and explain why it changed.
+- Update `summary_confidence` conservatively and explain why it changed for `root` concepts.
+- Do not use implementation-only metadata such as `loc`, `exploration_coverage`, or `summary_confidence` for `domain` concepts.

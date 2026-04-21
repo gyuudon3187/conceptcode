@@ -84,6 +84,7 @@ type CreateInitialAppStateInput = {
 export async function createInitialAppState(input: CreateInitialAppStateInput): Promise<AppState> {
   const { sessions, activeSessionId } = await loadSessions(input.conceptsPath, "plan")
   const resolvedUiLayoutConfig: UiLayoutConfig = { ...DEFAULT_UI_LAYOUT_CONFIG, ...input.uiLayoutConfig }
+  const initialNamespaceMode = input.nodes.has("root") ? "implementation" : "domain"
   const state: AppState = {
     jsonPath: input.conceptsPath,
     graphPayload: input.graphPayload,
@@ -91,7 +92,8 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     projectFiles: input.projectFiles,
     projectDirectories: input.projectDirectories,
     sourceFileCache: new Map(),
-    currentParentPath: "root",
+    conceptNamespaceMode: initialNamespaceMode,
+    currentParentPath: initialNamespaceMode === "implementation" ? "root" : "domain",
     cursor: 0,
     kindDefinitions: input.kindDefinitions,
     createConceptModal: null,

@@ -1,4 +1,20 @@
-import type { AppState, ConceptNode, LayoutMode } from "./types"
+import type { AppState, ConceptNamespaceMode, ConceptNode, LayoutMode } from "./types"
+
+export function namespaceRootPath(mode: ConceptNamespaceMode): "root" | "domain" {
+  return mode === "implementation" ? "root" : "domain"
+}
+
+export function setConceptNamespaceMode(state: AppState, mode: ConceptNamespaceMode): void {
+  state.conceptNamespaceMode = mode
+  state.currentParentPath = namespaceRootPath(mode)
+  state.cursor = 0
+  applySelectionChange(state)
+  clampCursor(state)
+}
+
+export function cycleConceptNamespaceMode(state: AppState): void {
+  setConceptNamespaceMode(state, state.conceptNamespaceMode === "implementation" ? "domain" : "implementation")
+}
 
 export function visiblePaths(state: AppState): string[] {
   return state.nodes.get(state.currentParentPath)?.childPaths ?? []

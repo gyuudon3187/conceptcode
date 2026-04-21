@@ -53,6 +53,16 @@ function normalizeFields(fields: Record<string, JsonValue>): JsonObject {
   return concept
 }
 
+function validateNamespaceSpecificFields(conceptPath: string, fields: Record<string, JsonValue>): void {
+  const namespace = conceptPath.split(".")[0]
+  if (namespace !== "domain") return
+  for (const forbiddenKey of ["loc", "exploration_coverage", "summary_confidence"]) {
+    if (forbiddenKey in fields) {
+      throw new Error(`Domain concepts cannot include ${forbiddenKey}`)
+    }
+  }
+}
+
 function conceptPathTitleFallback(summary: string): string {
   return summary.split(/[.!?\n]/)[0]?.trim() || "New Concept"
 }
@@ -60,6 +70,7 @@ function conceptPathTitleFallback(summary: string): string {
 export async function createConcept(input: CreateConceptInput): Promise<void> {
   const graph = await readGraph(input.graphPath)
   const { childKey } = validateNewConceptPath(graph, input.conceptPath)
+  validateNamespaceSpecificFields(input.conceptPath, input.fields)
   const { parent } = conceptParentAtPath(graph, input.conceptPath)
   const children = ensureChildren(parent)
   children[childKey] = normalizeFields(input.fields)

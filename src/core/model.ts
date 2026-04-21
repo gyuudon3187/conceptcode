@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, extname, isAbsolute, resolve } from "node:path"
 
-import type { ConceptNode, GraphPayload, JsonValue, KindDefinition, SourceLoc, UiLayoutConfig } from "./types"
+import type { ConceptNamespace, ConceptNode, GraphPayload, JsonValue, KindDefinition, SourceLoc, UiLayoutConfig } from "./types"
 
 function asObject(value: JsonValue | undefined): Record<string, JsonValue> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -53,6 +53,7 @@ function normalizeLoc(value: JsonValue | undefined): SourceLoc | null {
 function buildNodes(
   nodePayload: Record<string, JsonValue>,
   path: string,
+  namespace: ConceptNamespace,
   parentPath: string | null,
 ): Map<string, ConceptNode> {
   const childPayloads = normalizeChildren(nodePayload.children)
@@ -61,19 +62,22 @@ function buildNodes(
   const nodes = new Map<string, ConceptNode>()
   nodes.set(path, {
     path,
+    namespace,
     title: asString(nodePayload.title, path.split(".").at(-1) ?? path),
     kind: optionalString(nodePayload.kind),
     summary: asString(nodePayload.summary),
-    explorationCoverage: normalizedScore(nodePayload.exploration_coverage),
-    summaryConfidence: normalizedScore(nodePayload.summary_confidence),
+    explorationCoverage: namespace === "root" ? normalizedScore(nodePayload.exploration_coverage) : null,
+    summaryConfidence: namespace === "root" ? normalizedScore(nodePayload.summary_confidence) : null,
     parentPath,
-    metadata,
-    loc: normalizeLoc(nodePayload.loc),
+    metadata: namespace === "root"
+      ? metadata
+      : Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== "loc" && key !== "exploration_coverage" && key !== "summary_confidence")),
+    loc: namespace === "root" ? normalizeLoc(nodePayload.loc) : null,
     childPaths,
   })
   for (const [key, child] of Object.entries(childPayloads)) {
     const childPath = `${path}.${key}`
-    for (const [nestedPath, node] of buildNodes(child, childPath, path)) {
+    for (const [nestedPath, node] of buildNodes(child, childPath, namespace, path)) {
       nodes.set(nestedPath, node)
     }
   }
@@ -246,10 +250,21 @@ export function bulletList(value: JsonValue | undefined): string[] {
 export function loadConceptGraph(jsonPath: string, optionsPath?: string): { graphPayload: GraphPayload; nodes: Map<string, ConceptNode>; kindDefinitions: KindDefinition[]; uiLayoutConfig: Partial<UiLayoutConfig> } {
   const payload = JSON.parse(readFileSync(jsonPath, "utf8")) as GraphPayload
   const rootPayload = asObject(payload.root as JsonValue | undefined)
-  if (Object.keys(rootPayload).length === 0) {
-    throw new Error(`Concept graph at ${jsonPath} is missing a root object`)
+  const domainPayload = asObject(payload.domain as JsonValue | undefined)
+  if (Object.keys(rootPayload).length === 0 && Object.keys(domainPayload).length === 0) {
+    throw new Error(`Concept graph at ${jsonPath} must include at least one of root or domain`)
   }
-  const nodes = buildNodes(rootPayload, "root", null)
+  const nodes = new Map<string, ConceptNode>()
+  if (Object.keys(rootPayload).length > 0) {
+    for (const [path, node] of buildNodes(rootPayload, "root", "root", null)) {
+      nodes.set(path, node)
+    }
+  }
+  if (Object.keys(domainPayload).length > 0) {
+    for (const [path, node] of buildNodes(domainPayload, "domain", "domain", null)) {
+      nodes.set(path, node)
+    }
+  }
   return {
     graphPayload: payload,
     nodes,

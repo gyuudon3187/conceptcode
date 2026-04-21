@@ -12,6 +12,8 @@ Requirements:
 - Preserve the existing `schema_version`, top-level shape, stable child keys, and concept hierarchy unless a supplied graph is structurally invalid.
 - Do not rename concept keys under `children`.
 - Keep existing summaries and conceptual decomposition unless a supplied value is clearly wrong.
+- Restrict anchor enrichment to `root` concepts only.
+- Preserve `domain` concepts unchanged except for structurally required no-op passthrough.
 - Add or refine `loc` for leaf concepts when possible.
 - Preserve existing `exploration_coverage` and `summary_confidence` by default.
 - Increase `exploration_coverage` conservatively only when the anchor-enrichment pass required direct inspection that materially improved understanding of the concept's implementation.

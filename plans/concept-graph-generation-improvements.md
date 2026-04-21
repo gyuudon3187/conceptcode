@@ -26,7 +26,7 @@ Relevant current design points from the repo:
 - Stable concept paths are derived from object keys under `children`.
 - The current TUI already supports:
   - concept navigation by hierarchy
-  - prompt references like `@root...`
+  - prompt references like `@root...` and `@domain...`
   - file references like `&path`
   - clipboard export driven by explicit prompt references
   - compact exported context

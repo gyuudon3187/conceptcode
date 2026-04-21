@@ -1,6 +1,6 @@
 import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttributes, TextNodeRenderable, type TextChunk } from "@opentui/core"
 
-import { currentNode, currentPath, visiblePaths } from "../core/state"
+import { currentNode, currentPath, namespaceRootPath, visiblePaths } from "../core/state"
 import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "../core/types"
 import { slashSuggestionDescription, visiblePromptSuggestions } from "../prompt/editor"
 import { activeSession } from "../sessions/store"
@@ -68,6 +68,7 @@ function renderDetailsPane(state: AppState): Renderable | VNode<any, any[]> {
   const node = currentNode(state)
   const body = node.summary.trim() || "No summary for this concept yet."
   const metricText = (label: string, value: number | null): string => `${label} ${value === null ? "--" : `${Math.round(value * 100)}%`}`
+  const showImplementationMetrics = node.namespace === "root"
   return Box(
     { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Details", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
     Box(
@@ -75,13 +76,22 @@ function renderDetailsPane(state: AppState): Renderable | VNode<any, any[]> {
       Text({ content: truncateSingleLine(node.title, state.layoutMode === "wide" ? 24 : 18), fg: COLORS.text, attributes: TextAttributes.BOLD }),
       Text({ content: node.kind ?? "(no kind)", fg: COLORS.accentSoft }),
     ),
-    Box(
-      { width: "100%", flexDirection: "row", gap: 2 },
-      Text({ content: metricText("Explored", node.explorationCoverage), fg: COLORS.muted }),
-      Text({ content: metricText("Summary", node.summaryConfidence), fg: COLORS.muted }),
-    ),
+    ...(showImplementationMetrics
+      ? [Box(
+          { width: "100%", flexDirection: "row", gap: 2 },
+          Text({ content: metricText("Explored", node.explorationCoverage), fg: COLORS.muted }),
+          Text({ content: metricText("Summary", node.summaryConfidence), fg: COLORS.muted }),
+        )]
+      : []),
     Text({ content: body, fg: node.summary.trim() ? COLORS.text : COLORS.muted }),
   )
+}
+
+function conceptNamespacePresentation(mode: AppState["conceptNamespaceMode"]): { label: string; color: string; tone: string } {
+  if (mode === "domain") {
+    return { label: "DOMAIN", color: COLORS.conceptualize, tone: "Domain concepts" }
+  }
+  return { label: "IMPLEMENTATION", color: COLORS.accent, tone: "Code-backed concepts" }
 }
 
 function renderPromptPreviewPane(state: AppState): Renderable | VNode<any, any[]> {
@@ -113,10 +123,28 @@ function renderPromptPreviewPane(state: AppState): Renderable | VNode<any, any[]
 }
 
 function renderConceptPreviewPane(state: AppState): Renderable | VNode<any, any[]> {
+  if (!state.nodes.has(namespaceRootPath(state.conceptNamespaceMode))) {
+    const { label, color, tone } = conceptNamespacePresentation(state.conceptNamespaceMode)
+    return Box(
+      { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Concepts", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
+      Text({ content: label, fg: color, attributes: TextAttributes.BOLD }),
+      Text({ content: `No ${tone.toLowerCase()} in this graph yet.`, fg: COLORS.muted }),
+      Box(
+        { width: "100%", flexDirection: "row", justifyContent: "flex-end" },
+        Text({ content: "Tab namespace, Shift+Tab focus", fg: COLORS.border }),
+      ),
+    )
+  }
   const node = currentNode(state)
   const summary = node.summary.trim() || "No summary for this concept yet."
+  const { label, color, tone } = conceptNamespacePresentation(state.conceptNamespaceMode)
   return Box(
     { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Concepts", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
+    Box(
+      { width: "100%", flexDirection: "row", justifyContent: "space-between" },
+      Text({ content: label, fg: color, attributes: TextAttributes.BOLD }),
+      Text({ content: tone, fg: COLORS.muted }),
+    ),
     Box(
       { width: "100%", flexDirection: "row", justifyContent: "space-between" },
       Text({ content: truncateSingleLine(node.title, state.layoutMode === "wide" ? 22 : 18), fg: COLORS.text, attributes: TextAttributes.BOLD }),
@@ -125,7 +153,7 @@ function renderConceptPreviewPane(state: AppState): Renderable | VNode<any, any[
     Text({ content: truncateSingleLine(summary, state.layoutMode === "wide" ? 54 : 34), fg: node.summary.trim() ? COLORS.text : COLORS.muted }),
     Box(
       { width: "100%", flexDirection: "row", justifyContent: "flex-end" },
-      Text({ content: "Shift+Tab -> Concepts", fg: COLORS.border }),
+      Text({ content: "Tab namespace, Shift+Tab focus", fg: COLORS.border }),
     ),
   )
 }

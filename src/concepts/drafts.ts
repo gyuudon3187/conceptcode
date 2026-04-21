@@ -34,6 +34,7 @@ function insertDraftConcept(state: AppState, draft: CreateConceptDraft, kindDefi
   const metadata: ConceptNode["metadata"] = kindDefinition?.description ? { kind_description: kindDefinition.description } : {}
   const node: ConceptNode = {
     path,
+    namespace: parent.namespace,
     title: draft.title.trim(),
     kind: kindDefinition?.kind ?? null,
     summary: draft.summary.trim(),

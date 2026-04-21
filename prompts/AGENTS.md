@@ -14,6 +14,7 @@ These instructions apply when working in this directory and its subdirectories, 
 - Omit uncertain anchors rather than guessing.
 - Keep summaries and anchor metadata compact.
 - Treat `exploration_coverage` and `summary_confidence` as first-class optional concept metadata when the active prompt asks for direct inspection or concept revision.
+- Respect the namespace split: `root` is implementation-backed and `domain` is non-code domain context.
 - Favor conceptual decomposition that helps browsing and later edits.
 
 ## Workflow split
@@ -23,6 +24,7 @@ These instructions apply when working in this directory and its subdirectories, 
 - Use `enrich_kind_definitions.md` for a separate follow-up pass that derives `kind_definitions` for a TUI options file without changing the graph.
 - When enriching anchors, preserve the existing hierarchy, stable paths, and summaries unless the supplied graph is clearly wrong.
 - When a prompt involves direct inspection that materially improves concept understanding, update `exploration_coverage` and `summary_confidence` conservatively for the concepts you revise.
+- Do not add implementation-only metadata such as `loc`, `exploration_coverage`, or `summary_confidence` to `domain` concepts.
 - `clipboard_preamble.md` is the default agent-facing interpretation guide for exported concept context, and `clipboard_preamble_conceptualize.md` is the concept-graph-editing variant. Keep both aligned with the stable-path and anchor semantics defined by the generation and anchor-enrichment prompts, with prompt-driven concept inclusion semantics in the TUI, and with the conceptualize-mode contract that graph-editing requests may target explicit paths or inferred concepts but must stay scoped to the concept graph.
 
 ## Output expectations
