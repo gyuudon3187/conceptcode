@@ -59,8 +59,8 @@ export type InspectorState = {
   kind: InspectorKind
 }
 
-export type AliasSuggestionState = {
-  prefix: "@" | "&"
+export type PromptSuggestionState = {
+  prefix: "@" | "&" | "/"
   mode: "search" | "resolved"
   query: string
   start: number
@@ -72,7 +72,7 @@ export type AliasSuggestionState = {
 export type EditorModalState = {
   target: BufferModalTarget
   renderable: TextareaRenderable
-  aliasSuggestion: AliasSuggestionState | null
+  promptSuggestion: PromptSuggestionState | null
   visibleLineCount: number
   promptDraftIndex?: number
 }

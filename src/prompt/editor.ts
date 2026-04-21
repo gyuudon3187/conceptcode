@@ -6,9 +6,22 @@ import { activeSession } from "../sessions/store"
 
 const FILE_REFERENCE_TOKEN = /&[^\s&]+/g
 const CONCEPT_REFERENCE_TOKEN = /@[a-zA-Z0-9_.-]+/g
+const SLASH_REFERENCE_TOKEN = /(?:^|\s)(\/[a-zA-Z0-9_.-]*)/g
+
+type SlashSuggestion = { value: string; description: string }
+
+const SLASH_SUGGESTIONS: SlashSuggestion[] = [
+  { value: "/explain", description: "Explain the selected code or concept." },
+  { value: "/review", description: "Review changes for bugs, regressions, and gaps." },
+  { value: "/fix", description: "Investigate and fix the current problem." },
+  { value: "/test", description: "Run relevant tests and summarize the results." },
+  { value: "/skill-architecture", description: "Use an architecture-focused skill prompt." },
+  { value: "/skill-refactor", description: "Use a refactoring-focused skill prompt." },
+  { value: "/command-commit", description: "Draft a commit-ready change summary." },
+]
 
 type PromptReferenceToken = { token: string; start: number; end: number }
-type ActivePromptSuggestion = { prefix: "@" | "&"; query: string; start: number; end: number; suggestions: string[] }
+type ActivePromptSuggestion = { prefix: "@" | "&" | "/"; query: string; start: number; end: number; suggestions: string[] }
 
 function allAliasSuggestions(state: AppState, query: string): string[] {
   const paths = [...state.nodes.keys()].sort((left, right) => left.localeCompare(right))
@@ -54,13 +67,42 @@ function allFileSuggestions(state: AppState, query: string): string[] {
     .map((entry) => entry.reference)
 }
 
-export function visibleAliasSuggestions(state: AppState, aliasSuggestion: NonNullable<EditorModalState["aliasSuggestion"]>): { full: string[]; visible: string[]; selectedAlias: string | null } {
-  const full = aliasSuggestion.mode === "resolved"
-    ? [`${aliasSuggestion.prefix}${aliasSuggestion.query}`]
-    : (aliasSuggestion.prefix === "@" ? allAliasSuggestions(state, aliasSuggestion.query) : allFileSuggestions(state, aliasSuggestion.query))
-  const visible = full.slice(aliasSuggestion.visibleStartIndex, aliasSuggestion.visibleStartIndex + maxVisibleAliasSuggestions())
-  const selectedAlias = full[aliasSuggestion.selectedIndex] ?? null
-  return { full, visible, selectedAlias }
+function allSlashSuggestions(query: string): string[] {
+  if (!query) return SLASH_SUGGESTIONS.map((entry) => entry.value)
+  const normalized = query.toLowerCase()
+  const score = (value: string): number => {
+    const command = value.slice(1).toLowerCase()
+    const lastSegment = command.split(/[-_.]/).at(-1) ?? command
+    if (command === normalized) return 500
+    if (lastSegment === normalized) return 430
+    if (command.startsWith(normalized)) return 360 - command.indexOf(normalized)
+    if (lastSegment.startsWith(normalized)) return 300 - lastSegment.indexOf(normalized)
+    if (command.includes(normalized)) return 180 - command.indexOf(normalized)
+    return 0
+  }
+  return SLASH_SUGGESTIONS
+    .map((entry) => ({ value: entry.value, score: score(entry.value) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.value.length - right.value.length || left.value.localeCompare(right.value))
+    .map((entry) => entry.value)
+}
+
+export function slashSuggestionDescription(value: string): string {
+  return SLASH_SUGGESTIONS.find((entry) => entry.value === value)?.description ?? "Command or skill"
+}
+
+function suggestionEntries(state: AppState, suggestion: NonNullable<EditorModalState["promptSuggestion"]>): string[] {
+  if (suggestion.mode === "resolved") return [`${suggestion.prefix}${suggestion.query}`]
+  if (suggestion.prefix === "@") return allAliasSuggestions(state, suggestion.query)
+  if (suggestion.prefix === "&") return allFileSuggestions(state, suggestion.query)
+  return allSlashSuggestions(suggestion.query)
+}
+
+export function visiblePromptSuggestions(state: AppState, suggestion: NonNullable<EditorModalState["promptSuggestion"]>): { full: string[]; visible: string[]; selectedValue: string | null } {
+  const full = suggestionEntries(state, suggestion)
+  const visible = full.slice(suggestion.visibleStartIndex, suggestion.visibleStartIndex + maxVisibleAliasSuggestions())
+  const selectedValue = full[suggestion.selectedIndex] ?? null
+  return { full, visible, selectedValue }
 }
 
 function maxVisibleAliasSuggestions(): number {
@@ -110,6 +152,7 @@ function promptAliasStyle(): SyntaxStyle {
   const style = SyntaxStyle.create()
   style.registerStyle("prompt.alias", { fg: RGBA.fromHex("#ebcb8b"), bold: true })
   style.registerStyle("prompt.file", { fg: RGBA.fromHex("#88c0d0"), bold: true })
+  style.registerStyle("prompt.slash", { fg: RGBA.fromHex("#a3be8c"), bold: true })
   return style
 }
 
@@ -131,9 +174,32 @@ function applyPromptAliasHighlights(editor: TextareaRenderable): void {
     const highlight: Highlight = { start, end: start + token.length, styleId: fileStyleId }
     editor.addHighlightByCharRange(highlight)
   }
+  const slashStyleId = editor.syntaxStyle?.getStyleId("prompt.slash")
+  if (slashStyleId == null) return
+  for (const match of editor.plainText.matchAll(SLASH_REFERENCE_TOKEN)) {
+    const token = match[1]
+    if (!token) continue
+    const fullStart = match.index ?? 0
+    const start = fullStart + match[0].lastIndexOf(token)
+    const highlight: Highlight = { start, end: start + token.length, styleId: slashStyleId }
+    editor.addHighlightByCharRange(highlight)
+  }
 }
 
-function activeAliasSuggestion(state: AppState, editor: EditorModalState): ActivePromptSuggestion | null {
+function slashTokenAtCursor(text: string, cursor: number): PromptReferenceToken | null {
+  const matches = [...text.matchAll(SLASH_REFERENCE_TOKEN)]
+  for (const match of matches) {
+    const token = match[1]
+    if (!token) continue
+    const fullStart = match.index ?? 0
+    const start = fullStart + match[0].lastIndexOf(token)
+    const end = start + token.length
+    if (cursor >= start && cursor <= end) return { token, start, end }
+  }
+  return null
+}
+
+function activePromptSuggestion(state: AppState, editor: EditorModalState): ActivePromptSuggestion | null {
   if (editor.target.kind !== "prompt") return null
   const text = editor.renderable.plainText
   const cursor = editorCursorOffset(editor)
@@ -151,30 +217,43 @@ function activeAliasSuggestion(state: AppState, editor: EditorModalState): Activ
       return { prefix: "&", query: exactPath, start: exactFileToken.start, end: exactFileToken.end, suggestions: [exactFileToken.token] }
     }
   }
+  const exactSlashToken = slashTokenAtCursor(text, cursor)
+  if (exactSlashToken) {
+    const exactValue = exactSlashToken.token
+    if (SLASH_SUGGESTIONS.some((entry) => entry.value === exactValue)) {
+      return { prefix: "/", query: exactValue.slice(1), start: exactSlashToken.start, end: exactSlashToken.end, suggestions: [exactValue] }
+    }
+  }
   const beforeCursor = text.slice(0, cursor)
-  const match = beforeCursor.match(/(?:^|\s)([@&]([^\s@&]*))$/)
+  const match = beforeCursor.match(/(?:^|\s)([@&/]([^\s@&/]*))$/)
   if (!match) return null
   const token = match[1]
-  const prefix = token[0] as "@" | "&"
+  const prefix = token[0] as "@" | "&" | "/"
   const query = match[2] ?? ""
   const start = cursor - token.length
   const afterCursor = text.slice(cursor)
-  const suffixMatch = afterCursor.match(prefix === "@" ? /^([a-zA-Z0-9_.-]*)/ : /^([^\s@&]*)/)
+  const suffixMatch = afterCursor.match(prefix === "@" ? /^([a-zA-Z0-9_.-]*)/ : /^([^\s@&/]*)/)
   const end = cursor + (suffixMatch?.[1]?.length ?? 0)
-  return { prefix, query, start, end, suggestions: prefix === "@" ? allAliasSuggestions(state, query) : allFileSuggestions(state, query) }
+  return {
+    prefix,
+    query,
+    start,
+    end,
+    suggestions: prefix === "@" ? allAliasSuggestions(state, query) : prefix === "&" ? allFileSuggestions(state, query) : allSlashSuggestions(query),
+  }
 }
 
-export function refreshAliasSuggestion(state: AppState): void {
+export function refreshPromptSuggestion(state: AppState): void {
   const editor = state.editorModal
   if (!editor) return
-  const next = activeAliasSuggestion(state, editor)
+  const next = activePromptSuggestion(state, editor)
   if (!next || next.suggestions.length === 0) {
-    editor.aliasSuggestion = null
+    editor.promptSuggestion = null
     return
   }
-  const previousIndex = editor.aliasSuggestion?.selectedIndex ?? 0
+  const previousIndex = editor.promptSuggestion?.selectedIndex ?? 0
   const maxVisibleSuggestions = maxVisibleAliasSuggestions()
-  editor.aliasSuggestion = {
+  editor.promptSuggestion = {
     prefix: next.prefix,
     mode: next.suggestions.length === 1 && next.suggestions[0] === `${next.prefix}${next.query}` ? "resolved" : "search",
     query: next.query,
@@ -184,7 +263,7 @@ export function refreshAliasSuggestion(state: AppState): void {
     visibleStartIndex: 0,
   }
   const maxStart = Math.max(0, next.suggestions.length - maxVisibleSuggestions)
-  editor.aliasSuggestion.visibleStartIndex = Math.max(0, Math.min(editor.aliasSuggestion.selectedIndex - Math.floor(maxVisibleSuggestions / 2), maxStart))
+  editor.promptSuggestion.visibleStartIndex = Math.max(0, Math.min(editor.promptSuggestion.selectedIndex - Math.floor(maxVisibleSuggestions / 2), maxStart))
 }
 
 function editorVisibleLineCount(text: string): number {
@@ -210,36 +289,34 @@ type PromptEditorDeps = {
   refreshPromptPaneTarget: () => void
 }
 
-export function refreshAliasSuggestionSoon(state: AppState, redraw: () => void): void {
+export function refreshPromptSuggestionSoon(state: AppState, redraw: () => void): void {
   setTimeout(() => {
     const editor = state.editorModal
     if (!editor) return
     refreshEditorModalHeight(state)
-    refreshAliasSuggestion(state)
+    refreshPromptSuggestion(state)
     redraw()
   }, 0)
 }
 
-export function moveAliasSuggestionSelection(state: AppState, delta: number): boolean {
+export function movePromptSuggestionSelection(state: AppState, delta: number): boolean {
   const editor = state.editorModal
-  if (!editor?.aliasSuggestion) return false
-  const suggestions = editor.aliasSuggestion.prefix === "@"
-    ? allAliasSuggestions(state, editor.aliasSuggestion.query)
-    : allFileSuggestions(state, editor.aliasSuggestion.query)
+  if (!editor?.promptSuggestion) return false
+  const suggestions = suggestionEntries(state, editor.promptSuggestion)
   if (suggestions.length === 0) {
-    editor.aliasSuggestion = null
+    editor.promptSuggestion = null
     return false
   }
-  const previous = editor.aliasSuggestion.selectedIndex
+  const previous = editor.promptSuggestion.selectedIndex
   const suggestionCount = suggestions.length
   const maxVisibleSuggestions = maxVisibleAliasSuggestions()
-  editor.aliasSuggestion.selectedIndex = ((previous + delta) % suggestionCount + suggestionCount) % suggestionCount
-  if (editor.aliasSuggestion.selectedIndex < editor.aliasSuggestion.visibleStartIndex) {
-    editor.aliasSuggestion.visibleStartIndex = editor.aliasSuggestion.selectedIndex
-  } else if (editor.aliasSuggestion.selectedIndex >= editor.aliasSuggestion.visibleStartIndex + maxVisibleSuggestions) {
-    editor.aliasSuggestion.visibleStartIndex = editor.aliasSuggestion.selectedIndex - maxVisibleSuggestions + 1
+  editor.promptSuggestion.selectedIndex = ((previous + delta) % suggestionCount + suggestionCount) % suggestionCount
+  if (editor.promptSuggestion.selectedIndex < editor.promptSuggestion.visibleStartIndex) {
+    editor.promptSuggestion.visibleStartIndex = editor.promptSuggestion.selectedIndex
+  } else if (editor.promptSuggestion.selectedIndex >= editor.promptSuggestion.visibleStartIndex + maxVisibleSuggestions) {
+    editor.promptSuggestion.visibleStartIndex = editor.promptSuggestion.selectedIndex - maxVisibleSuggestions + 1
   }
-  return editor.aliasSuggestion.selectedIndex !== previous
+  return editor.promptSuggestion.selectedIndex !== previous
 }
 
 export function syncPromptDraft(state: AppState, editor: EditorModalState): void {
@@ -274,31 +351,29 @@ function syncPromptEditorAfterProgrammaticChange(state: AppState, deps: Pick<Pro
   applyEditorText(state, editor)
   applyPromptAliasHighlights(editor.renderable)
   refreshEditorModalHeight(state)
-  refreshAliasSuggestion(state)
+  refreshPromptSuggestion(state)
   deps.redraw()
 }
 
-export function acceptAliasSuggestion(state: AppState): boolean {
+export function acceptPromptSuggestion(state: AppState): boolean {
   const editor = state.editorModal
-  if (!editor?.aliasSuggestion) return false
-  const suggestions = editor.aliasSuggestion.prefix === "@"
-    ? allAliasSuggestions(state, editor.aliasSuggestion.query)
-    : allFileSuggestions(state, editor.aliasSuggestion.query)
-  const alias = suggestions[editor.aliasSuggestion.selectedIndex]
-  if (!alias) {
-    editor.aliasSuggestion = null
+  if (!editor?.promptSuggestion) return false
+  const suggestions = suggestionEntries(state, editor.promptSuggestion)
+  const value = suggestions[editor.promptSuggestion.selectedIndex]
+  if (!value) {
+    editor.promptSuggestion = null
     return false
   }
   const text = editor.renderable.plainText
-  const suffix = text.slice(editor.aliasSuggestion.end)
-  const isDirectoryReference = editor.aliasSuggestion.prefix === "&" && state.projectDirectories.includes(alias.slice(1))
+  const suffix = text.slice(editor.promptSuggestion.end)
+  const isDirectoryReference = editor.promptSuggestion.prefix === "&" && state.projectDirectories.includes(value.slice(1))
   const trailingText = isDirectoryReference ? "/" : ((suffix.length === 0 || !/^[\s.,;:!?)}\]]/.test(suffix)) ? " " : "")
-  const nextText = `${text.slice(0, editor.aliasSuggestion.start)}${alias}${trailingText}${suffix}`
+  const nextText = `${text.slice(0, editor.promptSuggestion.start)}${value}${trailingText}${suffix}`
   editor.renderable.setText(nextText)
-  editor.renderable.cursorOffset = editor.aliasSuggestion.start + alias.length + trailingText.length
+  editor.renderable.cursorOffset = editor.promptSuggestion.start + value.length + trailingText.length
   editor.renderable.focus()
   applyEditorText(state, editor)
-  editor.aliasSuggestion = isDirectoryReference ? editor.aliasSuggestion : null
+  editor.promptSuggestion = isDirectoryReference ? editor.promptSuggestion : null
   return true
 }
 
@@ -407,7 +482,7 @@ export function openEditor(
     renderable.focus()
     renderable.onCursorChange = () => {
       applyPromptAliasHighlights(renderable)
-      refreshAliasSuggestion(state)
+      refreshPromptSuggestion(state)
       deps.refreshPromptScroll()
       deps.schedulePromptScrollSync("promptCursorChange")
       deps.redraw()
@@ -415,8 +490,8 @@ export function openEditor(
     applyPromptAliasHighlights(renderable)
   }
   renderable.gotoBufferEnd()
-  state.editorModal = { target, renderable, aliasSuggestion: null, visibleLineCount, promptDraftIndex }
-  refreshAliasSuggestion(state)
+  state.editorModal = { target, renderable, promptSuggestion: null, visibleLineCount, promptDraftIndex }
+  refreshPromptSuggestion(state)
   if (target.kind === "prompt") {
     state.conceptNavigationFocused = false
     state.promptPaneMode = "expanded"

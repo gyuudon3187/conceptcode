@@ -4,7 +4,7 @@ import { applySelectionChange, currentNode, currentPath, moveCursor, pageSize, s
 import type { AppState, InspectorKind } from "../core/types"
 import { handleCreateConceptModalKey, isDraftConcept, openCreateConceptModal, promptToRemoveDraft, removeDraftConcept } from "../concepts/drafts"
 import { buildClipboardPayload, clipboardSelection } from "../prompt/payload"
-import { acceptAliasSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, moveAliasSuggestionSelection, openSummaryEditor, refreshAliasSuggestion, refreshAliasSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
+import { acceptPromptSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, openSummaryEditor, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
 import { closeSessionModal, createAndSwitchSession, flushActiveSession, openSessionModal, sessionModalEntries, switchToSession } from "../sessions/commands"
 
 type PromptEditorDeps = {
@@ -21,7 +21,7 @@ type KeybindingDeps = {
   draw: () => void
   openExternalEditor: (initialText: string) => Promise<string>
   clearCtrlCExitState: () => void
-  copyWithStatus: (payload: string, successMessage: string) => Promise<void>
+  copyWithStatus: (payload: string) => Promise<void>
   updateCreateDraftText: (key: KeyEvent) => boolean
   closeConfirmModal: () => void
   openInspector: (kind: InspectorKind) => void
@@ -112,7 +112,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
         state.editorModal.renderable.setText("")
         state.editorModal.renderable.focus()
         applyEditorText(state, state.editorModal)
-        refreshAliasSuggestion(state)
+        refreshPromptSuggestion(state)
         refreshEditorModalHeight(state)
         deps.clearCtrlCExitState()
         deps.draw()
@@ -202,7 +202,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
         deps.workspace.togglePaneFocus()
         return
       }
-      if (state.editorModal.target.kind === "prompt" && key.name === "return" && !key.shift && !key.ctrl && !state.editorModal.aliasSuggestion) {
+      if (state.editorModal.target.kind === "prompt" && key.name === "return" && !key.shift && !key.ctrl && !state.editorModal.promptSuggestion) {
         key.preventDefault()
         key.stopPropagation()
         deps.submitPromptMessage()
@@ -235,7 +235,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
           state.editorModal.renderable.setText(nextText)
           state.editorModal.renderable.gotoBufferEnd()
           state.editorModal.renderable.focus()
-          refreshAliasSuggestion(state)
+          refreshPromptSuggestion(state)
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           try {
@@ -254,26 +254,26 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
         deps.draw()
         return
       }
-      if (state.editorModal.aliasSuggestion && (key.name === "down" || (key.ctrl && key.name === "n"))) {
-        moveAliasSuggestionSelection(state, 1)
+      if (state.editorModal.promptSuggestion && (key.name === "down" || (key.ctrl && key.name === "n"))) {
+        movePromptSuggestionSelection(state, 1)
         deps.draw()
         return
       }
-      if (state.editorModal.aliasSuggestion && (key.name === "up" || (key.ctrl && key.name === "p"))) {
-        moveAliasSuggestionSelection(state, -1)
+      if (state.editorModal.promptSuggestion && (key.name === "up" || (key.ctrl && key.name === "p"))) {
+        movePromptSuggestionSelection(state, -1)
         deps.draw()
         return
       }
-      if (state.editorModal.aliasSuggestion && key.name === "return") {
+      if (state.editorModal.promptSuggestion && key.name === "return") {
         key.preventDefault()
         key.stopPropagation()
-        if (acceptAliasSuggestion(state)) {
+        if (acceptPromptSuggestion(state)) {
           deps.draw()
         }
         return
       }
       applyEditorText(state, state.editorModal)
-      refreshAliasSuggestionSoon(state, deps.draw)
+      refreshPromptSuggestionSoon(state, deps.draw)
       deps.draw()
       return
     }
@@ -387,7 +387,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
     }
     if (key.name === "y") {
       const selection = clipboardSelection(state, currentPath(state))
-      await deps.copyWithStatus(await buildClipboardPayload(state, currentPath(state)), `Copied context for ${selection.count} reference${selection.count === 1 ? "" : "s"}`)
+      await deps.copyWithStatus(await buildClipboardPayload(state, currentPath(state)))
       return
     }
     if (key.name === "return") {
@@ -397,7 +397,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
     }
     if (key.name === "p") {
       const path = currentPath(state)
-      await deps.copyWithStatus(path, `Copied path: ${path}`)
+      await deps.copyWithStatus(path)
       return
     }
     if (key.name === "?" || (key.shift && key.name === "/")) {
