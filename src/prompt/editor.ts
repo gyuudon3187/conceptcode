@@ -23,8 +23,9 @@ const SLASH_SUGGESTIONS_BY_MODE: Record<AppState["uiMode"], SlashSuggestion[]> =
   ],
   conceptualize: [
     { value: "/consolidate", description: "Explore a required concept path, update its graph metadata, and plan low-coverage child updates before applying them." },
-    { value: "/explain", description: "Explain the selected code or concept." },
-    { value: "/skill-refactor", description: "Use a refactoring-focused skill prompt." },
+    { value: "/elaborate", description: "Verify a user-provided concept explanation against the code and update summary confidence." },
+    { value: "/create", description: "Create a new concept under an existing parent path through a TypeScript graph update script." },
+    { value: "/delete", description: "Delete an existing concept and remove related-path references through a TypeScript graph update script." },
   ],
 }
 
