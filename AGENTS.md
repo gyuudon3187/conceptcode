@@ -65,6 +65,7 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 - It is acceptable to create the main concept graph and enrich source anchors in separate passes.
 - When enriching anchors later, preserve the existing hierarchy and stable concept paths unless the original graph is clearly wrong.
 - When direct inspection materially improves concept understanding, update `exploration_coverage` and `summary_confidence` conservatively along with the affected concept metadata.
+- Durable maintenance guidance for concept-graph workflows lives in `docs/concept_graph_maintenance.md`.
 
 ## Prompt-generation goal
 

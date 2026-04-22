@@ -78,8 +78,26 @@ Concepts may also include additional metadata fields beyond this list. The brows
 ## Namespace-specific metadata
 
 - `root` concepts may use implementation-facing metadata such as `loc`, `exploration_coverage`, and `summary_confidence`.
-- `domain` concepts must not use `loc`, `exploration_coverage`, or `summary_confidence`.
+- `root` concepts may use `implemented` to record whether the represented implementation currently exists.
+- `domain` concepts must not use `implemented`, `loc`, `exploration_coverage`, or `summary_confidence`.
 - Cross-namespace `related_paths` are allowed when they add real navigational value.
+- Keep `related_paths` sparse and meaningful; avoid adding reciprocal links automatically unless they materially improve navigation.
+
+## Maintenance workflows
+
+The current graph-maintenance workflow set supports these explicit operations:
+
+- `/create` creates a new concept under an existing parent. New `root` concepts default to `implemented: false` unless explicitly overridden.
+- `/delete` removes an existing concept after preflight and confirmation, including `related_paths` cleanup.
+- `/rename` renames an existing child key after preflight and confirmation, including descendant and `related_paths` rewrites.
+- `/move` moves an existing concept subtree under a different parent after preflight and confirmation, including descendant and `related_paths` rewrites.
+- `/merge` merges two existing concepts into an explicit survivor after preflight and confirmation.
+- `/split` decomposes an overloaded concept into explicit child groupings after preflight and confirmation. The default behavior preserves the original concept as an umbrella parent and moves explicitly assigned children under new child concepts.
+- `/link` adds, removes, or normalizes sparse `related_paths` links.
+- `/anchor` adds or refines root-only `loc`, `exploration_coverage`, and related summary metadata.
+- `/validate` runs a read-only audit and suggests follow-up maintenance skills for findings.
+
+Restructuring workflows such as `/delete`, `/rename`, `/move`, `/merge`, and `/split` should always be handled as explicit preflight-plus-confirmation operations rather than direct blind edits.
 
 ## Kind spaces
 
@@ -87,6 +105,7 @@ Concepts may also include additional metadata fields beyond this list. The brows
 - Do not mix implementation-oriented kinds and domain-oriented kinds within the same namespace.
 - `root` should use implementation-oriented kinds such as `module`, `view`, `layout`, `region`, `control`, `behavior`, `transition`, `dataclass`, and `data_group`.
 - `domain` should use domain-oriented kinds such as `domain_area`, `business_concept`, `actor`, `goal`, `policy`, `rule`, `constraint`, `state`, `event`, `workflow`, `capability`, `metric`, and `term`.
+- Missing `kind` is allowed, but known cross-namespace kind mismatches should be treated as errors and unknown kinds should be treated as warnings during graph validation.
 
 ## Confidence-style metrics
 
@@ -118,5 +137,6 @@ Recommended `loc` shape:
 - For a one-line concept, set `start_line` and `end_line` to the same value.
 - Keep `loc` compact and use it only for the main span you want the browser to show in embedded source context.
 - Add `loc` primarily to leaf concepts; parent concepts usually do better with inferred coverage from descendant anchors.
+- Anchor updates should stay narrow: refine `summary` only when direct inspection clearly improves it, and update `exploration_coverage` conservatively.
 
 If exact source anchors are difficult to determine during concept decomposition, it is reasonable to generate the graph first and enrich `loc` in a separate follow-up pass keyed by stable concept paths.

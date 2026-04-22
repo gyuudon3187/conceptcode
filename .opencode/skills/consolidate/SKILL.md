@@ -11,7 +11,7 @@ metadata:
 
 # Consolidate
 
-Use this skill in conceptualize mode to improve a concept graph entry after directly inspecting the implementation behind a concept.
+Use this skill in conceptualize mode for inspection-driven concept-graph enrichment after directly inspecting the implementation behind a concept.
 
 ## Invocation
 

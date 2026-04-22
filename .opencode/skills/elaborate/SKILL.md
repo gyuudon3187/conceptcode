@@ -11,7 +11,7 @@ metadata:
 
 # Elaborate
 
-Use this skill in conceptualize mode when the user provides an explanation for an existing concept and wants that explanation checked against the best available evidence.
+Use this skill in conceptualize mode when the user provides an explanation for an existing concept and wants that explanation verified against the best available evidence.
 
 ## Invocation
 

@@ -24,15 +24,16 @@ Use this skill in conceptualize mode to add a new concept to the concept graph.
 - Every path segment to the left of the rightmost segment must already exist in the concept graph.
 - The rightmost segment must already be a stable child key string.
 - The user must provide at least a `summary`.
-- Any other concept-graph metadata field may also be provided.
+- Do not pass inline `children`; the new concept starts with an empty `children` object.
+- Any other concept-graph metadata field may also be provided when it matches the namespace rules.
 
 ## Validation and execution
 
 - Validate the requested path with the TypeScript script at `src/graph/create-concept.ts`.
 - That script verifies that the full target path does not exist yet and that the parent path does exist.
 - Parse the user-provided fields into concept-graph metadata and pass them to that script as JSON.
-- Always create the concept with `not_yet_implemented: false` by default.
-- For `domain` concepts, do not pass implementation-only metadata such as `loc`, `exploration_coverage`, or `summary_confidence`.
+- Always create new `root` concepts with `implemented: false` unless the user explicitly provides `implemented`.
+- For `domain` concepts, do not pass `implemented` or implementation-only metadata such as `loc`, `exploration_coverage`, or `summary_confidence`.
 
 ## After creation
 
@@ -47,5 +48,5 @@ Use this skill in conceptualize mode to add a new concept to the concept graph.
 ## Constraints
 
 - Preserve stable existing child keys.
-- Do not guess required fields that the user did not provide, except for safe defaults such as `not_yet_implemented: false`.
+- Do not guess required fields that the user did not provide, except for safe defaults such as `implemented: false` on new `root` concepts.
 - Keep suggestions separate from the actual creation update.
