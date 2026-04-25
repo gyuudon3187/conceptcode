@@ -91,8 +91,8 @@ Completion criteria:
 Handoff notes for next session:
 
 - Already completed in code:
-  - `src/core/types.ts` now names explicit state slices including `ConceptGraphState`, `ModalTransientState`, `PromptEditorUiState`, `ShellWorkspaceUiState`, and `SessionChatState`.
-  - `src/core/state.ts` now exposes slice selectors including `conceptGraphState(...)`, `promptEditorUiState(...)`, `promptEditorHostState(...)`, `shellWorkspaceUiState(...)`, `sessionChatState(...)`, `sessionModalHostState(...)`, and `modalTransientState(...)`.
+  - `src/core/types.ts` now names explicit state slices including `ConceptGraphState`, `ModalTransientState`, `PromptEditorUiState`, `WorkspaceUiState`, and `SessionChatState`.
+  - `src/core/state.ts` now exposes slice selectors including `conceptGraphState(...)`, `promptEditorUiState(...)`, `promptEditorHostState(...)`, `workspaceUiState(...)`, `sessionChatState(...)`, `sessionModalHostState(...)`, and `modalTransientState(...)`.
   - `src/app/init.ts` now initializes the slices separately while keeping the runtime `AppState` flat.
 - Current ownership split to preserve:
   - app-owned: concept graph semantics, prompt semantics, sessions/chat, inspectors
@@ -225,7 +225,7 @@ Handoff notes for next session:
   - `src/core/types.ts` now defines shell-facing contracts including `ShellViewportState`, `ShellWorkspaceState`, `ShellWorkspaceControllerState`, `ShellWorkspaceControllerDeps`, and `ShellWorkspaceTransitionViewState`.
   - `src/app/workspace.ts` now drives prompt-pane animation, workspace focus switching, and transition timing from `ShellWorkspaceControllerDeps` instead of the full `AppState`.
   - `src/ui/workspace-transition.ts` now computes geometry and animated overlay rects from shell layout/view state plus an explicit viewport, with ConceptCode pane content still injected through the render callback boundary.
-  - `src/ui/view.ts` now passes `shellWorkspaceUiState(state)` and an explicit viewport into the shell transition/layout helpers rather than giving those helpers the full `AppState`.
+  - `src/ui/view.ts` now passes `workspaceUiState(state)` and an explicit viewport into the shell transition/layout helpers rather than giving those helpers the full `AppState`.
 - Final shell state interfaces introduced this milestone:
   - `ShellViewportState`
   - `ShellWorkspaceState`
