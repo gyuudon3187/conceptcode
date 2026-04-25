@@ -219,7 +219,12 @@ export type UiLayoutConfig = {
   transitionChipHeight: number
 }
 
-export type AppState = {
+// Internal ownership boundary for the future shell extraction:
+// - App-owned state keeps concept graph semantics, prompt semantics, sessions, and inspectors.
+// - Shell-owned state is expected to absorb layout, workspace chrome, and modal primitives.
+// This milestone keeps the runtime AppState flat, but names the slices explicitly so new
+// code can depend on narrower contracts instead of the full state object.
+export type ConceptGraphState = {
   jsonPath: string
   graphPayload: GraphPayload
   nodes: Map<string, ConceptNode>
@@ -230,8 +235,20 @@ export type AppState = {
   currentParentPath: string
   cursor: number
   kindDefinitions: KindDefinition[]
+}
+
+export type ModalTransientState = {
   createConceptModal: CreateConceptModalState | null
   confirmModal: ConfirmModalState | null
+   editorModal: EditorModalState | null
+   sessionModal: SessionModalState | null
+   pendingCtrlCExit: boolean
+   ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
+   promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
+   workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
+}
+
+export type PromptEditorUiState = {
   layoutMode: LayoutMode
   uiMode: UiMode
   inspector: InspectorState | null
@@ -244,20 +261,36 @@ export type AppState = {
   promptPaneRatio: number
   promptPaneTargetRatio: number
   promptPaneMode: "collapsed" | "expanded"
-  uiLayoutConfig: UiLayoutConfig
   promptScrollTop: number
   promptViewportHeight: number
+  promptTokenBreakdown: EffectivePromptTokenBreakdown
+}
+
+export type ShellWorkspaceUiState = {
+  layoutMode: LayoutMode
+  uiLayoutConfig: UiLayoutConfig
   conceptNavigationFocused: boolean
   startupDrawComplete: boolean
-  editorModal: EditorModalState | null
-  sessionModal: SessionModalState | null
-  pendingCtrlCExit: boolean
-  ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
-  promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
-  promptTokenBreakdown: EffectivePromptTokenBreakdown
+  mainViewportHeight: number
+  promptViewportHeight: number
+  promptPaneRatio: number
+  promptPaneTargetRatio: number
+  promptPaneMode: "collapsed" | "expanded"
+  promptScrollTop: number
+  mainScrollTop: number
+  workspaceTransition: WorkspaceTransitionState | null
+}
+
+export type SessionChatState = {
+  sessions: ChatSession[]
+  activeSessionId: string
   chatTransport: ChatTransport
   activeResponseId: string | null
   activeAssistantMessageId: string | null
-  workspaceTransition: WorkspaceTransitionState | null
-  workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
 }
+
+export type AppState = ConceptGraphState &
+  ModalTransientState &
+  PromptEditorUiState &
+  ShellWorkspaceUiState &
+  SessionChatState

@@ -1,6 +1,15 @@
 import { readFile } from "node:fs/promises"
 
-import type { AppState, KindDefinition, UiLayoutConfig } from "../core/types"
+import type {
+  AppState,
+  ConceptGraphState,
+  KindDefinition,
+  ModalTransientState,
+  PromptEditorUiState,
+  SessionChatState,
+  ShellWorkspaceUiState,
+  UiLayoutConfig,
+} from "../core/types"
 import { createSseChatTransport } from "../platform/chat"
 import { EMPTY_PROMPT_TOKEN_BREAKDOWN } from "../prompt/payload"
 import { loadSessions } from "../sessions/store"
@@ -85,7 +94,7 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
   const { sessions, activeSessionId } = await loadSessions(input.conceptsPath, "plan")
   const resolvedUiLayoutConfig: UiLayoutConfig = { ...DEFAULT_UI_LAYOUT_CONFIG, ...input.uiLayoutConfig }
   const initialNamespaceMode = input.nodes.has("impl") ? "implementation" : "domain"
-  const state: AppState = {
+  const conceptGraphState: ConceptGraphState = {
     jsonPath: input.conceptsPath,
     graphPayload: input.graphPayload,
     nodes: input.nodes,
@@ -96,8 +105,18 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     currentParentPath: initialNamespaceMode === "implementation" ? "impl" : "domain",
     cursor: 0,
     kindDefinitions: input.kindDefinitions,
+  }
+  const modalTransientState: ModalTransientState = {
     createConceptModal: null,
     confirmModal: null,
+    editorModal: null,
+    sessionModal: null,
+    pendingCtrlCExit: false,
+    ctrlCExitTimeout: null,
+    promptPaneAnimationTimeout: null,
+    workspaceTransitionTimeout: null,
+  }
+  const promptEditorUiState: PromptEditorUiState = {
     layoutMode: "wide",
     uiMode: "plan",
     inspector: null,
@@ -110,22 +129,37 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     promptPaneRatio: resolvedUiLayoutConfig.expandedPromptRatio,
     promptPaneTargetRatio: resolvedUiLayoutConfig.expandedPromptRatio,
     promptPaneMode: "expanded",
-    uiLayoutConfig: resolvedUiLayoutConfig,
     promptScrollTop: 0,
     promptViewportHeight: 12,
+    promptTokenBreakdown: EMPTY_PROMPT_TOKEN_BREAKDOWN,
+  }
+  const shellWorkspaceUiState: ShellWorkspaceUiState = {
+    layoutMode: promptEditorUiState.layoutMode,
+    uiLayoutConfig: resolvedUiLayoutConfig,
     conceptNavigationFocused: false,
     startupDrawComplete: false,
-    editorModal: null,
-    sessionModal: null,
-    pendingCtrlCExit: false,
-    ctrlCExitTimeout: null,
-    promptPaneAnimationTimeout: null,
-    promptTokenBreakdown: EMPTY_PROMPT_TOKEN_BREAKDOWN,
+    mainViewportHeight: promptEditorUiState.mainViewportHeight,
+    promptViewportHeight: promptEditorUiState.promptViewportHeight,
+    promptPaneRatio: promptEditorUiState.promptPaneRatio,
+    promptPaneTargetRatio: promptEditorUiState.promptPaneTargetRatio,
+    promptPaneMode: promptEditorUiState.promptPaneMode,
+    promptScrollTop: promptEditorUiState.promptScrollTop,
+    mainScrollTop: promptEditorUiState.mainScrollTop,
+    workspaceTransition: null,
+  }
+  const sessionChatState: SessionChatState = {
+    sessions,
+    activeSessionId,
     chatTransport: createSseChatTransport(input.dummyChatServerBaseUrl),
     activeResponseId: null,
     activeAssistantMessageId: null,
-    workspaceTransition: null,
-    workspaceTransitionTimeout: null,
+  }
+  const state: AppState = {
+    ...conceptGraphState,
+    ...modalTransientState,
+    ...promptEditorUiState,
+    ...shellWorkspaceUiState,
+    ...sessionChatState,
   }
   return state
 }
