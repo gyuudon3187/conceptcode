@@ -18,7 +18,7 @@ function clipboardPreambleForMode(mode: UiMode): string {
 
 function referencedPaths(text: string): string[] {
   const matches = [...text.matchAll(/@([a-zA-Z0-9_.-]+)/g)]
-  return [...new Set(matches.map((match) => match[1]).filter((raw) => raw === "root" || raw.startsWith("root.") || raw === "domain" || raw.startsWith("domain.")))]
+  return [...new Set(matches.map((match) => match[1]).filter((raw) => raw === "impl" || raw.startsWith("impl.") || raw === "domain" || raw.startsWith("domain.")))]
 }
 
 export function referencedConceptPaths(text: string, nodes: Map<string, ConceptNode>): string[] {
@@ -175,7 +175,7 @@ export async function buildEffectivePrompt(state: AppState, _currentPath: string
   const interpretationHint = normalizedInterpretationHint(state)
   const hintLines = flattenInterpretationHints(interpretationHint)
   const sections = [clipboardPreambleForMode(state.uiMode)]
-  const implementationOverview = renderSystemOverviewBlock(state.nodes.get("root"), "Implementation")
+  const implementationOverview = renderSystemOverviewBlock(state.nodes.get("impl"), "Implementation")
   const domainOverview = renderSystemOverviewBlock(state.nodes.get("domain"), "Domain")
   if (implementationOverview) sections.push(implementationOverview.trimEnd())
   if (domainOverview) sections.push(domainOverview.trimEnd())
@@ -201,7 +201,7 @@ export async function effectivePromptTokenBreakdown(state: AppState, _currentPat
   const interpretationHint = normalizedInterpretationHint(state)
   const hintLines = flattenInterpretationHints(interpretationHint)
   const staticSections = [clipboardPreambleForMode(state.uiMode)]
-  const implementationOverview = renderSystemOverviewBlock(state.nodes.get("root"), "Implementation")
+  const implementationOverview = renderSystemOverviewBlock(state.nodes.get("impl"), "Implementation")
   const domainOverview = renderSystemOverviewBlock(state.nodes.get("domain"), "Domain")
   if (implementationOverview) staticSections.push(implementationOverview.trimEnd())
   if (domainOverview) staticSections.push(domainOverview.trimEnd())

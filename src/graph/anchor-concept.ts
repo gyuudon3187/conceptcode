@@ -39,8 +39,8 @@ function validateLoc(loc: SourceLocation): void {
 }
 
 export async function anchorConcept(input: AnchorConceptInput): Promise<void> {
-  if (!input.conceptPath.startsWith("root")) {
-    throw new Error(`Anchors are only supported for root concepts: ${input.conceptPath}`)
+  if (!input.conceptPath.startsWith("impl")) {
+    throw new Error(`Anchors are only supported for impl concepts: ${input.conceptPath}`)
   }
 
   validateLoc(input.loc)

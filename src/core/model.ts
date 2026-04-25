@@ -66,13 +66,13 @@ function buildNodes(
     title: asString(nodePayload.title, path.split(".").at(-1) ?? path),
     kind: optionalString(nodePayload.kind),
     summary: asString(nodePayload.summary),
-    explorationCoverage: namespace === "root" ? normalizedScore(nodePayload.exploration_coverage) : null,
-    summaryConfidence: namespace === "root" ? normalizedScore(nodePayload.summary_confidence) : null,
+    explorationCoverage: namespace === "impl" ? normalizedScore(nodePayload.exploration_coverage) : null,
+    summaryConfidence: namespace === "impl" ? normalizedScore(nodePayload.summary_confidence) : null,
     parentPath,
-    metadata: namespace === "root"
+    metadata: namespace === "impl"
       ? metadata
       : Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== "loc" && key !== "exploration_coverage" && key !== "summary_confidence")),
-    loc: namespace === "root" ? normalizeLoc(nodePayload.loc) : null,
+    loc: namespace === "impl" ? normalizeLoc(nodePayload.loc) : null,
     childPaths,
   })
   for (const [key, child] of Object.entries(childPayloads)) {
@@ -249,14 +249,14 @@ export function bulletList(value: JsonValue | undefined): string[] {
 
 export function loadConceptGraph(jsonPath: string, optionsPath?: string): { graphPayload: GraphPayload; nodes: Map<string, ConceptNode>; kindDefinitions: KindDefinition[]; uiLayoutConfig: Partial<UiLayoutConfig> } {
   const payload = JSON.parse(readFileSync(jsonPath, "utf8")) as GraphPayload
-  const rootPayload = asObject(payload.root as JsonValue | undefined)
+  const implPayload = asObject(payload.impl as JsonValue | undefined)
   const domainPayload = asObject(payload.domain as JsonValue | undefined)
-  if (Object.keys(rootPayload).length === 0 && Object.keys(domainPayload).length === 0) {
-    throw new Error(`Concept graph at ${jsonPath} must include at least one of root or domain`)
+  if (Object.keys(implPayload).length === 0 && Object.keys(domainPayload).length === 0) {
+    throw new Error(`Concept graph at ${jsonPath} must include at least one of impl or domain`)
   }
   const nodes = new Map<string, ConceptNode>()
-  if (Object.keys(rootPayload).length > 0) {
-    for (const [path, node] of buildNodes(rootPayload, "root", "root", null)) {
+  if (Object.keys(implPayload).length > 0) {
+    for (const [path, node] of buildNodes(implPayload, "impl", "impl", null)) {
       nodes.set(path, node)
     }
   }

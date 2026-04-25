@@ -14,7 +14,7 @@ These instructions apply when working in this directory and its subdirectories, 
 - Omit uncertain anchors rather than guessing.
 - Keep summaries and anchor metadata compact.
 - Treat `exploration_coverage` and `summary_confidence` as first-class optional concept metadata when the active prompt asks for direct inspection or concept revision.
-- Respect the namespace split: `root` is implementation-backed and `domain` is non-code domain context.
+- Respect the namespace split: `impl` is implementation-backed and `domain` is non-code domain context.
 - Favor conceptual decomposition that helps browsing and later edits.
 
 ## Workflow split

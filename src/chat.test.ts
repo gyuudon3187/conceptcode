@@ -16,7 +16,7 @@ describe("dummy chat transport", () => {
 
     for await (const event of transport.streamTurn({
       mode: "build",
-      messages: [{ role: "user", text: "test @root.views.layout &src/index.ts" }],
+      messages: [{ role: "user", text: "test @impl.views.layout &src/index.ts" }],
     })) {
       events.push(event)
     }
@@ -33,7 +33,7 @@ describe("dummy chat transport", () => {
 
     const combinedText = deltas.map((event) => event.delta).join("")
     expect(combinedText).toContain("Streaming dummy build response")
-    expect(combinedText).toContain("@root.views.layout")
+    expect(combinedText).toContain("@impl.views.layout")
     expect(combinedText).toContain("&src/index.ts")
     expect(combinedText).toContain("\n")
   })
@@ -44,7 +44,7 @@ describe("dummy chat transport", () => {
 
     for await (const event of transport.streamTurn({
       mode: "conceptualize",
-      messages: [{ role: "user", text: "reshape @root.views and update the graph diff" }],
+      messages: [{ role: "user", text: "reshape @impl.views and update the graph diff" }],
     })) {
       if (event.type === "response.output_text.delta") {
         deltas.push(event.delta)

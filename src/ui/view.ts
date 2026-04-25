@@ -68,7 +68,7 @@ function renderDetailsPane(state: AppState): Renderable | VNode<any, any[]> {
   const node = currentNode(state)
   const body = node.summary.trim() || "No summary for this concept yet."
   const metricText = (label: string, value: number | null): string => `${label} ${value === null ? "--" : `${Math.round(value * 100)}%`}`
-  const showImplementationMetrics = node.namespace === "root"
+  const showImplementationMetrics = node.namespace === "impl"
   return Box(
     { width: "100%", height: "100%", borderStyle: "rounded", borderColor: COLORS.border, title: "Details", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1 },
     Box(

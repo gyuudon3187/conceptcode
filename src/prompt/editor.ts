@@ -22,7 +22,7 @@ const SLASH_SUGGESTIONS_BY_MODE: Record<AppState["uiMode"], SlashSuggestion[]> =
     { value: "/command-commit", description: "Draft a commit-ready change summary." },
   ],
   conceptualize: [
-    { value: "/consolidate", description: "Inspect a required root concept, enrich its graph metadata, and plan low-coverage child updates before applying them." },
+    { value: "/consolidate", description: "Inspect a required impl concept, enrich its graph metadata, and plan low-coverage child updates before applying them." },
     { value: "/elaborate", description: "Verify a user-provided concept explanation against the best available evidence and update summary confidence." },
     { value: "/create", description: "Create a new concept under an existing parent path through a TypeScript graph update script." },
     { value: "/delete", description: "Preflight and confirm deletion of an existing concept, including related-path cleanup." },
@@ -31,7 +31,7 @@ const SLASH_SUGGESTIONS_BY_MODE: Record<AppState["uiMode"], SlashSuggestion[]> =
     { value: "/merge", description: "Preflight and confirm merging two concepts into an explicit survivor, including conflict reporting and path rewrites." },
     { value: "/split", description: "Preflight and confirm splitting an overloaded concept into explicit child groupings while preserving the original umbrella parent." },
     { value: "/link", description: "Add, remove, or normalize sparse related_paths links between existing concepts." },
-    { value: "/anchor", description: "Add or refine a root concept source anchor, exploration coverage, and narrowly warranted summary updates." },
+    { value: "/anchor", description: "Add or refine an impl concept source anchor, exploration coverage, and narrowly warranted summary updates." },
     { value: "/validate", description: "Run a read-only concept-graph audit and recommend follow-up skills for findings." },
   ],
 }

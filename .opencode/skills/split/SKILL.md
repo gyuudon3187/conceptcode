@@ -16,7 +16,7 @@ Use this skill in conceptualize mode to decompose an overloaded concept into cle
 ## Invocation
 
 ```text
-/split @root.some.concept new_group:child_a,child_b other_group:child_c
+/split @impl.some.concept new_group:child_a,child_b other_group:child_c
 /split @domain.some.concept concept_slice:rule_a,rule_b
 ```
 

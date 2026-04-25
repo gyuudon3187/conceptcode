@@ -75,11 +75,11 @@ Severity guidance:
 
 Apply these default review rules unless the specific diff clearly narrows the scope:
 
-- If root `AGENTS.md` changes in project purpose, product invariants, schema expectations, or prompt-generation guidance, review `README.md`, `prompts/AGENTS.md`, `prompts/generate_concept_graph.md`, and `prompts/enrich_concept_graph_anchors.md`.
+- If impl `AGENTS.md` changes in project purpose, product invariants, schema expectations, or prompt-generation guidance, review `README.md`, `prompts/AGENTS.md`, `prompts/generate_concept_graph.md`, and `prompts/enrich_concept_graph_anchors.md`.
 - If `prompts/AGENTS.md` changes, review both prompt templates and review `README.md` when user-visible workflow or terminology may have changed.
 - If `prompts/generate_concept_graph.md` changes, review `prompts/AGENTS.md` and review `README.md` when the main workflow, output contract, or terminology changed.
 - If `prompts/enrich_concept_graph_anchors.md` changes, review `prompts/AGENTS.md` and review `README.md` when second-pass workflow or anchor semantics changed.
-- If `README.md` changes, review the more canonical doc for the changed topic: root `AGENTS.md` for product purpose or invariants, prompt docs for prompt workflow, and `src/AGENTS.md` for architecture or development-environment overlap.
+- If `README.md` changes, review the more canonical doc for the changed topic: impl `AGENTS.md` for product purpose or invariants, prompt docs for prompt workflow, and `src/AGENTS.md` for architecture or development-environment overlap.
 - If `src/AGENTS.md` changes, review `README.md` when architecture, developer workflow, or environment guidance changed.
 
 Use these topic cues while classifying:

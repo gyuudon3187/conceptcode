@@ -10,13 +10,13 @@ Analyze the target code and produce a JSON concept graph for use with the `Conce
 Requirements:
 - Output valid JSON only.
 - Use schema_version 1.
-- Put implementation-backed concepts under `root`.
+- Put implementation-backed concepts under `impl`.
 - Put non-code domain concepts under `domain` when they materially help browsing and prompt composition.
-- Include at least one of `root` or `domain`.
+- Include at least one of `impl` or `domain`.
 - Use stable, human-meaningful keys under `children` because those keys define the concept's stable derived path.
 - Prefer concise summaries.
 - Assign conservative `exploration_coverage` and `summary_confidence` scores for each concept you create.
-- Only assign `exploration_coverage` and `summary_confidence` to `root` concepts.
+- Only assign `exploration_coverage` and `summary_confidence` to `impl` concepts.
 - Do not add `loc`, `exploration_coverage`, or `summary_confidence` to `domain` concepts.
 - Keep both scores in the `0.0` to `1.0` range.
 - Use `exploration_coverage` for how thoroughly the concept's relevant implementation has been directly inspected.
@@ -27,7 +27,7 @@ Requirements:
 - Prefer user-meaningful views, domain concepts, major subsystems, and independently meaningful processes over buckets that mainly mirror implementation structure.
 - Do not create top-level buckets like constants, helpers, utils, entrypoints, or generic workflows unless they are themselves meaningful concepts for understanding the system.
 - Include `related_paths` when another concept materially affects understanding.
-- Use implementation-oriented `kind` values such as module, view, layout, region, workflow, control, concept, behavior, transition, dataclass, data_group, or guidance under `root`.
+- Use implementation-oriented `kind` values such as module, view, layout, region, workflow, control, concept, behavior, transition, dataclass, data_group, or guidance under `impl`.
 - Use domain-oriented `kind` values such as domain_area, business_concept, actor, goal, policy, rule, constraint, state, event, workflow, capability, metric, or term under `domain`.
 - Do not mix implementation-oriented and domain-oriented kinds within the same namespace.
 - Use `region` for a bounded, tangible area within a view, layout, or other clearly comprehensible surface. Use `control` instead for focused interactive elements. Do not use `region` as a generic grouping kind for arbitrary code sections.
@@ -37,7 +37,11 @@ Requirements:
 - Attach each `behavior` to the most specific meaningful owner. Prefer a `control` over its containing `region` when the control is the real trigger or state owner.
 - If several nearby controls jointly own a behavior, attach that behavior to their containing `region`.
 - If a flow is mainly triggered from and understood through one UI surface, model it as that surface's child `behavior` instead of as a separate top-level `workflow`.
+- If a multi-step process is triggered from one control, action list, region, or view and is mainly understood through that trigger surface, model it as that surface's child `behavior` rather than as a top-level `workflow`.
+- A `control` should usually own at least one child `behavior`. If no owned behavior is worth modeling, prefer a different `kind` or omit the control.
 - Do not model every small UI element. Add a `control` node when it has meaningful behavior, state, or user-facing importance, or when omitting it would force behaviors onto an overly broad parent.
+- Prefer names that a non-programmer product collaborator could naturally use while discussing the screen or task. Avoid names derived mainly from implementation mechanics such as shell, composition, refresh, loader, builder, manager, handler, or helper unless that mechanism is itself a meaningful concept for browsing.
+- If a concept mainly mirrors a helper method, UI assembly step, or repaint/update mechanism and is not useful for browsing or prompt composition, fold it into its parent summary or omit it.
 - Do not include empty fields unless useful for consistency.
 - Do not add `loc` in this pass; source anchors belong in a later enrichment pass.
 
@@ -45,11 +49,11 @@ Output shape:
 {
   "schema_version": 1,
   "source_file": "...",
-  "root": {...},
+  "impl": {...},
   "domain": {...}
 }
 
-The concept graph should help a human or LLM refer to parts of the program by explicit paths like `root.views.merge_view.pending_selection` and `domain.business_rules.refund_policy`.
+The concept graph should help a human or LLM refer to parts of the program by explicit paths like `impl.views.merge_view.pending_selection` and `domain.business_rules.refund_policy`.
 ```
 
 ## Authoring advice
@@ -65,6 +69,8 @@ The concept graph should help a human or LLM refer to parts of the program by ex
 - Avoid using `region` as a fallback for "miscellaneous" or uncategorized parts of the code.
 - When a button, dropdown, toggle, input, or similar control is the natural thing a user would point to while describing an interaction, model it explicitly as a `control`.
 - Avoid adding low-value `control` nodes for decorative or trivial elements with no distinct behavior, state, or navigational value.
+- If a triggered process only makes sense through one action surface, keep it attached to that surface instead of lifting it into a separate top-level process bucket.
+- Favor screen- and task-oriented names over code-mechanic names when both would be correct.
 
 ## Anti-patterns to avoid
 
@@ -73,6 +79,8 @@ The concept graph should help a human or LLM refer to parts of the program by ex
 - A `region` node used only to group programmatic concepts that are not experienced as one bounded surface or area.
 - A `region` owning a behavior that is actually triggered by one clearly meaningful `control` inside it.
 - A graph that skips meaningful controls and therefore forces several unrelated behaviors onto one broad `region`.
+- A `control` node with no owned `behavior` even though the trigger's main value is the action it performs.
+- A concept named mainly after an implementation mechanic such as composition or refresh when a screen- or task-oriented name is available.
 
 ## When to split the work
 

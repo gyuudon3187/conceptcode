@@ -13,7 +13,7 @@ function validateRename(graph: JsonObject, conceptPath: string, newKey: string):
   }
   const { parent, childKey } = conceptParentAtPath(graph, conceptPath)
   if (conceptPath.split(".").length < 2) {
-    throw new Error("Cannot rename the root concept")
+    throw new Error("Cannot rename the namespace concept")
   }
   if (stableChildKey(newKey) !== newKey) {
     throw new Error(`New child key must already be a stable child key: ${newKey}`)

@@ -16,7 +16,7 @@ Use this skill in conceptualize mode to add a new concept to the concept graph.
 ## Invocation
 
 ```text
-/create @root.existing.parent.new_concept <concept fields>
+/create @impl.existing.parent.new_concept <concept fields>
 /create @domain.existing.parent.new_concept <concept fields>
 ```
 
@@ -32,13 +32,13 @@ Use this skill in conceptualize mode to add a new concept to the concept graph.
 - Validate the requested path with the TypeScript script at `src/graph/create-concept.ts`.
 - That script verifies that the full target path does not exist yet and that the parent path does exist.
 - Parse the user-provided fields into concept-graph metadata and pass them to that script as JSON.
-- Always create new `root` concepts with `implemented: false` unless the user explicitly provides `implemented`.
+- Always create new `impl` concepts with `implemented: false` unless the user explicitly provides `implemented`.
 - For `domain` concepts, do not pass `implemented` or implementation-only metadata such as `loc`, `exploration_coverage`, or `summary_confidence`.
 
 ## After creation
 
 - Inspect the new concept's parent context and nearby evidence.
-- For `root` concepts, that evidence may include nearby implementation code.
+- For `impl` concepts, that evidence may include nearby implementation code.
 - For `domain` concepts, prefer nearby domain concepts and linked implementation concepts when they add real support.
 - Suggest:
   - metadata that could be added or refined
@@ -48,5 +48,5 @@ Use this skill in conceptualize mode to add a new concept to the concept graph.
 ## Constraints
 
 - Preserve stable existing child keys.
-- Do not guess required fields that the user did not provide, except for safe defaults such as `implemented: false` on new `root` concepts.
+- Do not guess required fields that the user did not provide, except for safe defaults such as `implemented: false` on new `impl` concepts.
 - Keep suggestions separate from the actual creation update.

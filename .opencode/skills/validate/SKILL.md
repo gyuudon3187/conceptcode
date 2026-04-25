@@ -43,7 +43,7 @@ Use this skill in conceptualize mode to audit a concept graph without changing i
   - affected field names
   - short explanation
   - suggested follow-up skill when useful
-- Treat known root/domain kind mismatches as errors.
+- Treat known impl/domain kind mismatches as errors.
 - Treat unknown kinds as warnings.
 - Allow missing `kind`.
 

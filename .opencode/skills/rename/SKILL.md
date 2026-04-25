@@ -16,7 +16,7 @@ Use this skill in conceptualize mode to rename an existing concept by changing i
 ## Invocation
 
 ```text
-/rename @root.some.parent.old_key new_key
+/rename @impl.some.parent.old_key new_key
 /rename @domain.some.parent.old_key new_key
 ```
 
@@ -35,6 +35,6 @@ Use this skill in conceptualize mode to rename an existing concept by changing i
 
 ## Constraints
 
-- Do not rename `root` or `domain`.
+- Do not rename `impl` or `domain`.
 - Do not skip the confirmation step after preflight.
 - Report the old path, new path, subtree impact, and rewritten references.

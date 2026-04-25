@@ -1,7 +1,7 @@
 import type { JsonValue } from "../core/types"
 import type { GraphNamespace } from "./mutate"
 
-const ROOT_KINDS = new Set([
+const IMPL_KINDS = new Set([
   "module",
   "view",
   "layout",
@@ -39,11 +39,11 @@ export type KindValidationResult =
   | { status: "unknown"; actualKind: string }
 
 function namespaceKindSet(namespace: GraphNamespace): Set<string> {
-  return namespace === "root" ? ROOT_KINDS : DOMAIN_KINDS
+  return namespace === "impl" ? IMPL_KINDS : DOMAIN_KINDS
 }
 
 function otherNamespace(namespace: GraphNamespace): GraphNamespace {
-  return namespace === "root" ? "domain" : "root"
+  return namespace === "impl" ? "domain" : "impl"
 }
 
 export function validateConceptKind(namespace: GraphNamespace, kind: JsonValue | undefined): KindValidationResult {

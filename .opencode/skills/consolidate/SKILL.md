@@ -16,11 +16,11 @@ Use this skill in conceptualize mode for inspection-driven concept-graph enrichm
 ## Invocation
 
 ```text
-/consolidate @root.some.concept
+/consolidate @impl.some.concept
 ```
 
 - The command requires exactly one target concept reference.
-- The target must be an implementation concept under `root`, not a `domain` concept.
+- The target must be an implementation concept under `impl`, not a `domain` concept.
 - Do not run this skill without an explicit concept path.
 - If the user does not provide a concept path, ask for one instead of guessing.
 

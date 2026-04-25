@@ -13,7 +13,7 @@ function validateMove(graph: JsonObject, conceptPath: string, destinationParentP
     throw new Error(`Concept does not exist: ${conceptPath}`)
   }
   if (conceptPath.split(".").length < 2) {
-    throw new Error("Cannot move the root concept")
+    throw new Error("Cannot move the namespace concept")
   }
   const destinationParent = conceptAtPath(graph, destinationParentPath)
   if (!destinationParent) {

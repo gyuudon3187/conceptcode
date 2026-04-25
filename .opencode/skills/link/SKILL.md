@@ -16,9 +16,9 @@ Use this skill in conceptualize mode to maintain focused navigational links thro
 ## Invocation
 
 ```text
-/link add @root.some.concept @root.other.concept
-/link remove @root.some.concept @domain.related.policy
-/link normalize @root.some.concept
+/link add @impl.some.concept @impl.other.concept
+/link remove @impl.some.concept @domain.related.policy
+/link normalize @impl.some.concept
 ```
 
 - The first concept is the concept being edited.
@@ -34,7 +34,7 @@ Use this skill in conceptualize mode to maintain focused navigational links thro
 ## Boundaries
 
 - Use `/create` to add a missing concept instead of linking to a path that does not exist.
-- Use `/anchor` to add or refine `loc` and `exploration_coverage` for a root concept.
+- Use `/anchor` to add or refine `loc` and `exploration_coverage` for a impl concept.
 - Use `/consolidate` for inspection-driven metadata enrichment that may touch multiple related fields.
 - Use `/elaborate` when the main task is verifying a user explanation and updating the summary.
 

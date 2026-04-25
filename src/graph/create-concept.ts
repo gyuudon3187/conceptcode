@@ -55,7 +55,7 @@ function validateNamespaceSpecificFields(conceptPath: string, fields: Record<str
     }
     return
   }
-  if (namespace === "root" && !("implemented" in fields)) {
+  if (namespace === "impl" && !("implemented" in fields)) {
     fields.implemented = false
   }
 }
@@ -63,8 +63,8 @@ function validateNamespaceSpecificFields(conceptPath: string, fields: Record<str
 function validateImplementedField(conceptPath: string, fields: Record<string, JsonValue>): void {
   const namespace = conceptPath.split(".")[0]
   if (!("implemented" in fields)) return
-  if (namespace !== "root") {
-    throw new Error("implemented is allowed only on root concepts")
+  if (namespace !== "impl") {
+    throw new Error("implemented is allowed only on impl concepts")
   }
   if (typeof fields.implemented !== "boolean") {
     throw new Error("implemented must be a boolean when provided")

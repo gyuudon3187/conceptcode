@@ -16,7 +16,7 @@ Use this skill in conceptualize mode to move an existing concept under a differe
 ## Invocation
 
 ```text
-/move @root.some.concept @root.other_parent
+/move @impl.some.concept @impl.other_parent
 /move @domain.some.concept @domain.other_parent
 ```
 
@@ -35,7 +35,7 @@ Use this skill in conceptualize mode to move an existing concept under a differe
 
 ## Constraints
 
-- Do not move `root` or `domain`.
+- Do not move `impl` or `domain`.
 - Do not move a concept into its own descendant.
 - Do not skip the confirmation step after preflight.
 - Report the old path, new path, subtree impact, and rewritten references.

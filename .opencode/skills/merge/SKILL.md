@@ -16,7 +16,7 @@ Use this skill in conceptualize mode to consolidate two overlapping concepts int
 ## Invocation
 
 ```text
-/merge @root.survivor @root.removed
+/merge @impl.survivor @impl.removed
 /merge @domain.survivor @domain.removed
 ```
 

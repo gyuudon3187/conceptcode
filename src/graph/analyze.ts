@@ -100,7 +100,7 @@ function jsonValuesEqual(left: JsonValue | undefined, right: JsonValue | undefin
 function collectInboundReferences(node: JsonObject, currentPath: string, targetPath: string, references: InboundReference[]): void {
   const relatedPaths = node.related_paths
   if (Array.isArray(relatedPaths) && relatedPaths.includes(targetPath)) {
-    const namespace = currentPath.startsWith("domain.") ? "domain" : "root"
+    const namespace = currentPath.startsWith("domain.") ? "domain" : "impl"
     references.push({ fromPath: currentPath, namespace })
   }
   for (const [childKey, child] of childEntries(node)) {
@@ -126,8 +126,8 @@ export function deleteConceptPreflight(graph: JsonObject, conceptPath: string): 
   const { directChildCount, descendantCount } = countDescendants(concept)
   const references: InboundReference[] = []
 
-  if (isObject(graph.root)) {
-    collectInboundReferences(graph.root, "root", conceptPath, references)
+  if (isObject(graph.impl)) {
+    collectInboundReferences(graph.impl, "impl", conceptPath, references)
   }
   if (isObject(graph.domain)) {
     collectInboundReferences(graph.domain, "domain", conceptPath, references)
@@ -352,7 +352,7 @@ function isScore(value: JsonValue | undefined): value is number {
 }
 
 function skillForNamespace(namespace: GraphNamespace): string {
-  return namespace === "root" ? "/consolidate" : "/elaborate"
+  return namespace === "impl" ? "/consolidate" : "/elaborate"
 }
 
 function validateRelatedPaths(graph: JsonObject, findings: ValidateGraphFinding[]): void {

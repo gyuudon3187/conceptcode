@@ -24,8 +24,8 @@ export async function deleteConcept(input: DeleteConceptInput): Promise<void> {
   const { parent, childKey } = conceptParentAtPath(graph, input.conceptPath)
   const children = ensureChildren(parent)
   delete children[childKey]
-  if (graph.root && typeof graph.root === "object" && !Array.isArray(graph.root)) {
-    removeRelatedPathReferences(graph.root as Record<string, never>, input.conceptPath)
+  if (graph.impl && typeof graph.impl === "object" && !Array.isArray(graph.impl)) {
+    removeRelatedPathReferences(graph.impl as Record<string, never>, input.conceptPath)
   }
   if (graph.domain && typeof graph.domain === "object" && !Array.isArray(graph.domain)) {
     removeRelatedPathReferences(graph.domain as Record<string, never>, input.conceptPath)

@@ -9,7 +9,7 @@ export type PathRewriteImpact = {
   rewrittenConceptPaths: string[]
   relatedPathRewrites: Array<{
     fromPath: string
-    namespace: "root" | "domain"
+    namespace: "impl" | "domain"
     before: string[]
     after: string[]
   }>
@@ -70,8 +70,8 @@ function rewriteRelatedPathsInNode(node: JsonObject, rewrites: PathRewrite[]): v
 }
 
 export function applyPathRewrites(graph: JsonObject, rewrites: PathRewrite[]): void {
-  if (isObject(graph.root)) {
-    rewriteRelatedPathsInNode(graph.root, rewrites)
+  if (isObject(graph.impl)) {
+    rewriteRelatedPathsInNode(graph.impl, rewrites)
   }
   if (isObject(graph.domain)) {
     rewriteRelatedPathsInNode(graph.domain, rewrites)

@@ -1,7 +1,7 @@
 import type { AppState, ConceptNamespaceMode, ConceptNode, LayoutMode } from "./types"
 
-export function namespaceRootPath(mode: ConceptNamespaceMode): "root" | "domain" {
-  return mode === "implementation" ? "root" : "domain"
+export function namespaceRootPath(mode: ConceptNamespaceMode): "impl" | "domain" {
+  return mode === "implementation" ? "impl" : "domain"
 }
 
 export function setConceptNamespaceMode(state: AppState, mode: ConceptNamespaceMode): void {

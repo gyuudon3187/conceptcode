@@ -6,7 +6,7 @@ This document explains the durable approach for maintaining ConceptCode concept 
 
 The concept graph is a stable, user-facing representation of implementation concepts and domain concepts.
 
-Its main purpose is to let humans and agents refer to concepts by stable derived paths such as `root.views.merge_view.pending_selection` or `domain.business_rules.refund_policy` instead of relying on vague natural-language descriptions.
+Its main purpose is to let humans and agents refer to concepts by stable derived paths such as `impl.views.merge_view.pending_selection` or `domain.business_rules.refund_policy` instead of relying on vague natural-language descriptions.
 
 The graph may intentionally get ahead of the implementation. This is expected. A concept can exist in the graph before the corresponding implementation is complete.
 
@@ -15,12 +15,12 @@ The graph may intentionally get ahead of the implementation. This is expected. A
 - The JSON concept graph is the source of truth.
 - Stable concept paths are derived from object keys under `children`.
 - Those child keys are user-facing and should stay stable whenever possible.
-- `root` is for implementation-backed concepts.
+- `impl` is for implementation-backed concepts.
 - `domain` is for non-code domain concepts.
-- `implemented`, `loc`, `exploration_coverage`, and `summary_confidence` are restricted to `root` concepts.
+- `implemented`, `loc`, `exploration_coverage`, and `summary_confidence` are restricted to `impl` concepts.
 - `domain` concepts must not use implementation-only metadata.
 - Cross-namespace `related_paths` are allowed when they add real navigational value.
-- New `root` concepts should default to `implemented: false` unless there is clear evidence to set `implemented: true`.
+- New `impl` concepts should default to `implemented: false` unless there is clear evidence to set `implemented: true`.
 
 ## Maintenance Philosophy
 
@@ -40,7 +40,7 @@ The graph may intentionally get ahead of the implementation. This is expected. A
   - Use this when the concept is missing from the graph.
 
 - `consolidate`
-  - Improve a `root` concept after direct inspection of the implementation.
+  - Improve a `impl` concept after direct inspection of the implementation.
   - Use this to enrich summaries and related metadata from evidence.
 
 - `elaborate`
@@ -48,7 +48,7 @@ The graph may intentionally get ahead of the implementation. This is expected. A
   - Use this when the user already has a theory that needs checking.
 
 - `anchor`
-  - Add or refine `loc` for a `root` concept.
+  - Add or refine `loc` for a `impl` concept.
   - Keep this workflow narrow: update `exploration_coverage` conservatively, optionally update `summary_confidence`, and refine `summary` only when direct inspection clearly improves it.
   - Use this when the graph structure is already present and the main missing piece is source anchoring.
 
@@ -85,7 +85,7 @@ The graph may intentionally get ahead of the implementation. This is expected. A
 
 - `delete`
   - Remove a concept and its entire descendant subtree.
-  - Run preflight before mutation and review inbound `related_paths` references across both `root` and `domain`.
+  - Run preflight before mutation and review inbound `related_paths` references across both `impl` and `domain`.
   - Use `delete` when the concept should disappear entirely, not when another concept should absorb its meaning, links, or descendants.
   - Use this only when the concept should no longer exist in the graph.
 
@@ -106,7 +106,7 @@ Use `create` when the concept is missing. Follow with `consolidate` if the conce
 
 Use `validate` first when graph quality is uncertain. Use `consolidate` for understanding-driven enrichment and `anchor` when the main missing value is source anchoring.
 
-If the anchoring work expands into broader root-concept enrichment or low-coverage child planning, switch from `anchor` to `consolidate`.
+If the anchoring work expands into broader impl-concept enrichment or low-coverage child planning, switch from `anchor` to `consolidate`.
 
 ### Check whether an explanation is correct
 
@@ -188,9 +188,9 @@ When preflight is available, review not only subtree size but also inbound refer
 - For `split`, each moved child should be assigned explicitly and at most once; leaving some children untouched is valid, but silently duplicating or dropping subtrees is not.
 - `related_paths` should point only to existing concept paths; broken links are graph-integrity issues, not just cosmetic cleanup.
 - Keep `summary_confidence` conservative.
-- Treat `exploration_coverage` and `summary_confidence` as bounded `0.0` to `1.0` root-only metrics.
+- Treat `exploration_coverage` and `summary_confidence` as bounded `0.0` to `1.0` impl-only metrics.
 - `summary_confidence` should usually not exceed `exploration_coverage`.
-- Missing child coverage in `root` concepts is a signal that parent consolidation may be premature.
+- Missing child coverage in `impl` concepts is a signal that parent consolidation may be premature.
 
 ## Briefing Future Sessions
 

@@ -4,7 +4,7 @@ import type { JsonValue } from "../core/types"
 
 export type JsonObject = Record<string, JsonValue>
 
-export type GraphNamespace = "root" | "domain"
+export type GraphNamespace = "impl" | "domain"
 
 export type ConceptVisit = {
   path: string
@@ -25,16 +25,16 @@ export function childEntries(node: JsonObject): Array<[string, JsonObject]> {
 
 function pathSegments(conceptPath: string): string[] {
   const parts = conceptPath.split(".").filter(Boolean)
-  if (parts[0] !== "root" && parts[0] !== "domain") {
-    throw new Error(`Concept path must start with root or domain: ${conceptPath}`)
+  if (parts[0] !== "impl" && parts[0] !== "domain") {
+    throw new Error(`Concept path must start with impl or domain: ${conceptPath}`)
   }
   return parts
 }
 
 export async function readGraph(graphPath: string): Promise<JsonObject> {
   const raw = JSON.parse(await readFile(graphPath, "utf8")) as JsonValue
-  if (!isObject(raw) || (!isObject(raw.root) && !isObject(raw.domain))) {
-    throw new Error(`Concept graph at ${graphPath} must include at least one of root or domain`)
+  if (!isObject(raw) || (!isObject(raw.impl) && !isObject(raw.domain))) {
+    throw new Error(`Concept graph at ${graphPath} must include at least one of impl or domain`)
   }
   return raw
 }
@@ -60,7 +60,7 @@ export function conceptAtPath(graph: JsonObject, conceptPath: string): JsonObjec
 export function conceptParentAtPath(graph: JsonObject, conceptPath: string): { parent: JsonObject; childKey: string } {
   const parts = pathSegments(conceptPath)
   if (parts.length < 2) {
-    throw new Error("Cannot mutate the root concept")
+    throw new Error("Cannot mutate the namespace concept")
   }
   const childKey = parts.at(-1)!
   const parentPath = parts.slice(0, -1).join(".")
@@ -114,7 +114,7 @@ export function normalizeRelatedPaths(value: JsonValue | undefined): string[] {
 }
 
 export function visitConcepts(graph: JsonObject, visit: (entry: ConceptVisit) => void): void {
-  for (const namespace of ["root", "domain"] as const) {
+  for (const namespace of ["impl", "domain"] as const) {
     const node = graph[namespace]
     if (!isObject(node)) continue
     visit({ path: namespace, key: namespace, namespace, node, parentPath: null })
