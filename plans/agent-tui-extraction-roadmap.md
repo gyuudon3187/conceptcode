@@ -679,7 +679,7 @@ Handoff notes for next session:
   - The package is currently consumed through a local file dependency plus TypeScript path aliases; a later packaging pass may want stronger workspace tooling or publish-ready build metadata, but that is not required for this extraction milestone.
 - The next milestone should start in a fresh session.
 
-### [ ] Milestone 10: Stabilization, cleanup, and extraction audit
+### [x] Milestone 10: Stabilization, cleanup, and extraction audit
 
 Difficulty: Medium
 
@@ -725,12 +725,27 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- When finishing this milestone, update this roadmap in the same session:
-  - change the milestone checkbox from `[ ]` to `[x]`
-  - replace this placeholder handoff section with concrete `Already completed in code:` notes
-  - record the audit results and tests added or updated
-  - record any known follow-up work for a second extraction pass, such as reusable prompt editor enhancements
-  - say whether any further cleanup should happen in a fresh session
+- Already completed in code:
+  - `packages/agent-tui/src/geometry.test.ts` now covers shell layout math and transition interpolation helpers including `wideWorkspaceGeometryForRatio(...)`, `interpolateVerticalStack(...)`, `interpolateBottomRightAnchoredRect(...)`, and `interpolateTopRightAnchoredRectWithIndependentHeightProgress(...)`.
+  - `packages/agent-tui/src/keybindings.test.ts` now covers shell key-routing behavior including session modal viewport row sizing, wraparound list navigation, selection visibility clamping, and generic command classification.
+  - `packages/agent-tui/README.md` now records the extraction audit boundary explicitly, including what remains shell-owned versus app-owned and the known follow-up work for a second extraction pass.
+- Extraction audit results:
+  - `packages/agent-tui/src/` imports only package-local modules plus `@opentui/core`; no package module imports `src/` or other ConceptCode-specific code.
+  - The exported package surface remains shell-scoped rather than domain-scoped: geometry/layout helpers, frame and overlay renderers, inspector chrome, session modal rendering, text/theme helpers, key routing, and shell-facing view-model/types.
+  - Remaining coupling is documented rather than hidden:
+    - `src/ui/workspace-transition.ts` is still app-local because transition pane bodies are still rendered through app-owned callbacks.
+    - `src/core/types.ts` still re-exports shell-focused types from `agent-tui/types` as compatibility glue for existing app-local imports.
+    - prompt-editor token grammar is still app-local even though suggestion provider boundaries now exist.
+- Tests added or updated for core shell behavior:
+  - layout math
+  - transition interpolation helpers
+  - session modal viewport behavior
+  - wraparound list navigation and command routing helpers
+- Known follow-up work for a second extraction pass:
+  - decide whether to remove or narrow the compatibility re-exports in `src/core/types.ts`
+  - decide whether `src/ui/workspace-transition.ts` should move into the package once pane-render callback contracts are generic enough
+  - decide whether prompt token parsing/highlighting should be extracted beyond the current provider boundary
+- Further cleanup should happen in a fresh session if pursued; Milestone 10 itself is complete.
 
 ## Suggested execution grouping
 
