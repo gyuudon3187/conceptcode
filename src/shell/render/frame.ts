@@ -21,6 +21,16 @@ function renderPane(
   )
 }
 
+function renderSupportPane(
+  descriptor: ShellFramePaneDescriptor,
+  options: Record<string, unknown>,
+): Renderable | VNode<any, any[]> {
+  if (descriptor.shellFrame) {
+    return renderPane(descriptor, options)
+  }
+  return Box(options, descriptor.content as Renderable | VNode<any, any[]>)
+}
+
 export function renderWorkspaceFrame(
   viewModel: ShellWorkspaceFrameViewModel,
   panes: {
@@ -36,8 +46,8 @@ export function renderWorkspaceFrame(
     : { width: "100%" as const, flexGrow: 0, flexShrink: 0, flexDirection: "column" as const, gap: 1 }
   const supportColumn = Box(
     { ...sidebarOptions, height: "100%" },
-    Box({ width: "100%", minHeight: viewModel.supportHeight, maxHeight: viewModel.supportHeight, flexDirection: "column" }, panes.supportTop.content as Renderable | VNode<any, any[]>),
-    Box({ width: "100%", flexGrow: 1, minHeight: viewModel.previewHeight, flexDirection: "column" }, panes.supportBottom.content as Renderable | VNode<any, any[]>),
+    renderSupportPane(panes.supportTop, { width: "100%", minHeight: viewModel.supportHeight, maxHeight: viewModel.supportHeight, flexDirection: "column" }),
+    renderSupportPane(panes.supportBottom, { width: "100%", flexGrow: 1, minHeight: viewModel.previewHeight, flexDirection: "column" }),
   )
   const mainPane = renderPane(panes.main, { flexGrow: 1 })
   const sessionOptions = viewModel.layoutMode === "wide" && viewModel.promptPaneWidth !== null
@@ -55,8 +65,8 @@ export function renderWorkspaceFrame(
         ]
       : [
           mainPane,
-          panes.supportTop.content as Renderable | VNode<any, any[]>,
-          panes.supportBottom.content as Renderable | VNode<any, any[]>,
+          renderSupportPane(panes.supportTop, { width: "100%" }),
+          renderSupportPane(panes.supportBottom, { width: "100%" }),
           sessionPane,
         ]),
     ...overlays,

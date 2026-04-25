@@ -147,12 +147,13 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
       },
       supportTop: state.conceptNavigationFocused
         ? { key: "details", content: renderDetailsPane(state) }
-        : { key: "context", title: "Context", content: renderPromptBudgetPane(state) },
+        : { key: "context", title: "Context", shellFrame: true, content: renderPromptBudgetPane(state) },
       supportBottom: state.conceptNavigationFocused
         ? { key: "session-preview", content: renderPromptPreviewPane(state) }
         : { key: "concept-preview", content: renderConceptPreviewPane(state) },
       session: {
         key: "session",
+        title: "Session",
         borderColor: viewModel.promptPaneFocused ? COLORS.borderActive : COLORS.border,
         content: renderPromptPane(state, promptScroll),
       },

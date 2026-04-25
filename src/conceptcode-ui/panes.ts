@@ -168,7 +168,6 @@ export function renderDetailsTransitionBody(state: AppState): Renderable | VNode
 export function renderPromptPane(state: AppState, promptScroll: ScrollBoxRenderable | null): Renderable | VNode<any, any[]> {
   const session = activeSession(state)
   const editor = state.editorModal?.target.kind === "prompt" ? state.editorModal : null
-  const promptFocused = editor?.renderable.focused ?? false
   const { label: modeLabel, color: modeColor, tone: modeTone } = promptModePresentation(state.uiMode)
   const content = editor
     ? Box(
@@ -206,10 +205,7 @@ export function renderPromptPane(state: AppState, promptScroll: ScrollBoxRendera
           Text({ content: "Tab mode, Shift+Tab focus", fg: COLORS.border }),
         ),
       )
-  return Box(
-    { width: "100%", borderStyle: "rounded", borderColor: promptFocused ? COLORS.borderActive : COLORS.border, title: "Session", padding: 1, backgroundColor: COLORS.panel, flexDirection: "column", gap: 1, flexGrow: 1 },
-    content,
-  )
+  return Box({ width: "100%", height: "100%", flexDirection: "column", gap: 1 }, content)
 }
 
 export function renderPromptBudgetPane(state: AppState): Renderable | VNode<any, any[]> {

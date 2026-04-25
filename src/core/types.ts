@@ -312,6 +312,7 @@ export type ShellFramePaneDescriptor = {
   key: string
   title?: string
   borderColor?: string
+  shellFrame?: boolean
   content: unknown
 }
 
