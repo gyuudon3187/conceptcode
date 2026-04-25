@@ -306,6 +306,33 @@ export type ShellWorkspaceTransitionViewState = Pick<
   "layoutMode" | "uiLayoutConfig" | "promptPaneRatio" | "workspaceTransition"
 >
 
+export type ShellPaneRegion = "main" | "supportTop" | "supportBottom" | "session" | "overlay"
+
+export type ShellFramePaneDescriptor = {
+  key: string
+  title?: string
+  borderColor?: string
+  content: unknown
+}
+
+export type ShellOverlayLayout = {
+  top: number | `${number}%`
+  left: number | `${number}%`
+  width: number | `${number}%`
+  height?: number | `${number}%`
+  marginLeft?: number
+}
+
+export type ShellWorkspaceFrameViewModel = {
+  layoutMode: LayoutMode
+  conceptNavigationFocused: boolean
+  promptPaneFocused: boolean
+  promptPaneWidth: number | null
+  sidebarWidth: number | null
+  supportHeight: number
+  previewHeight: number
+}
+
 export type SessionChatState = {
   sessions: ChatSession[]
   activeSessionId: string
