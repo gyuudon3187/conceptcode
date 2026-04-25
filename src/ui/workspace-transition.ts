@@ -2,9 +2,7 @@ import { appendFile } from "node:fs/promises"
 import { join } from "node:path"
 
 import { Box, type Renderable, ScrollBoxRenderable, type VNode } from "@opentui/core"
-
-import type { AppState, ShellViewportState, ShellWorkspaceTransitionViewState, UiLayoutConfig, WorkspaceFocus } from "../core/types"
-import { COLORS } from "../shell/theme"
+import { COLORS } from "agent-tui/theme"
 import {
   acceleratedProgress,
   blendProgress,
@@ -18,7 +16,10 @@ import {
   type PaneRect,
   type WideWorkspaceGeometry,
   wideWorkspaceGeometryForRatio as computeWideWorkspaceGeometryForRatio,
-} from "../shell/layout/geometry"
+} from "agent-tui/layout/geometry"
+import type { ShellViewportState, ShellWorkspaceTransitionViewState, UiLayoutConfig, WorkspaceFocus } from "agent-tui/types"
+
+import type { AppState } from "../core/types"
 
 export { rightAlignedLeft }
 export type { PaneRect }

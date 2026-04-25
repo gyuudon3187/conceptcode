@@ -1,7 +1,9 @@
 import type { CliRenderer } from "@opentui/core"
 
+import type { ShellSessionListItem } from "agent-tui/types"
+
 import { sessionModalHostState } from "../core/state"
-import type { AppState, ChatSession, EditorModalState, SessionModalHostState, ShellSessionListItem } from "../core/types"
+import type { AppState, ChatSession, EditorModalState, SessionModalHostState } from "../core/types"
 import { activeSession, createNamedSession, saveSessions, sessionActivityAt, syncSessionMetadata } from "./store"
 
 type SyncPromptDraft = (state: AppState, editor: EditorModalState) => void

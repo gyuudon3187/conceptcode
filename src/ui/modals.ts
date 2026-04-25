@@ -1,9 +1,10 @@
 import { Box, Text, TextAttributes, type Renderable, type VNode } from "@opentui/core"
+import { renderOverlayBackdrop, renderOverlayCard } from "agent-tui/render/overlay"
+import { renderSessionModal as renderShellSessionModal } from "agent-tui/render/session-modal"
+import type { ShellSessionListItem, ShellSessionModalViewModel } from "agent-tui/types"
 
-import type { AppState, CreateConceptModalState, SessionModalHostState, ShellSessionListItem, ShellSessionModalViewModel } from "../core/types"
+import type { AppState, CreateConceptModalState, SessionModalHostState } from "../core/types"
 import { sessionModalHostState } from "../core/state"
-import { renderOverlayBackdrop, renderOverlayCard } from "../shell/render/overlay"
-import { renderSessionModal as renderShellSessionModal } from "../shell/render/session-modal"
 import { sessionModalEntries, sessionModalItem } from "../sessions/commands"
 import { COLORS } from "./theme"
 

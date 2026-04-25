@@ -1,6 +1,26 @@
 import type { TextareaRenderable } from "@opentui/core"
 
 import type { RGBA } from "@opentui/core"
+import type {
+  LayoutMode,
+  ShellFramePaneDescriptor,
+  ShellInspectorLegendItem,
+  ShellInspectorViewModel,
+  ShellKeyCommand,
+  ShellListNavigationState,
+  ShellOverlayLayout,
+  ShellSessionListItem,
+  ShellSessionModalViewModel,
+  ShellViewportState,
+  ShellWorkspaceControllerDeps,
+  ShellWorkspaceControllerState,
+  ShellWorkspaceFrameViewModel,
+  ShellWorkspaceState,
+  ShellWorkspaceTransitionViewState,
+  UiLayoutConfig,
+  WorkspaceFocus,
+  WorkspaceTransitionState,
+} from "agent-tui/types"
 import type { EffectivePromptTokenBreakdown } from "../prompt/payload"
 
 export type JsonPrimitive = null | boolean | number | string
@@ -35,8 +55,6 @@ export type GraphPayload = {
 
 export type ConceptNamespace = "impl" | "domain"
 export type ConceptNamespaceMode = "implementation" | "domain"
-
-export type LayoutMode = "wide" | "narrow"
 
 export type UiMode = "plan" | "build" | "conceptualize"
 
@@ -196,48 +214,6 @@ export type SessionModalState = {
   scrollTop: number
 }
 
-export type WorkspaceFocus = "session" | "concepts"
-
-export type WorkspaceTransitionState = {
-  from: WorkspaceFocus
-  to: WorkspaceFocus
-  progress: number
-  startedAt: number
-  loggedFirstFrame?: boolean
-}
-
-export type UiLayoutConfig = {
-  collapsedPromptRatio: number
-  conceptsToSessionTransitionCollapsedPromptRatio: number
-  expandedPromptRatio: number
-  conceptsToSessionTransitionExpandedPromptRatio: number
-  conceptsToSessionRightStackStartWidthRatio: number
-  conceptsToSessionDetailsHeightAcceleration: number
-  promptAnimationEpsilon: number
-  promptAnimationStepMs: number
-  promptAnimationLerp: number
-  workspaceTransitionStepMs: number
-  workspaceTransitionDurationMs: number
-  workspaceTransitionAcceleration: number
-  workspaceTransitionEndEasePower: number
-  workspaceTransitionStaggerDelay: number
-  workspaceTransitionFadeStart: number
-  workspaceTransitionFadeEnd: number
-  viewportHorizontalInset: number
-  rootPadding: number
-  interPaneGap: number
-  minFrameWidth: number
-  minFrameHeight: number
-  minPromptPaneWidth: number
-  minSidebarWidth: number
-  supportHeight: number
-  minPreviewHeight: number
-  minPaneWidth: number
-  minPaneHeight: number
-  transitionChipWidth: number
-  transitionChipHeight: number
-}
-
 // Internal ownership boundary for the future shell extraction:
 // - App-owned state keeps concept graph semantics, prompt semantics, sessions, and inspectors.
 // - Shell-owned state is expected to absorb layout, workspace chrome, and modal primitives.
@@ -290,114 +266,7 @@ export type ShellWorkspaceUiState = {
   workspaceTransition: WorkspaceTransitionState | null
 }
 
-export type ShellViewportState = {
-  width: number
-  height: number
-}
-
-export type ShellWorkspaceState = Pick<
-  ShellWorkspaceUiState,
-  | "layoutMode"
-  | "uiLayoutConfig"
-  | "conceptNavigationFocused"
-  | "startupDrawComplete"
-  | "promptPaneRatio"
-  | "promptPaneTargetRatio"
-  | "promptPaneMode"
-  | "workspaceTransition"
->
-
-export type ShellWorkspaceControllerState = ShellWorkspaceState & Pick<
-  ModalTransientState,
-  "editorModal" | "promptPaneAnimationTimeout" | "workspaceTransitionTimeout"
->
-
-export type ShellWorkspaceControllerDeps = {
-  shellState: ShellWorkspaceControllerState
-  redraw: () => void
-  openPromptEditor: () => void
-  applyPromptEditorText: () => void
-  getViewport: () => ShellViewportState
-}
-
-export type ShellWorkspaceTransitionViewState = Pick<
-  ShellWorkspaceUiState,
-  "layoutMode" | "uiLayoutConfig" | "promptPaneRatio" | "workspaceTransition"
->
-
 export type ShellPaneRegion = "main" | "supportTop" | "supportBottom" | "session" | "overlay"
-
-export type ShellFramePaneDescriptor = {
-  key: string
-  title?: string
-  borderColor?: string
-  shellFrame?: boolean
-  content: unknown
-}
-
-export type ShellOverlayLayout = {
-  top: number | `${number}%`
-  left: number | `${number}%`
-  width: number | `${number}%`
-  height?: number | `${number}%`
-  marginLeft?: number
-}
-
-export type ShellSessionListItem = {
-  id: string
-  title: string
-  subtitle: string
-  badge: {
-    label: string
-    color: string
-  }
-  selected: boolean
-}
-
-export type ShellSessionModalViewModel = {
-  layout: ShellOverlayLayout & {
-    height: number
-  }
-  title: string
-  items: ShellSessionListItem[]
-  footerHint: string
-}
-
-export type ShellInspectorLegendItem = {
-  label: string
-  color: RGBA
-}
-
-export type ShellInspectorViewModel = {
-  layout: ShellOverlayLayout
-  title: string
-  closeHint: string
-  legendItems: ShellInspectorLegendItem[]
-}
-
-export type ShellListNavigationState = {
-  selectedIndex: number
-  scrollTop: number
-}
-
-export type ShellKeyCommand =
-  | { kind: "cancel" }
-  | { kind: "confirm" }
-  | { kind: "move"; delta: number }
-  | { kind: "create" }
-  | { kind: "delete" }
-  | { kind: "scroll"; delta: number }
-  | { kind: "toggleFocus" }
-
-export type ShellWorkspaceFrameViewModel = {
-  layoutMode: LayoutMode
-  conceptNavigationFocused: boolean
-  promptPaneFocused: boolean
-  promptPaneWidth: number | null
-  sidebarWidth: number | null
-  supportHeight: number
-  previewHeight: number
-}
 
 export type SessionChatState = {
   sessions: ChatSession[]

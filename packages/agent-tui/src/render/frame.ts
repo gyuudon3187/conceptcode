@@ -1,6 +1,6 @@
 import { Box, type Renderable, type VNode } from "@opentui/core"
 
-import type { ShellFramePaneDescriptor, ShellWorkspaceFrameViewModel } from "../../core/types"
+import type { ShellFramePaneDescriptor, ShellWorkspaceFrameViewModel } from "../types"
 import { COLORS } from "../theme"
 
 function renderPane(

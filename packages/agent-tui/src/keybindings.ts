@@ -1,6 +1,6 @@
 import type { KeyEvent } from "@opentui/core"
 
-import type { LayoutMode, ShellKeyCommand, ShellListNavigationState } from "../core/types"
+import type { LayoutMode, ShellKeyCommand, ShellListNavigationState } from "./types"
 
 export function sessionModalVisibleRowCount(layoutMode: LayoutMode, viewportHeight: number): number {
   const topMargin = layoutMode === "wide" ? 5 : 3

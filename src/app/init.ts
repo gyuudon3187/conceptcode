@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises"
 
+import type { UiLayoutConfig } from "agent-tui/types"
+
 import type {
   AppState,
   ConceptGraphState,
@@ -8,7 +10,6 @@ import type {
   PromptEditorUiState,
   SessionChatState,
   ShellWorkspaceUiState,
-  UiLayoutConfig,
 } from "../core/types"
 import { createSseChatTransport } from "../platform/chat"
 import { EMPTY_PROMPT_TOKEN_BREAKDOWN } from "../prompt/payload"

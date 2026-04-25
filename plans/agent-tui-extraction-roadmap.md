@@ -573,7 +573,7 @@ Handoff notes for next session:
   - metadata preview formatting and inspector title semantics for snippet/subtree/metadata remain ConceptCode-owned
 - Start Milestone 9 in a fresh session.
 
-### [ ] Milestone 9: Extract `src/shell/` into `packages/agent-tui`
+### [x] Milestone 9: Extract `src/shell/` into `packages/agent-tui`
 
 Difficulty: High
 
@@ -613,12 +613,71 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- When finishing this milestone, update this roadmap in the same session:
-  - change the milestone checkbox from `[ ]` to `[x]`
-  - replace this placeholder handoff section with concrete `Already completed in code:` notes
-  - record the final package entrypoints and exported surfaces
-  - record any deferred cleanup work or remaining boundary caveats
-  - say whether the next milestone should start in a fresh session
+- Already completed in code:
+  - `packages/agent-tui/` now contains the extracted OpenTUI shell package with `src/` entrypoints for shell theme, text helpers, geometry helpers, key routing, overlay primitives, inspector chrome, session modal rendering, workspace frame composition, and scroll-box creation.
+  - `packages/agent-tui/src/types.ts` now owns the shell-facing contracts previously proven locally, including layout config, workspace transition state, workspace controller deps, frame/overlay/session/inspector view models, and shell key-command/list-navigation types.
+  - The former local shell modules under `src/shell/` were removed after their code moved into `packages/agent-tui/src/`.
+  - App imports now consume the package through `agent-tui/*` paths from `src/index.ts`, `src/app/workspace.ts`, `src/app/keybindings.ts`, `src/ui/view.ts`, `src/ui/modals.ts`, `src/ui/workspace-transition.ts`, `src/ui/text.ts`, `src/ui/theme.ts`, `src/conceptcode-ui/overlays.ts`, `src/sessions/commands.ts`, `src/core/model.ts`, and `src/app/init.ts`.
+  - `package.json` now declares the local file dependency on `agent-tui`, and `tsconfig.json` now includes package sources plus path aliases for `agent-tui` and `agent-tui/*`.
+  - `packages/agent-tui/README.md` now documents package scope, main entrypoints, and the expected host-app integration style.
+- Final package entrypoints and exported surfaces:
+  - `agent-tui`:
+    - re-exports theme tokens, text helpers, geometry helpers, renderers, keybinding helpers, and all shell-facing types
+  - `agent-tui/types`:
+    - `LayoutMode`
+    - `UiLayoutConfig`
+    - `WorkspaceFocus`
+    - `WorkspaceTransitionState`
+    - `ShellViewportState`
+    - `ShellWorkspaceState`
+    - `ShellWorkspaceControllerState`
+    - `ShellWorkspaceControllerDeps`
+    - `ShellWorkspaceTransitionViewState`
+    - `ShellFramePaneDescriptor`
+    - `ShellOverlayLayout`
+    - `ShellSessionListItem`
+    - `ShellSessionModalViewModel`
+    - `ShellInspectorLegendItem`
+    - `ShellInspectorViewModel`
+    - `ShellListNavigationState`
+    - `ShellKeyCommand`
+    - `ShellWorkspaceFrameViewModel`
+  - `agent-tui/theme`:
+    - `COLORS`
+  - `agent-tui/text`:
+    - `textNodesForChunks(...)`
+    - `truncateSingleLine(...)`
+    - `truncateFromStart(...)`
+    - `promptPreviewLines(...)`
+    - `highlightPromptReferenceChunks(...)`
+  - `agent-tui/layout/geometry`:
+    - geometry types `PaneRect`, `WideWorkspaceGeometry`, `GeometryViewport`
+    - layout helpers and interpolation helpers including `wideWorkspaceGeometryForRatio(...)`
+  - `agent-tui/render/frame`:
+    - `renderWorkspaceFrame(...)`
+  - `agent-tui/render/overlay`:
+    - `renderOverlayBackdrop(...)`
+    - `renderOverlayCard(...)`
+  - `agent-tui/render/inspector`:
+    - `renderInspectorOverlay(...)`
+  - `agent-tui/render/session-modal`:
+    - `renderSessionModal(...)`
+  - `agent-tui/render/scroll`:
+    - `createScrollBox(...)`
+  - `agent-tui/keybindings`:
+    - `sessionModalVisibleRowCount(...)`
+    - `keepShellListSelectionVisible(...)`
+    - `moveShellListSelection(...)`
+    - `confirmOrCancelCommand(...)`
+    - `sessionModalCommand(...)`
+    - `inspectorCommand(...)`
+    - `sharedFocusCommand(...)`
+- Deferred cleanup work or remaining boundary caveats:
+  - `src/ui/workspace-transition.ts` still remains app-local even though it now depends on package geometry/types; the transition engine still takes `AppState` through the pane-render callback boundary.
+  - `packages/agent-tui/src/types.ts` uses a deliberately minimal structural type for prompt-editor modal state in `ShellWorkspaceControllerState` so the package stays decoupled from app-local editor types.
+  - Shell-focused types are still re-exported from `src/core/types.ts` for compatibility with existing app-local imports; Milestone 10 can tighten or reduce those compatibility re-exports if desired.
+  - The package is currently consumed through a local file dependency plus TypeScript path aliases; a later packaging pass may want stronger workspace tooling or publish-ready build metadata, but that is not required for this extraction milestone.
+- The next milestone should start in a fresh session.
 
 ### [ ] Milestone 10: Stabilization, cleanup, and extraction audit
 

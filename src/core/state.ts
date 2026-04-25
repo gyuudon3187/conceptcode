@@ -1,9 +1,10 @@
+import type { LayoutMode } from "agent-tui/types"
+
 import type {
   AppState,
   ConceptGraphState,
   ConceptNamespaceMode,
   ConceptNode,
-  LayoutMode,
   ModalTransientState,
   PromptEditorHostState,
   PromptEditorUiState,

@@ -1,4 +1,4 @@
-import type { UiLayoutConfig } from "../../core/types"
+import type { LayoutMode, UiLayoutConfig } from "../types"
 
 export type PaneRect = { left: number; top: number; width: number; height: number }
 
@@ -93,7 +93,7 @@ export function interpolateTopRightAnchoredRectWithIndependentHeightProgress(fro
   }
 }
 
-export function wideWorkspaceGeometryForRatio(layoutMode: "wide" | "narrow", config: UiLayoutConfig, promptPaneRatio: number, viewport: GeometryViewport): WideWorkspaceGeometry | null {
+export function wideWorkspaceGeometryForRatio(layoutMode: LayoutMode, config: UiLayoutConfig, promptPaneRatio: number, viewport: GeometryViewport): WideWorkspaceGeometry | null {
   if (layoutMode !== "wide") return null
   const rootPadding = config.rootPadding
   const frameInnerWidth = Math.max(config.minFrameWidth, viewport.width - config.viewportHorizontalInset)

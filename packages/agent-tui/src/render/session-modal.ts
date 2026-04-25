@@ -1,11 +1,11 @@
 import { Box, Text, TextAttributes, type Renderable, type VNode } from "@opentui/core"
 
-import type { ShellSessionListItem, ShellSessionModalViewModel } from "../../core/types"
+import type { LayoutMode, ShellSessionListItem, ShellSessionModalViewModel } from "../types"
 import { renderOverlayBackdrop, renderOverlayCard } from "./overlay"
 import { COLORS } from "../theme"
 import { truncateSingleLine } from "../text"
 
-function renderSessionModalRow(layoutMode: "wide" | "narrow", item: ShellSessionListItem): Renderable | VNode<any, any[]> {
+function renderSessionModalRow(layoutMode: LayoutMode, item: ShellSessionListItem): Renderable | VNode<any, any[]> {
   return Box(
     { width: "100%", minHeight: 2, maxHeight: 2, paddingX: 1, backgroundColor: item.selected ? COLORS.selectedBg : COLORS.panel, flexDirection: "row", justifyContent: "space-between" },
     Box(
@@ -17,7 +17,7 @@ function renderSessionModalRow(layoutMode: "wide" | "narrow", item: ShellSession
   )
 }
 
-export function renderSessionModal(layoutMode: "wide" | "narrow", viewModel: ShellSessionModalViewModel | null): Array<Renderable | VNode<any, any[]>> {
+export function renderSessionModal(layoutMode: LayoutMode, viewModel: ShellSessionModalViewModel | null): Array<Renderable | VNode<any, any[]>> {
   if (!viewModel) return []
   return [
     renderOverlayBackdrop(),

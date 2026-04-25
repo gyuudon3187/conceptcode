@@ -1,8 +1,9 @@
 import { Box, Text, TextAttributes, type Renderable, type VNode } from "@opentui/core"
+import { renderOverlayBackdrop, renderOverlayCard } from "agent-tui/render/overlay"
+import type { ShellInspectorViewModel } from "agent-tui/types"
 
 import { currentNode } from "../core/state"
-import type { AppState, ShellInspectorViewModel } from "../core/types"
-import { renderOverlayBackdrop, renderOverlayCard } from "../shell/render/overlay"
+import type { AppState } from "../core/types"
 import { COLORS } from "../ui/theme"
 
 export function renderConceptSummaryEditorOverlay(state: AppState): Array<Renderable | VNode<any, any[]>> {

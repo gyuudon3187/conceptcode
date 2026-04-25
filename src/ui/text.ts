@@ -1,5 +1,5 @@
 import type { AppState } from "../core/types"
-import { promptPreviewLines, textNodesForChunks, truncateFromStart, truncateSingleLine, highlightPromptReferenceChunks } from "../shell/text"
+import { promptPreviewLines, textNodesForChunks, truncateFromStart, truncateSingleLine, highlightPromptReferenceChunks } from "agent-tui/text"
 
 export { promptPreviewLines, textNodesForChunks, truncateFromStart, truncateSingleLine }
 

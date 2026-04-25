@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, extname, isAbsolute, resolve } from "node:path"
 
-import type { ConceptNamespace, ConceptNode, GraphPayload, JsonValue, KindDefinition, SourceLoc, UiLayoutConfig } from "./types"
+import type { UiLayoutConfig } from "agent-tui/types"
+
+import type { ConceptNamespace, ConceptNode, GraphPayload, JsonValue, KindDefinition, SourceLoc } from "./types"
 
 function asObject(value: JsonValue | undefined): Record<string, JsonValue> {
   if (value && typeof value === "object" && !Array.isArray(value)) {

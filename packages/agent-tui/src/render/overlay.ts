@@ -1,6 +1,6 @@
 import { Box, type Renderable, type VNode } from "@opentui/core"
 
-import type { ShellOverlayLayout } from "../../core/types"
+import type { ShellOverlayLayout } from "../types"
 import { COLORS } from "../theme"
 
 export function renderOverlayBackdrop(opacityHex = "88"): Renderable | VNode<any, any[]> {

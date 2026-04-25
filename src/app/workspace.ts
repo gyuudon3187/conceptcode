@@ -1,7 +1,7 @@
 import { appendFile } from "node:fs/promises"
 import { join } from "node:path"
 
-import type { ShellWorkspaceControllerDeps } from "../core/types"
+import type { ShellWorkspaceControllerDeps } from "agent-tui/types"
 
 const DEBUG_WORKSPACE_TRANSITION = true
 const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")

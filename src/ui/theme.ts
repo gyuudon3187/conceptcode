@@ -1,1 +1,1 @@
-export { COLORS } from "../shell/theme"
+export { COLORS } from "agent-tui/theme"

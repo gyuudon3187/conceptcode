@@ -1,6 +1,6 @@
 import { Box, Text, TextAttributes, type Renderable, ScrollBoxRenderable, type VNode } from "@opentui/core"
 
-import type { ShellInspectorViewModel } from "../../core/types"
+import type { ShellInspectorViewModel } from "../types"
 import { renderOverlayBackdrop, renderOverlayCard } from "./overlay"
 import { COLORS } from "../theme"
 

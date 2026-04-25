@@ -1,4 +1,5 @@
 import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
+import { createScrollBox } from "agent-tui/render/scroll"
 
 import { copyWithStatus } from "./app/clipboard"
 import { createInitialAppState, loadProjectPaths, parseArgs } from "./app/init"
@@ -12,7 +13,6 @@ import { openExternalEditor } from "./platform/editor"
 import { startDummyChatServer } from "./platform/chat"
 import { applyEditorText, openPromptEditor, syncPromptDraft } from "./prompt/editor"
 import { createPromptThreadController } from "./prompt/thread"
-import { createScrollBox } from "./shell/render/scroll"
 import { activeSession } from "./sessions/store"
 import { scrollListForCursor } from "./ui/concepts-list"
 import { repaint } from "./ui/view"

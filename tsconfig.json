@@ -9,9 +9,18 @@
     "resolveJsonModule": true,
     "types": [
       "bun-types"
-    ]
+    ],
+    "paths": {
+      "agent-tui": [
+        "./packages/agent-tui/src/index.ts"
+      ],
+      "agent-tui/*": [
+        "./packages/agent-tui/src/*"
+      ]
+    }
   },
   "include": [
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "packages/**/*.ts"
   ]
 }

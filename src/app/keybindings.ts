@@ -1,8 +1,8 @@
 import { createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
+import { confirmOrCancelCommand, inspectorCommand, moveShellListSelection, sessionModalCommand, sessionModalVisibleRowCount, sharedFocusCommand } from "agent-tui/keybindings"
 
 import { currentPath, scrollMain } from "../core/state"
 import type { AppState, InspectorKind } from "../core/types"
-import { confirmOrCancelCommand, inspectorCommand, moveShellListSelection, sessionModalCommand, sessionModalVisibleRowCount, sharedFocusCommand } from "../shell/keybindings"
 import { handleBrowserKey, handleCtrlCKey } from "./commands"
 import { handleCreateConceptModalKey, removeDraftConcept } from "../concepts/drafts"
 import { acceptPromptSuggestion, applyEditorText, conceptCodePromptSuggestionProvider, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
