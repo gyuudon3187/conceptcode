@@ -238,7 +238,7 @@ Handoff notes for next session:
   - Debug logging still lives locally in both workspace modules; it is structurally optional now but not yet centralized under `src/shell/`.
 - Start Milestone 4 in a fresh session.
 
-### [ ] Milestone 4: Split frame composition from ConceptCode pane content
+### [x] Milestone 4: Split frame composition from ConceptCode pane content
 
 Difficulty: High
 
@@ -293,8 +293,21 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the pane descriptor or callback contract.
-- Record which renderers are still app-specific by design.
+- Already completed in code:
+  - `src/shell/render/frame.ts` now owns reusable workspace frame composition from shell view models plus injected pane descriptors.
+  - `src/shell/render/overlay.ts` now owns reusable overlay backdrop/card primitives used by modal and inspector chrome.
+  - `src/conceptcode-ui/panes.ts` now owns ConceptCode-specific pane bodies including details, concept preview, prompt budget, prompt pane, prompt suggestion overlay content, and transition pane bodies.
+  - `src/conceptcode-ui/overlays.ts` now owns ConceptCode-specific overlay content for the inspector and concept-summary editor while using shell overlay primitives for chrome.
+  - `src/ui/view.ts` now acts as the assembly boundary that wires shell composition to app-owned pane and overlay providers instead of owning both concerns directly.
+- Pane descriptor and shell composition contract introduced this milestone:
+  - `ShellFramePaneDescriptor`
+  - `ShellWorkspaceFrameViewModel`
+  - `ShellOverlayLayout`
+- Renderers still app-specific by design:
+  - concept details, concept preview, prompt budget, prompt suggestion descriptions, and prompt/session content stay under `src/conceptcode-ui/`
+  - inspector preview generation remains app-local in `src/ui/snippet.ts`
+  - transition pane renderer wiring still lives in `src/ui/view.ts`, but pane bodies are injected from the app side
+- Start Milestone 5 in a fresh session.
 
 ### [ ] Milestone 5: Make session shell UI generic while keeping session persistence local
 
