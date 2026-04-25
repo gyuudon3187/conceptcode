@@ -12,6 +12,7 @@ import { openExternalEditor } from "./platform/editor"
 import { startDummyChatServer } from "./platform/chat"
 import { openPromptEditor, syncPromptDraft } from "./prompt/editor"
 import { createPromptThreadController } from "./prompt/thread"
+import { createScrollBox } from "./shell/render/scroll"
 import { activeSession } from "./sessions/store"
 import { scrollListForCursor } from "./ui/concepts-list"
 import { repaint } from "./ui/view"
@@ -37,18 +38,6 @@ function openInspector(state: AppState, kind: InspectorKind): void {
 
 function closeInspector(state: AppState): void {
   state.inspector = null
-}
-
-function createScrollBox(renderer: CliRenderer): ScrollBoxRenderable {
-  const scroll = new ScrollBoxRenderable(renderer, {
-    width: "100%",
-    height: "100%",
-    viewportCulling: false,
-    scrollbarOptions: { showArrows: false },
-  })
-  scroll.verticalScrollBar.visible = false
-  scroll.horizontalScrollBar.visible = false
-  return scroll
 }
 
 async function main(): Promise<void> {
