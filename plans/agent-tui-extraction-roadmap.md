@@ -309,7 +309,7 @@ Handoff notes for next session:
   - transition pane renderer wiring still lives in `src/ui/view.ts`, but pane bodies are injected from the app side
 - Start Milestone 5 in a fresh session.
 
-### [ ] Milestone 5: Make session shell UI generic while keeping session persistence local
+### [x] Milestone 5: Make session shell UI generic while keeping session persistence local
 
 Difficulty: Medium
 
@@ -361,10 +361,22 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the session view model contract.
-- Record which session operations remain intentionally app-owned.
+- Already completed in code:
+  - `src/core/types.ts` now defines reusable shell session modal view models via `ShellSessionListItem` and `ShellSessionModalViewModel`.
+  - `src/shell/render/session-modal.ts` now owns the generic session modal renderer and session-row chrome using shell view models instead of `ChatSession`.
+  - `src/ui/modals.ts` now assembles a shell session modal view model from `SessionModalHostState` and delegates the rendering to the shell session modal renderer.
+  - `src/sessions/commands.ts` now owns app-side session display adapters through `sessionModalEntries(...)` and `sessionModalItem(...)` while keeping session actions and persistence local.
+- Session operations intentionally still app-owned:
+  - `openSessionModal(...)`
+  - `closeSessionModal(...)`
+  - `switchToSession(...)`
+  - `createAndSwitchSession(...)`
+  - `deleteSession(...)`
+  - graph-scoped session persistence via `persistSessions(...)` and the session store
+- The shell session UI no longer depends on ConceptCode-specific storage policy or graph path semantics.
+- Start Milestone 6 in a fresh session.
 
-### [ ] Milestone 6: Split keybindings into shell routing and app commands
+### [x] Milestone 6: Split keybindings into shell routing and app commands
 
 Difficulty: High
 
@@ -419,8 +431,19 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the command boundary.
-- Record any still-mixed key paths that were deferred.
+- Already completed in code:
+  - `src/shell/keybindings.ts` now owns reusable shell key routing helpers for confirm/cancel handling, wraparound session-list navigation, inspector scrolling, focus switching, and viewport-aware session modal row visibility.
+  - `src/core/types.ts` now defines shell command and list-navigation contracts via `ShellKeyCommand` and `ShellListNavigationState`.
+  - `src/app/commands.ts` now owns ConceptCode-specific browser commands such as concept navigation, inspector opening, draft creation/removal prompts, summary editing, path/payload copy behavior, help modal content, and quit/session actions.
+  - `src/app/keybindings.ts` now acts as the wiring boundary that applies shell routing first for generic modal/list/focus cases and delegates app-specific commands through the app command layer.
+- Command boundary introduced this milestone:
+  - shell routing classifies generic key events into command-style intents such as cancel, confirm, move, scroll, create, delete, and toggle-focus
+  - app command handling executes ConceptCode semantics after that routing boundary, especially concept-tree navigation, prompt/session commands, inspectors, clipboard payload behavior, and summary editing
+- Intentionally deferred or still-mixed key paths:
+  - `src/app/keybindings.ts` still owns prompt editor host key handling because the editor host and suggestion semantics remain mixed until Milestone 7.
+  - create-concept modal editing still stays app-local in `src/concepts/drafts.ts`; only generic modal precedence and confirm/cancel routing were extracted here.
+  - quit flow and renderer lifecycle still terminate through app wiring because shutdown, persistence, and prompt-draft sync remain app-owned.
+- Start Milestone 7 in a fresh session.
 
 ### [ ] Milestone 7: Separate prompt editor host from ConceptCode prompt semantics
 
@@ -470,8 +493,12 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the provider contract.
-- Record any remaining places where generic editor code still imports concept or file suggestion logic.
+- When finishing this milestone, update this roadmap in the same session:
+  - change the milestone checkbox from `[ ]` to `[x]`
+  - replace this placeholder handoff section with concrete `Already completed in code:` notes
+  - record the provider contract that was introduced or narrowed
+  - record any remaining places where generic editor code still imports concept or file suggestion logic
+  - say whether the next milestone should start in a fresh session
 
 ### [ ] Milestone 8: Make inspector chrome generic while keeping preview content local
 
@@ -521,7 +548,12 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the preview provider contract.
+- When finishing this milestone, update this roadmap in the same session:
+  - change the milestone checkbox from `[ ]` to `[x]`
+  - replace this placeholder handoff section with concrete `Already completed in code:` notes
+  - record the preview provider contract
+  - record which preview-building semantics remain intentionally app-local
+  - say whether the next milestone should start in a fresh session
 
 ### [ ] Milestone 9: Extract `src/shell/` into `packages/agent-tui`
 
@@ -563,7 +595,12 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the final package entrypoints and any deferred cleanup work.
+- When finishing this milestone, update this roadmap in the same session:
+  - change the milestone checkbox from `[ ]` to `[x]`
+  - replace this placeholder handoff section with concrete `Already completed in code:` notes
+  - record the final package entrypoints and exported surfaces
+  - record any deferred cleanup work or remaining boundary caveats
+  - say whether the next milestone should start in a fresh session
 
 ### [ ] Milestone 10: Stabilization, cleanup, and extraction audit
 
@@ -611,7 +648,12 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record any known follow-up work for a second extraction pass, such as reusable prompt editor enhancements.
+- When finishing this milestone, update this roadmap in the same session:
+  - change the milestone checkbox from `[ ]` to `[x]`
+  - replace this placeholder handoff section with concrete `Already completed in code:` notes
+  - record the audit results and tests added or updated
+  - record any known follow-up work for a second extraction pass, such as reusable prompt editor enhancements
+  - say whether any further cleanup should happen in a fresh session
 
 ## Suggested execution grouping
 

@@ -1,11 +1,12 @@
 import { createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 
-import { applySelectionChange, currentNode, currentPath, cycleConceptNamespaceMode, moveCursor, pageSize, scrollMain, visiblePaths } from "../core/state"
+import { currentPath, scrollMain } from "../core/state"
 import type { AppState, InspectorKind } from "../core/types"
-import { handleCreateConceptModalKey, isDraftConcept, openCreateConceptModal, promptToRemoveDraft, removeDraftConcept } from "../concepts/drafts"
-import { buildClipboardPayload, clipboardSelection } from "../prompt/payload"
-import { acceptPromptSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, openSummaryEditor, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
-import { closeSessionModal, createAndSwitchSession, deleteSession, flushActiveSession, openSessionModal, promptToDeleteSession, sessionModalEntries, switchToSession } from "../sessions/commands"
+import { confirmOrCancelCommand, inspectorCommand, moveShellListSelection, sessionModalCommand, sessionModalVisibleRowCount, sharedFocusCommand } from "../shell/keybindings"
+import { handleBrowserKey, handleCtrlCKey } from "./commands"
+import { handleCreateConceptModalKey, removeDraftConcept } from "../concepts/drafts"
+import { acceptPromptSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
+import { closeSessionModal, createAndSwitchSession, deleteSession, openSessionModal, promptToDeleteSession, sessionModalEntries, switchToSession } from "../sessions/commands"
 
 type PromptEditorDeps = {
   redraw: () => void
@@ -41,12 +42,13 @@ type KeybindingDeps = {
 export function handleConfirmModalKey(state: AppState, key: KeyEvent, deps: Pick<KeybindingDeps, "draw" | "closeConfirmModal">): boolean {
   const modal = state.confirmModal
   if (!modal) return false
-  if (key.name === "escape" || (key.ctrl && key.name === "q")) {
+  const command = confirmOrCancelCommand(key)
+  if (command?.kind === "cancel") {
     deps.closeConfirmModal()
     deps.draw()
     return true
   }
-  if (key.name === "return") {
+  if (command?.kind === "confirm") {
     if (modal.kind === "remove-draft") {
       removeDraftConcept(state, modal.path)
     }
@@ -64,58 +66,30 @@ export async function handleSessionModalKey(state: AppState, key: KeyEvent, deps
   const modal = state.sessionModal
   if (!modal) return false
   const entries = sessionModalEntries(state)
-  const viewportHeight = process.stdout.rows || 24
-  const topMargin = state.layoutMode === "wide" ? 5 : 3
-  const bottomMargin = topMargin
-  const modalHeight = Math.max(8, viewportHeight - topMargin - bottomMargin)
-  const contentHeight = Math.max(1, modalHeight - 6)
-  const visibleRowCount = Math.max(1, Math.floor((contentHeight + 1) / 3))
-  const keepSelectionVisible = (): void => {
-    const maxStart = Math.max(0, entries.length - visibleRowCount)
-    if (modal.selectedIndex < modal.scrollTop) {
-      modal.scrollTop = modal.selectedIndex
-      return
-    }
-    if (modal.selectedIndex >= modal.scrollTop + visibleRowCount) {
-      modal.scrollTop = modal.selectedIndex - visibleRowCount + 1
-    }
-    modal.scrollTop = Math.max(0, Math.min(modal.scrollTop, maxStart))
-  }
-  if (key.name === "escape" || (key.ctrl && key.name === "q")) {
+  const visibleRowCount = sessionModalVisibleRowCount(state.layoutMode, process.stdout.rows || 24)
+  const command = sessionModalCommand(key)
+  if (command?.kind === "cancel") {
     key.preventDefault()
     key.stopPropagation()
     closeSessionModal(state)
     deps.draw()
     return true
   }
-  if (key.name === "j" || key.name === "down") {
+  if (command?.kind === "move") {
     key.preventDefault()
     key.stopPropagation()
-    if (entries.length > 0) {
-      modal.selectedIndex = (modal.selectedIndex + 1) % entries.length
-    }
-    keepSelectionVisible()
+    moveShellListSelection(modal, entries.length, command.delta, visibleRowCount)
     deps.draw()
     return true
   }
-  if (key.name === "k" || key.name === "up") {
-    key.preventDefault()
-    key.stopPropagation()
-    if (entries.length > 0) {
-      modal.selectedIndex = (modal.selectedIndex - 1 + entries.length) % entries.length
-    }
-    keepSelectionVisible()
-    deps.draw()
-    return true
-  }
-  if (key.name === "n") {
+  if (command?.kind === "create") {
     key.preventDefault()
     key.stopPropagation()
     await createAndSwitchSession(state, deps.renderer(), deps.draw, { syncPromptDraft, openPromptEditor: deps.openPromptEditor })
     deps.draw()
     return true
   }
-  if (key.name === "d") {
+  if (command?.kind === "delete") {
     key.preventDefault()
     key.stopPropagation()
     const selected = entries[modal.selectedIndex]
@@ -125,7 +99,7 @@ export async function handleSessionModalKey(state: AppState, key: KeyEvent, deps
     }
     return true
   }
-  if (key.name === "return") {
+  if (command?.kind === "confirm") {
     key.preventDefault()
     key.stopPropagation()
     const selected = entries[modal.selectedIndex]
@@ -144,39 +118,18 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
     const renderer = deps.renderer()
 
     if (key.ctrl && key.name === "c") {
-      key.preventDefault()
-      key.stopPropagation()
-      if (state.editorModal && state.editorModal.renderable.plainText.length > 0) {
-        state.editorModal.renderable.setText("")
-        state.editorModal.renderable.focus()
+      if (state.editorModal) {
         applyEditorText(state, state.editorModal)
         refreshPromptSuggestion(state)
         refreshEditorModalHeight(state)
-        deps.clearCtrlCExitState()
-        deps.draw()
-        return
       }
-      if (state.pendingCtrlCExit) {
-        await flushActiveSession(state, syncPromptDraft)
-        renderer.destroy()
-        process.exit(0)
-      }
-      state.confirmModal = {
-        kind: "remove-draft",
-        title: "Quit",
-        message: ["Press Ctrl+C again to quit, or Esc to stay"],
-        confirmLabel: "dismisses this message",
-        path: currentPath(state),
-      }
-      state.pendingCtrlCExit = true
-      deps.draw()
+      await handleCtrlCKey(key, deps)
       return
     }
 
     if (state.pendingCtrlCExit) {
       state.pendingCtrlCExit = false
     }
-    const visible = visiblePaths(state)
 
     if (state.confirmModal) {
       handleConfirmModalKey(state, key, deps)
@@ -189,18 +142,14 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
       return
     }
     if (state.inspector) {
-      if (key.name === "escape" || key.name === "q") {
+      const command = inspectorCommand(key, Math.max(1, state.mainViewportHeight - 2))
+      if (command?.kind === "cancel") {
         deps.closeInspector()
         deps.draw()
         return
       }
-      if (key.name === "pageup") {
-        scrollMain(state, -Math.max(1, state.mainViewportHeight - 2))
-        deps.draw()
-        return
-      }
-      if (key.name === "pagedown") {
-        scrollMain(state, Math.max(1, state.mainViewportHeight - 2))
+      if (command?.kind === "scroll") {
+        scrollMain(state, command.delta)
         deps.draw()
         return
       }
@@ -234,7 +183,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
         cyclePromptMode(state, deps.draw, deps.refreshPromptTokenBreakdown)
         return
       }
-      if (key.shift && key.name === "tab") {
+      if (sharedFocusCommand(key)?.kind === "toggleFocus") {
         key.preventDefault()
         key.stopPropagation()
         deps.workspace.togglePaneFocus()
@@ -316,144 +265,20 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
       return
     }
 
-    if (key.shift && key.name === "tab") {
+    if (sharedFocusCommand(key)?.kind === "toggleFocus") {
       key.preventDefault()
       key.stopPropagation()
       deps.workspace.togglePaneFocus()
       return
     }
-    if (key.name === "tab") {
-      key.preventDefault()
-      key.stopPropagation()
-      cycleConceptNamespaceMode(state)
-      deps.draw()
-      return
-    }
-    if (key.ctrl && key.name === "s") {
-      openSessionModal(state)
-      deps.draw()
-      return
-    }
-    if (key.name === "s") {
-      deps.openInspector("snippet")
-      deps.draw()
-      return
-    }
-    if (key.name === "t") {
-      deps.openInspector("subtree")
-      deps.draw()
-      return
-    }
-    if (key.name === "m") {
-      deps.openInspector("metadata")
-      deps.draw()
-      return
-    }
-    if (key.name === "q") {
-      await flushActiveSession(state, syncPromptDraft)
-      renderer.destroy()
-      process.exit(0)
-    }
-    if (key.name === "j" || key.name === "down") {
-      if (moveCursor(state, 1)) deps.draw()
-      return
-    }
-    if (key.name === "k" || key.name === "up") {
-      if (moveCursor(state, -1)) deps.draw()
-      return
-    }
-    if (key.name === "pagedown") {
-      if (key.ctrl) {
-        scrollMain(state, Math.max(1, state.mainViewportHeight - 2))
-        deps.draw()
-      } else if (moveCursor(state, pageSize(state.layoutMode))) {
-        deps.draw()
-      }
-      return
-    }
-    if (key.name === "pageup") {
-      if (key.ctrl) {
-        scrollMain(state, -Math.max(1, state.mainViewportHeight - 2))
-        deps.draw()
-      } else if (moveCursor(state, -pageSize(state.layoutMode))) {
-        deps.draw()
-      }
-      return
-    }
-    if (key.name === "home" || key.name === "g") {
-      if (state.cursor !== 0) {
-        state.cursor = 0
-        applySelectionChange(state)
-        deps.draw()
-      }
-      return
-    }
-    if (key.name === "end" || (key.shift && key.name === "g")) {
-      const nextCursor = Math.max(0, visible.length - 1)
-      if (state.cursor !== nextCursor) {
-        state.cursor = nextCursor
-        applySelectionChange(state)
-        deps.draw()
-      }
-      return
-    }
-    if (key.name === "l" || key.name === "right") {
-      const node = currentNode(state)
-      if (node.childPaths.length > 0) {
-        state.currentParentPath = node.path
-        state.cursor = 0
-        applySelectionChange(state)
-        deps.draw()
-      }
-      return
-    }
-    if (key.name === "h" || key.name === "left") {
-      const currentParent = state.nodes.get(state.currentParentPath)!
-      if (currentParent.parentPath !== null) {
-        const oldParent = state.currentParentPath
-        state.currentParentPath = currentParent.parentPath
-        state.cursor = Math.max(0, visiblePaths(state).indexOf(oldParent))
-        applySelectionChange(state)
-        deps.draw()
-      }
-      return
-    }
-    if (key.name === "space") {
-      if (isDraftConcept(state, currentPath(state))) {
-        promptToRemoveDraft(state, currentPath(state))
-        deps.draw()
-      }
-      return
-    }
-    if (key.name === "n") {
-      openCreateConceptModal(state)
-      deps.draw()
-      return
-    }
-    if (key.name === "y") {
-      const selection = clipboardSelection(state, currentPath(state))
-      await deps.copyWithStatus(await buildClipboardPayload(state, currentPath(state)))
-      return
-    }
-    if (key.name === "return") {
-      openSummaryEditor(state, renderer, deps.buildPromptEditorDeps())
-      deps.draw()
-      return
-    }
-    if (key.name === "p") {
-      const path = currentPath(state)
-      await deps.copyWithStatus(path)
-      return
-    }
-    if (key.name === "?" || (key.shift && key.name === "/")) {
-      state.confirmModal = {
-        kind: "remove-draft",
-        title: "Help",
-        message: ["Browse: j/k move  h/l back/open  i prompt  Enter summary  Ctrl+S sessions  s/t/m inspect  y copy  p path  q quit"],
-        confirmLabel: "dismisses help",
-        path: currentPath(state),
-      }
-      deps.draw()
-    }
+    await handleBrowserKey(state, key, {
+      state,
+      renderer: deps.renderer,
+      draw: deps.draw,
+      clearCtrlCExitState: deps.clearCtrlCExitState,
+      copyWithStatus: deps.copyWithStatus,
+      openInspector: deps.openInspector,
+      buildPromptEditorDeps: deps.buildPromptEditorDeps,
+    })
   })
 }

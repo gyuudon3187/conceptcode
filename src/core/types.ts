@@ -323,6 +323,40 @@ export type ShellOverlayLayout = {
   marginLeft?: number
 }
 
+export type ShellSessionListItem = {
+  id: string
+  title: string
+  subtitle: string
+  badge: {
+    label: string
+    color: string
+  }
+  selected: boolean
+}
+
+export type ShellSessionModalViewModel = {
+  layout: ShellOverlayLayout & {
+    height: number
+  }
+  title: string
+  items: ShellSessionListItem[]
+  footerHint: string
+}
+
+export type ShellListNavigationState = {
+  selectedIndex: number
+  scrollTop: number
+}
+
+export type ShellKeyCommand =
+  | { kind: "cancel" }
+  | { kind: "confirm" }
+  | { kind: "move"; delta: number }
+  | { kind: "create" }
+  | { kind: "delete" }
+  | { kind: "scroll"; delta: number }
+  | { kind: "toggleFocus" }
+
 export type ShellWorkspaceFrameViewModel = {
   layoutMode: LayoutMode
   conceptNavigationFocused: boolean
