@@ -1,12 +1,13 @@
 import { Box, Text, TextAttributes, type Renderable, type VNode } from "@opentui/core"
 
-import type { AppState, ChatSession, CreateConceptModalState } from "../core/types"
+import type { AppState, CreateConceptModalState, SessionModalHostState, ShellSessionListItem, ShellSessionModalViewModel } from "../core/types"
+import { sessionModalHostState } from "../core/state"
 import { renderOverlayBackdrop, renderOverlayCard } from "../shell/render/overlay"
-import { sessionActivityAt } from "../sessions/store"
+import { renderSessionModal as renderShellSessionModal } from "../shell/render/session-modal"
+import { sessionModalEntries, sessionModalItem } from "../sessions/commands"
 import { COLORS } from "./theme"
-import { truncateSingleLine } from "./text"
 
-function sessionModalLayout(state: AppState): {
+function sessionModalLayout(state: Pick<SessionModalHostState, "layoutMode">): {
   top: number
   left: number | `${number}%`
   width: number | `${number}%`
@@ -114,45 +115,25 @@ export function renderConfirmModal(state: AppState): Array<Renderable | VNode<an
   ]
 }
 
-function renderSessionModalRow(state: AppState, session: ChatSession, selected: boolean): Renderable | VNode<any, any[]> {
-  const activityAt = sessionActivityAt(session)
-  const mode = session.lastMode === "plan"
-    ? { label: "PLAN", color: COLORS.plan }
-    : session.lastMode === "build"
-      ? { label: "BUILD", color: COLORS.build }
-      : { label: "CONCEPTUALIZE", color: COLORS.conceptualize }
-  return Box(
-    { width: "100%", minHeight: 2, maxHeight: 2, paddingX: 1, backgroundColor: selected ? COLORS.selectedBg : COLORS.panel, flexDirection: "row", justifyContent: "space-between" },
-    Box(
-      { flexDirection: "column", flexGrow: 1, minWidth: 0 },
-      Text({ content: truncateSingleLine(session.title, state.layoutMode === "wide" ? 42 : 28), fg: selected ? COLORS.selectedFg : COLORS.text, attributes: TextAttributes.BOLD }),
-      Text({ content: truncateSingleLine(`${session.messages.filter((message) => message.text.trim()).length} messages  ${activityAt.replace("T", " ").slice(0, 16)}`, state.layoutMode === "wide" ? 42 : 28), fg: selected ? COLORS.selectedFg : COLORS.muted }),
-    ),
-    Text({ content: mode.label, fg: selected ? COLORS.selectedFg : mode.color, attributes: TextAttributes.BOLD }),
-  )
-}
-
-export function renderSessionModal(state: AppState): Array<Renderable | VNode<any, any[]>> {
-  if (!state.sessionModal) return []
-  const sessions = [...state.sessions].sort((left, right) => sessionActivityAt(right).localeCompare(sessionActivityAt(left)))
+function sessionModalViewModel(state: SessionModalHostState): ShellSessionModalViewModel | null {
+  if (!state.sessionModal) return null
+  const selectedIndex = state.sessionModal.selectedIndex
+  const sessions = sessionModalEntries(state)
   const layout = sessionModalLayout(state)
   const contentHeight = Math.max(1, layout.height - 6)
   const visibleRowCount = Math.max(1, Math.floor((contentHeight + 1) / 3))
   const start = Math.max(0, Math.min(state.sessionModal.scrollTop, Math.max(0, sessions.length - visibleRowCount)))
   const visibleSessions = sessions.slice(start, start + visibleRowCount)
-  return [
-    renderOverlayBackdrop(),
-    renderOverlayCard(
-      layout,
-      [
-        Text({ content: "Sessions", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
-        Box(
-          { width: "100%", flexGrow: 1, minHeight: 0, flexDirection: "column", gap: 1 },
-          ...visibleSessions.map((session, index) => renderSessionModalRow(state, session, start + index === state.sessionModal?.selectedIndex)),
-        ),
-        Text({ content: sessions.length > 1 ? "Enter -> Switch  n -> New  d -> Delete  Esc -> Close" : "Enter -> Switch  n -> New  Esc -> Close", fg: COLORS.muted }),
-      ],
-      { backgroundColor: COLORS.panelSoft },
-    ),
-  ]
+  const items: ShellSessionListItem[] = visibleSessions.map((session, index) => sessionModalItem(session, start + index === selectedIndex))
+  return {
+    layout,
+    title: "Sessions",
+    items,
+    footerHint: sessions.length > 1 ? "Enter -> Switch  n -> New  d -> Delete  Esc -> Close" : "Enter -> Switch  n -> New  Esc -> Close",
+  }
+}
+
+export function renderSessionModal(state: AppState): Array<Renderable | VNode<any, any[]>> {
+  const hostState = sessionModalHostState(state)
+  return renderShellSessionModal(hostState.layoutMode, sessionModalViewModel(hostState))
 }
