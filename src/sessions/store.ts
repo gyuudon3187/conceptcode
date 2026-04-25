@@ -35,6 +35,12 @@ function normalizeMessages(messages: PromptMessage[]): PromptMessage[] {
   })))
 }
 
+function lastCommittedMessageTimestamp(session: ChatSession): string | null {
+  const committedMessages = session.messages.filter((message) => message.id && message.text.trim())
+  const latestMessage = committedMessages.at(-1)
+  return latestMessage?.createdAt ?? null
+}
+
 function isSessionEmpty(session: ChatSession): boolean {
   const meaningfulMessages = session.messages.filter((message) => message.text.trim())
   return meaningfulMessages.length === 0 && session.draftPromptText.trim().length === 0
@@ -48,7 +54,7 @@ function summarizeSession(session: ChatSession): ChatSessionSummary {
   return {
     id: session.id,
     title: session.title,
-    updatedAt: session.updatedAt,
+    updatedAt: lastCommittedMessageTimestamp(session) ?? session.updatedAt,
     messageCount: session.messages.filter((message) => message.text.trim()).length,
     lastMode: session.lastMode,
   }
@@ -80,7 +86,7 @@ export function syncSessionMetadata(session: ChatSession): void {
   session.messages = normalizeMessages(session.messages)
   session.draftPromptText = session.messages.at(-1)?.role === "user" ? (session.messages.at(-1)?.text ?? "") : session.draftPromptText
   session.title = sessionTitleFromMessages(session.messages)
-  session.updatedAt = nowIso()
+  session.updatedAt = lastCommittedMessageTimestamp(session) ?? session.updatedAt
 }
 
 function sessionRootDir(jsonPath: string): string {
@@ -128,7 +134,7 @@ export async function loadSessions(jsonPath: string, defaultMode: UiMode): Promi
     .map(async (entry) => readJsonFile<ChatSession>(join(root, entry.name)))))
     .filter((session): session is ChatSession => Boolean(session))
     .map((session) => normalizeSession(session, jsonPath))
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .sort((left, right) => (lastCommittedMessageTimestamp(right) ?? right.updatedAt).localeCompare(lastCommittedMessageTimestamp(left) ?? left.updatedAt))
 
   if (sessions.length === 0) {
     const session = createEmptySession(jsonPath, defaultMode)
@@ -171,6 +177,10 @@ export async function saveSessions(jsonPath: string, sessions: ChatSession[], ac
     sessions: persistedSessions.map((session) => summarizeSession(session)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
   }
   await writeFile(indexFilePath(jsonPath), `${JSON.stringify(index, null, 2)}\n`, "utf8")
+}
+
+export function sessionActivityAt(session: ChatSession): string {
+  return lastCommittedMessageTimestamp(session) ?? session.updatedAt
 }
 
 export function createNamedSession(graphPath: string, mode: UiMode, baseTitle?: string): ChatSession {

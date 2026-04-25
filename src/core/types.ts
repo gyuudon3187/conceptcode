@@ -90,6 +90,7 @@ export type PromptMessage = {
   id?: string
   text: string
   role: "user" | "assistant"
+  createdAt?: string
   mode?: UiMode
   status?: "streaming" | "complete" | "error"
   provider?: string
@@ -156,12 +157,19 @@ export type CreateConceptModalState = {
 }
 
 export type ConfirmModalState =
-  {
+  | {
       kind: "remove-draft"
       title: string
       message: string[]
       confirmLabel: string
       path: string
+    }
+  | {
+      kind: "delete-session"
+      title: string
+      message: string[]
+      confirmLabel: string
+      sessionId: string
     }
 
 export type SessionModalState = {

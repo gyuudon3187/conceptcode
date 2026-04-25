@@ -195,10 +195,11 @@ export function createPromptThreadController() {
     const userMessageId = `msg_${crypto.randomUUID()}`
     const assistantMessageId = `msg_${crypto.randomUUID()}`
     const draftMessageId = `msg_${crypto.randomUUID()}`
-    session.messages[currentDraftIndex] = { id: userMessageId, text: currentText, role: "user", mode: state.uiMode, status: "complete" }
+    const submittedAt = new Date().toISOString()
+    session.messages[currentDraftIndex] = { id: userMessageId, text: currentText, role: "user", createdAt: submittedAt, mode: state.uiMode, status: "complete" }
     session.messages = [
       ...session.messages,
-      { id: assistantMessageId, text: "", role: "assistant", status: "streaming", provider: "dummy-local" },
+      { id: assistantMessageId, text: "", role: "assistant", createdAt: submittedAt, status: "streaming", provider: "dummy-local" },
       { id: draftMessageId, text: "", role: "user", status: "complete" },
     ]
     session.draftPromptText = ""

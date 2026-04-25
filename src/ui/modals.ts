@@ -1,6 +1,7 @@
 import { Box, Text, TextAttributes, type Renderable, type VNode } from "@opentui/core"
 
 import type { AppState, ChatSession, CreateConceptModalState } from "../core/types"
+import { sessionActivityAt } from "../sessions/store"
 import { COLORS } from "./theme"
 import { truncateSingleLine } from "./text"
 
@@ -97,6 +98,7 @@ export function renderConfirmModal(state: AppState): Array<Renderable | VNode<an
 }
 
 function renderSessionModalRow(state: AppState, session: ChatSession, selected: boolean): Renderable | VNode<any, any[]> {
+  const activityAt = sessionActivityAt(session)
   const mode = session.lastMode === "plan"
     ? { label: "PLAN", color: COLORS.plan }
     : session.lastMode === "build"
@@ -107,7 +109,7 @@ function renderSessionModalRow(state: AppState, session: ChatSession, selected: 
     Box(
       { flexDirection: "column", flexGrow: 1, minWidth: 0 },
       Text({ content: truncateSingleLine(session.title, state.layoutMode === "wide" ? 42 : 28), fg: selected ? COLORS.selectedFg : COLORS.text, attributes: TextAttributes.BOLD }),
-      Text({ content: truncateSingleLine(`${session.messages.filter((message) => message.text.trim()).length} messages  ${session.updatedAt.replace("T", " ").slice(0, 16)}`, state.layoutMode === "wide" ? 42 : 28), fg: selected ? COLORS.selectedFg : COLORS.muted }),
+      Text({ content: truncateSingleLine(`${session.messages.filter((message) => message.text.trim()).length} messages  ${activityAt.replace("T", " ").slice(0, 16)}`, state.layoutMode === "wide" ? 42 : 28), fg: selected ? COLORS.selectedFg : COLORS.muted }),
     ),
     Text({ content: mode.label, fg: selected ? COLORS.selectedFg : mode.color, attributes: TextAttributes.BOLD }),
   )
@@ -115,7 +117,7 @@ function renderSessionModalRow(state: AppState, session: ChatSession, selected: 
 
 export function renderSessionModal(state: AppState): Array<Renderable | VNode<any, any[]>> {
   if (!state.sessionModal) return []
-  const sessions = [...state.sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  const sessions = [...state.sessions].sort((left, right) => sessionActivityAt(right).localeCompare(sessionActivityAt(left)))
   const layout = sessionModalLayout(state)
   const contentHeight = Math.max(1, layout.height - 6)
   const visibleRowCount = Math.max(1, Math.floor((contentHeight + 1) / 3))
@@ -130,7 +132,7 @@ export function renderSessionModal(state: AppState): Array<Renderable | VNode<an
         { width: "100%", flexGrow: 1, minHeight: 0, flexDirection: "column", gap: 1 },
         ...visibleSessions.map((session, index) => renderSessionModalRow(state, session, start + index === state.sessionModal?.selectedIndex)),
       ),
-      Text({ content: "Enter -> Switch  n -> New  Esc -> Close", fg: COLORS.muted }),
+      Text({ content: sessions.length > 1 ? "Enter -> Switch  n -> New  d -> Delete  Esc -> Close" : "Enter -> Switch  n -> New  Esc -> Close", fg: COLORS.muted }),
     ),
   ]
 }

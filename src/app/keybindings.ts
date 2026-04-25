@@ -5,7 +5,7 @@ import type { AppState, InspectorKind } from "../core/types"
 import { handleCreateConceptModalKey, isDraftConcept, openCreateConceptModal, promptToRemoveDraft, removeDraftConcept } from "../concepts/drafts"
 import { buildClipboardPayload, clipboardSelection } from "../prompt/payload"
 import { acceptPromptSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, openSummaryEditor, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
-import { closeSessionModal, createAndSwitchSession, flushActiveSession, openSessionModal, sessionModalEntries, switchToSession } from "../sessions/commands"
+import { closeSessionModal, createAndSwitchSession, deleteSession, flushActiveSession, openSessionModal, promptToDeleteSession, sessionModalEntries, switchToSession } from "../sessions/commands"
 
 type PromptEditorDeps = {
   redraw: () => void
@@ -47,7 +47,12 @@ export function handleConfirmModalKey(state: AppState, key: KeyEvent, deps: Pick
     return true
   }
   if (key.name === "return") {
-    removeDraftConcept(state, modal.path)
+    if (modal.kind === "remove-draft") {
+      removeDraftConcept(state, modal.path)
+    }
+    if (modal.kind === "delete-session") {
+      void deleteSession(state, modal.sessionId)
+    }
     deps.closeConfirmModal()
     deps.draw()
     return true
@@ -86,7 +91,9 @@ export async function handleSessionModalKey(state: AppState, key: KeyEvent, deps
   if (key.name === "j" || key.name === "down") {
     key.preventDefault()
     key.stopPropagation()
-    modal.selectedIndex = Math.min(entries.length - 1, modal.selectedIndex + 1)
+    if (entries.length > 0) {
+      modal.selectedIndex = (modal.selectedIndex + 1) % entries.length
+    }
     keepSelectionVisible()
     deps.draw()
     return true
@@ -94,7 +101,9 @@ export async function handleSessionModalKey(state: AppState, key: KeyEvent, deps
   if (key.name === "k" || key.name === "up") {
     key.preventDefault()
     key.stopPropagation()
-    modal.selectedIndex = Math.max(0, modal.selectedIndex - 1)
+    if (entries.length > 0) {
+      modal.selectedIndex = (modal.selectedIndex - 1 + entries.length) % entries.length
+    }
     keepSelectionVisible()
     deps.draw()
     return true
@@ -104,6 +113,16 @@ export async function handleSessionModalKey(state: AppState, key: KeyEvent, deps
     key.stopPropagation()
     await createAndSwitchSession(state, deps.renderer(), deps.draw, { syncPromptDraft, openPromptEditor: deps.openPromptEditor })
     deps.draw()
+    return true
+  }
+  if (key.name === "d") {
+    key.preventDefault()
+    key.stopPropagation()
+    const selected = entries[modal.selectedIndex]
+    if (selected && entries.length > 1) {
+      promptToDeleteSession(state, selected)
+      deps.draw()
+    }
     return true
   }
   if (key.name === "return") {

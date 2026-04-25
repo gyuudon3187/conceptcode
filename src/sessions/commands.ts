@@ -1,13 +1,13 @@
 import type { CliRenderer } from "@opentui/core"
 
 import type { AppState, ChatSession, EditorModalState } from "../core/types"
-import { activeSession, createNamedSession, saveSessions, syncSessionMetadata } from "./store"
+import { activeSession, createNamedSession, saveSessions, sessionActivityAt, syncSessionMetadata } from "./store"
 
 type SyncPromptDraft = (state: AppState, editor: EditorModalState) => void
 type OpenPromptEditor = (state: AppState, renderer: CliRenderer, redraw: () => void) => void
 
 export function sessionModalEntries(state: AppState): ChatSession[] {
-  return [...state.sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  return [...state.sessions].sort((left, right) => sessionActivityAt(right).localeCompare(sessionActivityAt(left)))
 }
 
 export function openSessionModal(state: AppState): void {
@@ -26,11 +26,46 @@ export function closeSessionModal(state: AppState): void {
   }
 }
 
+export function promptToDeleteSession(state: AppState, session: ChatSession): void {
+  state.confirmModal = {
+    kind: "delete-session",
+    title: "Delete Session",
+    message: [`Delete session \"${session.title}\"?`, "This permanently removes the saved chat history for this session."],
+    confirmLabel: "deletes this session",
+    sessionId: session.id,
+  }
+}
+
 export async function persistSessions(state: AppState): Promise<void> {
   for (const session of state.sessions) {
     syncSessionMetadata(session)
   }
   await saveSessions(state.jsonPath, state.sessions, state.activeSessionId)
+}
+
+export async function deleteSession(state: AppState, sessionId: string): Promise<void> {
+  const existingIndex = state.sessions.findIndex((session) => session.id === sessionId)
+  if (existingIndex === -1) return
+  if (state.sessions.length <= 1) return
+  const deletingActive = state.activeSessionId === sessionId
+  state.sessions.splice(existingIndex, 1)
+  if (state.sessionModal) {
+    const entries = sessionModalEntries(state)
+    state.sessionModal.selectedIndex = Math.max(0, Math.min(state.sessionModal.selectedIndex, entries.length - 1))
+    state.sessionModal.scrollTop = Math.max(0, Math.min(state.sessionModal.scrollTop, entries.length - 1))
+  }
+  if (deletingActive) {
+    const fallback = state.sessions[Math.max(0, Math.min(existingIndex, state.sessions.length - 1))]
+    if (fallback) {
+      state.activeSessionId = fallback.id
+      state.uiMode = fallback.lastMode
+      state.activeResponseId = null
+      state.activeAssistantMessageId = null
+      state.promptScrollTop = Number.MAX_SAFE_INTEGER
+      state.editorModal = null
+    }
+  }
+  await persistSessions(state)
 }
 
 type SessionFlowDeps = {
