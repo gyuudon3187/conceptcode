@@ -2,7 +2,7 @@ import { type Renderable, type VNode, Box, ScrollBoxRenderable, Text, TextAttrib
 
 import { currentNode, namespaceRootPath } from "../core/state"
 import type { AppState } from "../core/types"
-import { visiblePromptSuggestions, slashSuggestionDescription } from "../prompt/editor"
+import { conceptCodePromptSuggestionProvider, visiblePromptSuggestions } from "../prompt/editor"
 import { activeSession } from "../sessions/store"
 import { COLORS } from "../ui/theme"
 import { promptPreviewChunks, promptPreviewLines, promptPreviewWidth, textNodesForChunks, truncateSingleLine } from "../ui/text"
@@ -242,34 +242,36 @@ export function renderPromptBudgetPane(state: AppState): Renderable | VNode<any,
 export function renderPromptSuggestionOverlay(state: AppState): Array<Renderable | VNode<any, any[]>> {
   if (!(state.editorModal?.target.kind === "prompt" && state.editorModal.promptSuggestion)) return []
   const promptSuggestion = state.editorModal.promptSuggestion
-  const { visible: suggestions, selectedValue } = visiblePromptSuggestions(state, promptSuggestion)
+  const provider = conceptCodePromptSuggestionProvider(state)
+  const { visible: suggestions, selectedEntry } = visiblePromptSuggestions(provider, promptSuggestion)
+  const selectedValue = selectedEntry?.value ?? null
   const selectedPath = selectedValue?.startsWith("@") ? selectedValue.slice(1) : null
   const selectedSummary = selectedPath ? state.nodes.get(selectedPath)?.summary?.trim() : ""
   return [
     Box(
       { position: "absolute", bottom: 7, right: state.layoutMode === "wide" ? 2 : 1, width: state.layoutMode === "wide" ? 72 : "94%", padding: 1, backgroundColor: COLORS.panel, borderStyle: "rounded", borderColor: COLORS.warning, flexDirection: "column", gap: 1 },
-      ...suggestions.map((value) => {
+      ...suggestions.map((entry) => {
+        const value = entry.value
         const selected = value === selectedValue
         if (value.startsWith("/")) {
           return Box(
             { width: "100%", paddingX: 1, backgroundColor: selected ? COLORS.selectedBg : "#171d22", flexDirection: "column" },
             Text({ content: value, fg: selected ? COLORS.selectedFg : COLORS.accent, attributes: TextAttributes.BOLD }),
-            Text({ content: selected ? slashSuggestionDescription(state, value) : truncateSingleLine(slashSuggestionDescription(state, value), state.layoutMode === "wide" ? 56 : 36), fg: selected ? COLORS.selectedFg : COLORS.muted }),
+            Text({ content: selected ? (entry.description ?? "Command or skill") : truncateSingleLine(entry.description ?? "Command or skill", state.layoutMode === "wide" ? 56 : 36), fg: selected ? COLORS.selectedFg : COLORS.muted }),
           )
         }
         if (value.startsWith("&")) {
-          const path = value.slice(1)
-          const isDirectory = state.projectDirectories.includes(path)
+          const referenceDescription = entry.description ?? "File reference"
           return Box(
             { width: "100%", paddingX: 1, backgroundColor: selected ? COLORS.selectedBg : "#171d22", flexDirection: "column" },
             Text({ content: value, fg: selected ? COLORS.selectedFg : COLORS.accent, attributes: TextAttributes.BOLD }),
-            Text({ content: selected ? (isDirectory ? "Directory reference" : "File reference") : truncateSingleLine(isDirectory ? "Directory reference" : "File reference", state.layoutMode === "wide" ? 56 : 36), fg: selected ? COLORS.selectedFg : COLORS.muted }),
+            Text({ content: selected ? referenceDescription : truncateSingleLine(referenceDescription, state.layoutMode === "wide" ? 56 : 36), fg: selected ? COLORS.selectedFg : COLORS.muted }),
           )
         }
         return Box(
           { width: "100%", paddingX: 1, backgroundColor: selected ? COLORS.selectedBg : "#171d22", flexDirection: "column" },
           Text({ content: value, fg: selected ? COLORS.selectedFg : COLORS.warning, attributes: TextAttributes.BOLD }),
-          Text({ content: selected ? (selectedSummary || "No summary for this concept yet.") : truncateSingleLine(state.nodes.get(value.slice(1))?.summary ?? "", state.layoutMode === "wide" ? 56 : 36), fg: selected ? COLORS.selectedFg : COLORS.muted }),
+          Text({ content: selected ? (selectedSummary || entry.description || "No summary for this concept yet.") : truncateSingleLine(entry.description ?? "", state.layoutMode === "wide" ? 56 : 36), fg: selected ? COLORS.selectedFg : COLORS.muted }),
         )
       }),
     ),

@@ -5,7 +5,7 @@ import type { AppState, InspectorKind } from "../core/types"
 import { confirmOrCancelCommand, inspectorCommand, moveShellListSelection, sessionModalCommand, sessionModalVisibleRowCount, sharedFocusCommand } from "../shell/keybindings"
 import { handleBrowserKey, handleCtrlCKey } from "./commands"
 import { handleCreateConceptModalKey, removeDraftConcept } from "../concepts/drafts"
-import { acceptPromptSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
+import { acceptPromptSuggestion, applyEditorText, conceptCodePromptSuggestionProvider, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
 import { closeSessionModal, createAndSwitchSession, deleteSession, openSessionModal, promptToDeleteSession, sessionModalEntries, switchToSession } from "../sessions/commands"
 
 type PromptEditorDeps = {
@@ -116,11 +116,12 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
   deps.renderer().keyInput.on("keypress", async (key: KeyEvent) => {
     const { state } = deps
     const renderer = deps.renderer()
+    const promptSuggestionProvider = conceptCodePromptSuggestionProvider(state)
 
     if (key.ctrl && key.name === "c") {
       if (state.editorModal) {
         applyEditorText(state, state.editorModal)
-        refreshPromptSuggestion(state)
+        refreshPromptSuggestion(state, promptSuggestionProvider)
         refreshEditorModalHeight(state)
       }
       await handleCtrlCKey(key, deps)
@@ -222,7 +223,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
           state.editorModal.renderable.setText(nextText)
           state.editorModal.renderable.gotoBufferEnd()
           state.editorModal.renderable.focus()
-          refreshPromptSuggestion(state)
+          refreshPromptSuggestion(state, promptSuggestionProvider)
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           try {
@@ -242,25 +243,25 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
         return
       }
       if (state.editorModal.promptSuggestion && (key.name === "down" || (key.ctrl && key.name === "n"))) {
-        movePromptSuggestionSelection(state, 1)
+        movePromptSuggestionSelection(state, 1, promptSuggestionProvider)
         deps.draw()
         return
       }
       if (state.editorModal.promptSuggestion && (key.name === "up" || (key.ctrl && key.name === "p"))) {
-        movePromptSuggestionSelection(state, -1)
+        movePromptSuggestionSelection(state, -1, promptSuggestionProvider)
         deps.draw()
         return
       }
       if (state.editorModal.promptSuggestion && key.name === "return") {
         key.preventDefault()
         key.stopPropagation()
-        if (acceptPromptSuggestion(state)) {
+        if (acceptPromptSuggestion(state, promptSuggestionProvider)) {
           deps.draw()
         }
         return
       }
       applyEditorText(state, state.editorModal)
-      refreshPromptSuggestionSoon(state, deps.draw)
+      refreshPromptSuggestionSoon(state, deps.draw, promptSuggestionProvider)
       deps.draw()
       return
     }
