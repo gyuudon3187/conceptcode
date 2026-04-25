@@ -3,22 +3,8 @@ import type { TextareaRenderable } from "@opentui/core"
 import type { RGBA } from "@opentui/core"
 import type {
   LayoutMode,
-  ShellFramePaneDescriptor,
-  ShellInspectorLegendItem,
-  ShellInspectorViewModel,
-  ShellKeyCommand,
-  ShellListNavigationState,
-  ShellOverlayLayout,
-  ShellSessionListItem,
-  ShellSessionModalViewModel,
-  ShellViewportState,
-  ShellWorkspaceControllerDeps,
-  ShellWorkspaceControllerState,
-  ShellWorkspaceFrameViewModel,
   ShellWorkspaceState,
-  ShellWorkspaceTransitionViewState,
   UiLayoutConfig,
-  WorkspaceFocus,
   WorkspaceTransitionState,
 } from "agent-tui/types"
 import type { EffectivePromptTokenBreakdown } from "../prompt/payload"
@@ -251,7 +237,7 @@ export type PromptEditorUiState = {
   promptTokenBreakdown: EffectivePromptTokenBreakdown
 }
 
-export type ShellWorkspaceUiState = {
+export type WorkspaceUiState = {
   layoutMode: LayoutMode
   uiLayoutConfig: UiLayoutConfig
   conceptNavigationFocused: boolean
@@ -277,16 +263,16 @@ export type SessionChatState = {
 }
 
 export type PromptEditorHostState = Pick<
-  ShellWorkspaceUiState,
+  WorkspaceUiState,
   "layoutMode" | "mainScrollTop" | "mainViewportHeight" | "promptPaneRatio" | "promptPaneTargetRatio" | "promptPaneMode" | "promptScrollTop" | "promptViewportHeight"
 > &
   Pick<SessionChatState, "sessions" | "activeSessionId"> &
   PromptEditorUiState
 
-export type SessionModalHostState = Pick<ShellWorkspaceUiState, "layoutMode"> & Pick<SessionChatState, "sessions" | "activeSessionId"> & Pick<ModalTransientState, "sessionModal">
+export type SessionModalHostState = Pick<WorkspaceUiState, "layoutMode"> & Pick<SessionChatState, "sessions" | "activeSessionId"> & Pick<ModalTransientState, "sessionModal">
 
 export type AppState = ConceptGraphState &
   ModalTransientState &
   PromptEditorUiState &
-  ShellWorkspaceUiState &
+  WorkspaceUiState &
   SessionChatState

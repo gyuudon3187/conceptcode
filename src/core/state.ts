@@ -10,7 +10,7 @@ import type {
   PromptEditorUiState,
   SessionChatState,
   SessionModalHostState,
-  ShellWorkspaceUiState,
+  WorkspaceUiState,
 } from "./types"
 
 export function conceptGraphState(state: AppState): ConceptGraphState {
@@ -25,7 +25,7 @@ export function promptEditorHostState(state: AppState): PromptEditorHostState {
   return state
 }
 
-export function shellWorkspaceUiState(state: AppState): ShellWorkspaceUiState {
+export function workspaceUiState(state: AppState): WorkspaceUiState {
   return state
 }
 
@@ -88,7 +88,7 @@ export function scrollMain(state: AppState, delta: number): void {
 }
 
 export function handleResize(state: AppState, width: number): void {
-  shellWorkspaceUiState(state).layoutMode = width >= 120 ? "wide" : "narrow"
+  workspaceUiState(state).layoutMode = width >= 120 ? "wide" : "narrow"
 }
 
 export function moveCursor(state: AppState, delta: number): boolean {

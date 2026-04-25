@@ -9,7 +9,7 @@ import type {
   ModalTransientState,
   PromptEditorUiState,
   SessionChatState,
-  ShellWorkspaceUiState,
+  WorkspaceUiState,
 } from "../core/types"
 import { createSseChatTransport } from "../platform/chat"
 import { EMPTY_PROMPT_TOKEN_BREAKDOWN } from "../prompt/payload"
@@ -124,7 +124,7 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     contextLegendItems: [],
     promptTokenBreakdown: EMPTY_PROMPT_TOKEN_BREAKDOWN,
   }
-  const shellWorkspaceUiState: ShellWorkspaceUiState = {
+  const workspaceUiState: WorkspaceUiState = {
     layoutMode: "wide",
     uiLayoutConfig: resolvedUiLayoutConfig,
     conceptNavigationFocused: false,
@@ -149,7 +149,7 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     ...conceptGraphState,
     ...modalTransientState,
     ...promptEditorUiState,
-    ...shellWorkspaceUiState,
+    ...workspaceUiState,
     ...sessionChatState,
   }
   return state

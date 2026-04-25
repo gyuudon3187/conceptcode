@@ -5,7 +5,7 @@ import type { ShellWorkspaceFrameViewModel, WorkspaceFocus } from "agent-tui/typ
 
 import { currentNode } from "../core/state"
 import type { AppState } from "../core/types"
-import { shellWorkspaceUiState } from "../core/state"
+import { workspaceUiState } from "../core/state"
 import { inspectorOverlayViewModel, renderAppOverlays } from "../conceptcode-ui/overlays"
 import { activeSession } from "../sessions/store"
 import { renderConceptPreviewPane, renderDetailsPane, renderDetailsTransitionBody, renderPromptBudgetPane, renderPromptPane, renderPromptPreviewPane, renderPromptSuggestionOverlay, renderSessionTransitionBody } from "../conceptcode-ui/panes"
@@ -86,7 +86,7 @@ function renderConceptsPaneContent(state: AppState, listScroll: ScrollBoxRendera
 
 
 function renderTransitionPaneContent(state: AppState, focus: WorkspaceFocus, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): WorkspaceRects & { sessionNode: Renderable | VNode<any, any[]>; contextNode: Renderable | VNode<any, any[]>; conceptPreviewNode: Renderable | VNode<any, any[]>; detailsNode: Renderable | VNode<any, any[]>; conceptsNode: Renderable | VNode<any, any[]> } | null {
-  const rects = workspaceRects(shellWorkspaceUiState(state), currentViewport())
+  const rects = workspaceRects(workspaceUiState(state), currentViewport())
   if (!rects) return null
   return renderTransitionPaneContentWithRects(state, focus, rects, listScroll, mainScroll, promptScroll)
 }
@@ -105,7 +105,7 @@ function renderTransitionPaneContentWithRects(state: AppState, focus: WorkspaceF
 
 
 function frameViewModel(state: AppState): ShellWorkspaceFrameViewModel {
-  const geometry = wideWorkspaceGeometry(shellWorkspaceUiState(state), currentViewport())
+  const geometry = wideWorkspaceGeometry(workspaceUiState(state), currentViewport())
   return {
     layoutMode: state.layoutMode,
     conceptNavigationFocused: state.conceptNavigationFocused,
@@ -131,7 +131,7 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   overlays.push(...renderSessionModal(state))
   overlays.push(...renderConfirmModal(state))
   overlays.push(...renderWorkspaceTransitionOverlay(state, {
-    shellState: shellWorkspaceUiState(state),
+      shellState: workspaceUiState(state),
     viewport: currentViewport(),
     listScroll,
     mainScroll,

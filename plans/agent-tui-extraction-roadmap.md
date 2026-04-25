@@ -745,6 +745,8 @@ Handoff notes for next session:
   - decide whether to remove or narrow the compatibility re-exports in `src/core/types.ts`
   - decide whether `src/ui/workspace-transition.ts` should move into the package once pane-render callback contracts are generic enough
   - decide whether prompt token parsing/highlighting should be extracted beyond the current provider boundary
+- Naming cleanup completed after Milestone 10:
+  - `src/core/types.ts` now uses `WorkspaceUiState` for the app-local state slice name instead of `ShellWorkspaceUiState` to avoid implying that this wrapper type lives in the extracted package.
 - Further cleanup should happen in a fresh session if pursued; Milestone 10 itself is complete.
 
 ## Suggested execution grouping
