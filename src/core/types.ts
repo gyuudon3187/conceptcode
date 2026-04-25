@@ -200,10 +200,10 @@ export type SessionModalState = {
   scrollTop: number
 }
 
-// Internal ownership boundary for the future shell extraction:
+// Internal ownership boundary after the local shell extraction:
 // - App-owned state keeps concept graph semantics, prompt semantics, sessions, and inspectors.
-// - Shell-owned state is expected to absorb layout, workspace chrome, and modal primitives.
-// This milestone keeps the runtime AppState flat, but names the slices explicitly so new
+// - Extracted shell contracts live in `agent-tui`, while app-local state keeps the runtime flat.
+// This keeps the runtime `AppState` flat, but names the slices explicitly so new
 // code can depend on narrower contracts instead of the full state object.
 export type ConceptGraphState = {
   jsonPath: string
@@ -251,8 +251,6 @@ export type WorkspaceUiState = {
   mainScrollTop: number
   workspaceTransition: WorkspaceTransitionState | null
 }
-
-export type ShellPaneRegion = "main" | "supportTop" | "supportBottom" | "session" | "overlay"
 
 export type SessionChatState = {
   sessions: ChatSession[]
