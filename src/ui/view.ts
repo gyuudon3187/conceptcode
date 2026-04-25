@@ -2,6 +2,7 @@ import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, Text
 
 import { currentNode, currentPath, namespaceRootPath, visiblePaths } from "../core/state"
 import type { AppState, ChatSession, CreateConceptModalState, ListLine, WorkspaceFocus } from "../core/types"
+import { shellWorkspaceUiState } from "../core/state"
 import { slashSuggestionDescription, visiblePromptSuggestions } from "../prompt/editor"
 import { activeSession } from "../sessions/store"
 import { renderConceptList } from "./concepts-list"
@@ -10,6 +11,13 @@ import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, build
 import { COLORS } from "./theme"
 import { promptPreviewChunks, promptPreviewLines, promptPreviewWidth, textNodesForChunks, truncateFromStart, truncateSingleLine } from "./text"
 import { renderWorkspaceTransitionOverlay, rightAlignedLeft, wideWorkspaceGeometry, workspaceRects, type PaneRect, type WorkspaceRects } from "./workspace-transition"
+
+function currentViewport() {
+  return {
+    width: process.stdout.columns || 120,
+    height: process.stdout.rows || 36,
+  }
+}
 
 function maxVisibleAliasSuggestions(): number {
   const viewportHeight = process.stdout.rows || 24
@@ -319,7 +327,7 @@ function renderConceptsPaneContent(state: AppState, listScroll: ScrollBoxRendera
 
 
 function renderTransitionPaneContent(state: AppState, focus: WorkspaceFocus, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): WorkspaceRects & { sessionNode: Renderable | VNode<any, any[]>; contextNode: Renderable | VNode<any, any[]>; conceptPreviewNode: Renderable | VNode<any, any[]>; detailsNode: Renderable | VNode<any, any[]>; conceptsNode: Renderable | VNode<any, any[]> } | null {
-  const rects = workspaceRects(state)
+  const rects = workspaceRects(shellWorkspaceUiState(state), currentViewport())
   if (!rects) return null
   return renderTransitionPaneContentWithRects(state, focus, rects, listScroll, mainScroll, promptScroll)
 }
@@ -373,7 +381,7 @@ function renderInspectorOverlay(state: AppState, mainScroll: ScrollBoxRenderable
 }
 
 export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): Renderable | VNode<any, any[]> {
-  const geometry = wideWorkspaceGeometry(state)
+  const geometry = wideWorkspaceGeometry(shellWorkspaceUiState(state), currentViewport())
   const promptPaneWidth = geometry?.promptPaneWidth ?? null
   const sidebarWidth = geometry?.sidebarWidth ?? null
   const promptFocused = state.editorModal?.target.kind === "prompt" && state.editorModal.renderable.focused
@@ -454,7 +462,14 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   overlays.push(...renderSessionModal(state))
   overlays.push(...renderConfirmModal(state))
   overlays.push(...renderInspectorOverlay(state, mainScroll))
-  overlays.push(...renderWorkspaceTransitionOverlay(state, listScroll, mainScroll, promptScroll, renderTransitionPaneContentWithRects))
+  overlays.push(...renderWorkspaceTransitionOverlay(state, {
+    shellState: shellWorkspaceUiState(state),
+    viewport: currentViewport(),
+    listScroll,
+    mainScroll,
+    promptScroll,
+    renderTransitionPaneContentWithRects,
+  }))
 
   return Box(
     { width: "100%", height: "100%", flexDirection: "column", backgroundColor: COLORS.bg, padding: 1, gap: 1 },

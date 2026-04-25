@@ -117,34 +117,24 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     workspaceTransitionTimeout: null,
   }
   const promptEditorUiState: PromptEditorUiState = {
-    layoutMode: "wide",
     uiMode: "plan",
     inspector: null,
-    mainScrollTop: 0,
-    mainViewportHeight: 18,
     contextTitle: "Inspector",
     contextLegendItems: [],
-    sessions,
-    activeSessionId,
+    promptTokenBreakdown: EMPTY_PROMPT_TOKEN_BREAKDOWN,
+  }
+  const shellWorkspaceUiState: ShellWorkspaceUiState = {
+    layoutMode: "wide",
+    uiLayoutConfig: resolvedUiLayoutConfig,
+    conceptNavigationFocused: false,
+    startupDrawComplete: false,
+    mainViewportHeight: 18,
+    promptViewportHeight: 12,
     promptPaneRatio: resolvedUiLayoutConfig.expandedPromptRatio,
     promptPaneTargetRatio: resolvedUiLayoutConfig.expandedPromptRatio,
     promptPaneMode: "expanded",
     promptScrollTop: 0,
-    promptViewportHeight: 12,
-    promptTokenBreakdown: EMPTY_PROMPT_TOKEN_BREAKDOWN,
-  }
-  const shellWorkspaceUiState: ShellWorkspaceUiState = {
-    layoutMode: promptEditorUiState.layoutMode,
-    uiLayoutConfig: resolvedUiLayoutConfig,
-    conceptNavigationFocused: false,
-    startupDrawComplete: false,
-    mainViewportHeight: promptEditorUiState.mainViewportHeight,
-    promptViewportHeight: promptEditorUiState.promptViewportHeight,
-    promptPaneRatio: promptEditorUiState.promptPaneRatio,
-    promptPaneTargetRatio: promptEditorUiState.promptPaneTargetRatio,
-    promptPaneMode: promptEditorUiState.promptPaneMode,
-    promptScrollTop: promptEditorUiState.promptScrollTop,
-    mainScrollTop: promptEditorUiState.mainScrollTop,
+    mainScrollTop: 0,
     workspaceTransition: null,
   }
   const sessionChatState: SessionChatState = {

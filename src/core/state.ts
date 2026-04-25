@@ -5,8 +5,10 @@ import type {
   ConceptNode,
   LayoutMode,
   ModalTransientState,
+  PromptEditorHostState,
   PromptEditorUiState,
   SessionChatState,
+  SessionModalHostState,
   ShellWorkspaceUiState,
 } from "./types"
 
@@ -15,6 +17,10 @@ export function conceptGraphState(state: AppState): ConceptGraphState {
 }
 
 export function promptEditorUiState(state: AppState): PromptEditorUiState {
+  return state
+}
+
+export function promptEditorHostState(state: AppState): PromptEditorHostState {
   return state
 }
 
@@ -27,6 +33,10 @@ export function sessionChatState(state: AppState): SessionChatState {
 }
 
 export function modalTransientState(state: AppState): ModalTransientState {
+  return state
+}
+
+export function sessionModalHostState(state: AppState): SessionModalHostState {
   return state
 }
 

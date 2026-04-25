@@ -39,7 +39,7 @@ This avoids designing the package API around accidental current coupling.
 
 ## Milestones
 
-### [ ] Milestone 1: Define internal ownership boundaries
+### [x] Milestone 1: Define internal ownership boundaries
 
 Difficulty: Medium
 
@@ -90,10 +90,19 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record which fields are intended to move into shell-owned state.
-- Record any unresolved `AppState` hotspots that still block shell extraction.
+- Already completed in code:
+  - `src/core/types.ts` now names explicit state slices including `ConceptGraphState`, `ModalTransientState`, `PromptEditorUiState`, `ShellWorkspaceUiState`, and `SessionChatState`.
+  - `src/core/state.ts` now exposes slice selectors including `conceptGraphState(...)`, `promptEditorUiState(...)`, `promptEditorHostState(...)`, `shellWorkspaceUiState(...)`, `sessionChatState(...)`, `sessionModalHostState(...)`, and `modalTransientState(...)`.
+  - `src/app/init.ts` now initializes the slices separately while keeping the runtime `AppState` flat.
+- Current ownership split to preserve:
+  - app-owned: concept graph semantics, prompt semantics, sessions/chat, inspectors
+  - shell-owned direction: layout mode, workspace chrome, pane ratios, viewport sizing, transition state, modal primitives
+- Important nuance for future sessions:
+  - `AppState` is still read directly in many rendering and transition modules; that is expected at this stage.
+  - Milestone 1 created the type and selector seam, not a full runtime restructuring.
+- Start the next new extraction work at Milestone 3, not Milestone 1.
 
-### [ ] Milestone 2: Create a local `src/shell/` layer for generic primitives
+### [x] Milestone 2: Create a local `src/shell/` layer for generic primitives
 
 Difficulty: Medium
 
@@ -144,10 +153,21 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record which `src/ui/text.ts` functions intentionally remained app-specific.
-- Record whether any moved helpers still rely on ConceptCode naming or prompt semantics.
+- Already completed in code:
+  - `src/shell/theme.ts` contains reusable theme tokens.
+  - `src/shell/text.ts` contains reusable text helpers and prompt-preview formatting helpers.
+  - `src/shell/layout/geometry.ts` contains reusable layout and interpolation helpers used by workspace transitions.
+  - `src/shell/render/scroll.ts` contains `createScrollBox(...)`.
+  - `src/index.ts` now imports `createScrollBox` from `src/shell/render/scroll`.
+- Functions intentionally still app-local:
+  - `src/ui/text.ts::promptPreviewWidth(...)` remains app-local because it still reads app shell state directly rather than a generic viewport/layout input.
+  - `src/ui/text.ts::promptPreviewChunks` is still ConceptCode-flavored because it highlights `@...` prompt references.
+  - `src/ui/workspace-transition.ts` still lives outside `src/shell/`; Milestone 2 only moved low-risk generic helpers, not the transition engine itself.
+- Remaining caution for Milestone 3:
+  - `src/ui/workspace-transition.ts` depends on shell-style geometry helpers already, but still consumes full `AppState` and remains structurally app-owned.
+- Start the next new extraction work at Milestone 3.
 
-### [ ] Milestone 3: Extract workspace controller and transition engine behind shell interfaces
+### [x] Milestone 3: Extract workspace controller and transition engine behind shell interfaces
 
 Difficulty: High
 
@@ -201,8 +221,22 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the final shell state interface.
-- Record any remaining direct `AppState` reads in transition/layout code that still need to be eliminated.
+- Already completed in code:
+  - `src/core/types.ts` now defines shell-facing contracts including `ShellViewportState`, `ShellWorkspaceState`, `ShellWorkspaceControllerState`, `ShellWorkspaceControllerDeps`, and `ShellWorkspaceTransitionViewState`.
+  - `src/app/workspace.ts` now drives prompt-pane animation, workspace focus switching, and transition timing from `ShellWorkspaceControllerDeps` instead of the full `AppState`.
+  - `src/ui/workspace-transition.ts` now computes geometry and animated overlay rects from shell layout/view state plus an explicit viewport, with ConceptCode pane content still injected through the render callback boundary.
+  - `src/ui/view.ts` now passes `shellWorkspaceUiState(state)` and an explicit viewport into the shell transition/layout helpers rather than giving those helpers the full `AppState`.
+- Final shell state interfaces introduced this milestone:
+  - `ShellViewportState`
+  - `ShellWorkspaceState`
+  - `ShellWorkspaceControllerState`
+  - `ShellWorkspaceControllerDeps`
+  - `ShellWorkspaceTransitionViewState`
+- Remaining direct app coupling intentionally deferred to Milestone 4:
+  - `src/ui/view.ts` still owns frame composition and still reads `AppState` directly while assembling pane content.
+  - The transition pane renderer callback still takes `AppState` because the actual pane bodies are still ConceptCode-owned.
+  - Debug logging still lives locally in both workspace modules; it is structurally optional now but not yet centralized under `src/shell/`.
+- Start Milestone 4 in a fresh session.
 
 ### [ ] Milestone 4: Split frame composition from ConceptCode pane content
 

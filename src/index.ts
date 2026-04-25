@@ -6,11 +6,11 @@ import { bindKeyHandler } from "./app/keybindings"
 import { clearCtrlCExitState } from "./app/platform"
 import { createWorkspaceController } from "./app/workspace"
 import { loadConceptGraph } from "./core/model"
-import { clampCursor, handleResize } from "./core/state"
+import { clampCursor, handleResize, shellWorkspaceUiState } from "./core/state"
 import type { AppState, InspectorKind } from "./core/types"
 import { openExternalEditor } from "./platform/editor"
 import { startDummyChatServer } from "./platform/chat"
-import { openPromptEditor, syncPromptDraft } from "./prompt/editor"
+import { applyEditorText, openPromptEditor, syncPromptDraft } from "./prompt/editor"
 import { createPromptThreadController } from "./prompt/thread"
 import { createScrollBox } from "./shell/render/scroll"
 import { activeSession } from "./sessions/store"
@@ -87,9 +87,19 @@ async function main(): Promise<void> {
   }
 
   workspace = createWorkspaceController({
-    state,
+    shellState: state,
     redraw: draw,
     openPromptEditor: () => openPromptEditorFor(),
+    applyPromptEditorText: () => {
+      const editorModal = state.editorModal
+      if (editorModal?.target.kind === "prompt") {
+        applyEditorText(state, editorModal)
+      }
+    },
+    getViewport: () => ({
+      width: renderer?.terminalWidth || process.stdout.columns || 120,
+      height: renderer?.terminalHeight || process.stdout.rows || 36,
+    }),
   })
 
   function mountRenderer(nextRenderer: CliRenderer): void {

@@ -240,29 +240,19 @@ export type ConceptGraphState = {
 export type ModalTransientState = {
   createConceptModal: CreateConceptModalState | null
   confirmModal: ConfirmModalState | null
-   editorModal: EditorModalState | null
-   sessionModal: SessionModalState | null
-   pendingCtrlCExit: boolean
-   ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
-   promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
-   workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
+  editorModal: EditorModalState | null
+  sessionModal: SessionModalState | null
+  pendingCtrlCExit: boolean
+  ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
+  promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
+  workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
 }
 
 export type PromptEditorUiState = {
-  layoutMode: LayoutMode
   uiMode: UiMode
   inspector: InspectorState | null
-  mainScrollTop: number
-  mainViewportHeight: number
   contextTitle: string
   contextLegendItems: Array<{ kindLabel: string; color: RGBA }>
-  sessions: ChatSession[]
-  activeSessionId: string
-  promptPaneRatio: number
-  promptPaneTargetRatio: number
-  promptPaneMode: "collapsed" | "expanded"
-  promptScrollTop: number
-  promptViewportHeight: number
   promptTokenBreakdown: EffectivePromptTokenBreakdown
 }
 
@@ -281,6 +271,41 @@ export type ShellWorkspaceUiState = {
   workspaceTransition: WorkspaceTransitionState | null
 }
 
+export type ShellViewportState = {
+  width: number
+  height: number
+}
+
+export type ShellWorkspaceState = Pick<
+  ShellWorkspaceUiState,
+  | "layoutMode"
+  | "uiLayoutConfig"
+  | "conceptNavigationFocused"
+  | "startupDrawComplete"
+  | "promptPaneRatio"
+  | "promptPaneTargetRatio"
+  | "promptPaneMode"
+  | "workspaceTransition"
+>
+
+export type ShellWorkspaceControllerState = ShellWorkspaceState & Pick<
+  ModalTransientState,
+  "editorModal" | "promptPaneAnimationTimeout" | "workspaceTransitionTimeout"
+>
+
+export type ShellWorkspaceControllerDeps = {
+  shellState: ShellWorkspaceControllerState
+  redraw: () => void
+  openPromptEditor: () => void
+  applyPromptEditorText: () => void
+  getViewport: () => ShellViewportState
+}
+
+export type ShellWorkspaceTransitionViewState = Pick<
+  ShellWorkspaceUiState,
+  "layoutMode" | "uiLayoutConfig" | "promptPaneRatio" | "workspaceTransition"
+>
+
 export type SessionChatState = {
   sessions: ChatSession[]
   activeSessionId: string
@@ -288,6 +313,15 @@ export type SessionChatState = {
   activeResponseId: string | null
   activeAssistantMessageId: string | null
 }
+
+export type PromptEditorHostState = Pick<
+  ShellWorkspaceUiState,
+  "layoutMode" | "mainScrollTop" | "mainViewportHeight" | "promptPaneRatio" | "promptPaneTargetRatio" | "promptPaneMode" | "promptScrollTop" | "promptViewportHeight"
+> &
+  Pick<SessionChatState, "sessions" | "activeSessionId"> &
+  PromptEditorUiState
+
+export type SessionModalHostState = Pick<ShellWorkspaceUiState, "layoutMode"> & Pick<SessionChatState, "sessions" | "activeSessionId"> & Pick<ModalTransientState, "sessionModal">
 
 export type AppState = ConceptGraphState &
   ModalTransientState &

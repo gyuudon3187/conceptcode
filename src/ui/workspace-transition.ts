@@ -3,7 +3,7 @@ import { join } from "node:path"
 
 import { Box, type Renderable, ScrollBoxRenderable, type VNode } from "@opentui/core"
 
-import type { AppState, WorkspaceFocus } from "../core/types"
+import type { AppState, ShellViewportState, ShellWorkspaceTransitionViewState, UiLayoutConfig, WorkspaceFocus } from "../core/types"
 import { COLORS } from "../shell/theme"
 import {
   acceleratedProgress,
@@ -39,25 +39,32 @@ export type WorkspaceRects = {
   frameHeight: number
 }
 
-function wideWorkspaceGeometryForRatio(state: AppState, promptPaneRatio: number): WideWorkspaceGeometry | null {
-  return computeWideWorkspaceGeometryForRatio(state.layoutMode, state.uiLayoutConfig, promptPaneRatio, {
-    width: process.stdout.columns || 120,
-    height: process.stdout.rows || 36,
-  })
+export type ShellWorkspaceLayoutState = Pick<ShellWorkspaceTransitionViewState, "layoutMode" | "uiLayoutConfig" | "promptPaneRatio">
+
+function wideWorkspaceGeometryForRatio(
+  shellState: Pick<ShellWorkspaceLayoutState, "layoutMode" | "uiLayoutConfig">,
+  promptPaneRatio: number,
+  viewport: ShellViewportState,
+): WideWorkspaceGeometry | null {
+  return computeWideWorkspaceGeometryForRatio(shellState.layoutMode, shellState.uiLayoutConfig, promptPaneRatio, viewport)
 }
 
-export function wideWorkspaceGeometry(state: AppState): WideWorkspaceGeometry | null {
-  return wideWorkspaceGeometryForRatio(state, state.promptPaneRatio)
+export function wideWorkspaceGeometry(shellState: ShellWorkspaceLayoutState, viewport: ShellViewportState): WideWorkspaceGeometry | null {
+  return wideWorkspaceGeometryForRatio(shellState, shellState.promptPaneRatio, viewport)
 }
 
-export function workspaceRects(state: AppState): WorkspaceRects | null {
-  return workspaceRectsForRatio(state, state.promptPaneRatio)
+export function workspaceRects(shellState: ShellWorkspaceLayoutState, viewport: ShellViewportState): WorkspaceRects | null {
+  return workspaceRectsForRatio(shellState, shellState.promptPaneRatio, viewport)
 }
 
-export function workspaceRectsForRatio(state: AppState, promptPaneRatio: number): WorkspaceRects | null {
-  const geometry = wideWorkspaceGeometryForRatio(state, promptPaneRatio)
+export function workspaceRectsForRatio(
+  shellState: Pick<ShellWorkspaceLayoutState, "layoutMode" | "uiLayoutConfig">,
+  promptPaneRatio: number,
+  viewport: ShellViewportState,
+): WorkspaceRects | null {
+  const geometry = wideWorkspaceGeometryForRatio(shellState, promptPaneRatio, viewport)
   if (!geometry) return null
-  const rowGap = state.uiLayoutConfig.interPaneGap
+  const rowGap = shellState.uiLayoutConfig.interPaneGap
   const contentTop = 0
   const contentHeight = Math.max(8, geometry.frameHeight)
   const left = 0
@@ -108,20 +115,30 @@ type TransitionWorkspaceNodes = WorkspaceRects & {
 
 type TransitionPaneRenderer = (state: AppState, focus: WorkspaceFocus, rects: WorkspaceRects, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null) => TransitionWorkspaceNodes | null
 
+type TransitionDebugLogger = (event: string, payload: Record<string, unknown>) => void
+
+type ShellWorkspaceTransitionOverlayDeps = {
+  shellState: ShellWorkspaceTransitionViewState
+  viewport: ShellViewportState
+  listScroll: ScrollBoxRenderable
+  mainScroll: ScrollBoxRenderable
+  promptScroll: ScrollBoxRenderable | null
+  renderTransitionPaneContentWithRects: TransitionPaneRenderer
+  logDebug?: TransitionDebugLogger
+}
+
 export function renderWorkspaceTransitionOverlay(
   state: AppState,
-  listScroll: ScrollBoxRenderable,
-  mainScroll: ScrollBoxRenderable,
-  promptScroll: ScrollBoxRenderable | null,
-  renderTransitionPaneContentWithRects: TransitionPaneRenderer,
+  deps: ShellWorkspaceTransitionOverlayDeps,
 ): Array<Renderable | VNode<any, any[]>> {
-  const transition = state.workspaceTransition
+  const { shellState, viewport, listScroll, mainScroll, promptScroll, renderTransitionPaneContentWithRects } = deps
+  const transition = shellState.workspaceTransition
   if (!transition) return []
-  const config = state.uiLayoutConfig
-  const collapsedWorkspaceRects = workspaceRectsForRatio(state, state.uiLayoutConfig.collapsedPromptRatio)
-  const conceptsToSessionTransitionSourceRects = workspaceRectsForRatio(state, state.uiLayoutConfig.conceptsToSessionTransitionCollapsedPromptRatio)
-  const expandedWorkspaceRects = workspaceRectsForRatio(state, state.uiLayoutConfig.expandedPromptRatio)
-  const conceptsToSessionTransitionRects = workspaceRectsForRatio(state, state.uiLayoutConfig.conceptsToSessionTransitionExpandedPromptRatio)
+  const config: UiLayoutConfig = shellState.uiLayoutConfig
+  const collapsedWorkspaceRects = workspaceRectsForRatio(shellState, shellState.uiLayoutConfig.collapsedPromptRatio, viewport)
+  const conceptsToSessionTransitionSourceRects = workspaceRectsForRatio(shellState, shellState.uiLayoutConfig.conceptsToSessionTransitionCollapsedPromptRatio, viewport)
+  const expandedWorkspaceRects = workspaceRectsForRatio(shellState, shellState.uiLayoutConfig.expandedPromptRatio, viewport)
+  const conceptsToSessionTransitionRects = workspaceRectsForRatio(shellState, shellState.uiLayoutConfig.conceptsToSessionTransitionExpandedPromptRatio, viewport)
   if (!collapsedWorkspaceRects || !conceptsToSessionTransitionSourceRects || !expandedWorkspaceRects || !conceptsToSessionTransitionRects) return []
   const fromRects = transition.from === "concepts" && transition.to === "session"
     ? conceptsToSessionTransitionSourceRects
@@ -198,8 +215,35 @@ export function renderWorkspaceTransitionOverlay(
         from: transition.from,
         to: transition.to,
         progress,
-        viewportWidth: process.stdout.columns || 120,
-        viewportHeight: process.stdout.rows || 36,
+        viewportWidth: viewport.width,
+        viewportHeight: viewport.height,
+        concepts: {
+          from: fromWorkspace.concepts,
+          miniTarget: conceptsMiniTarget,
+          current: conceptsRectWithSharedGap,
+        },
+        session: {
+          from: sessionEnterStart,
+          target: toWorkspace.session,
+          current: sessionRectWithSoloGrowth,
+        },
+        details: {
+          from: fromWorkspace.details,
+          exitTarget: detailsExitTarget,
+          current: detailsRect,
+        },
+        context: {
+          enterStart: contextEnterStart,
+          target: contextPinnedTarget,
+          current: contextRect,
+        },
+      })
+      deps.logDebug?.("transition_first_frame", {
+        from: transition.from,
+        to: transition.to,
+        progress,
+        viewportWidth: viewport.width,
+        viewportHeight: viewport.height,
         concepts: {
           from: fromWorkspace.concepts,
           miniTarget: conceptsMiniTarget,
@@ -301,12 +345,12 @@ export function renderWorkspaceTransitionOverlay(
     const detailsStartRight = detailsEnterStart.left + detailsEnterStart.width
     const detailsTargetRight = detailsPinnedTarget.left + detailsPinnedTarget.width
     const detailsCurrentRight = detailsRect.left + detailsRect.width
-    void appendWorkspaceDebugLog("transition_first_frame", {
-      from: transition.from,
-      to: transition.to,
-      progress,
-      viewportWidth: process.stdout.columns || 120,
-      viewportHeight: process.stdout.rows || 36,
+      void appendWorkspaceDebugLog("transition_first_frame", {
+        from: transition.from,
+        to: transition.to,
+        progress,
+        viewportWidth: viewport.width,
+        viewportHeight: viewport.height,
       outerFrame: { left: fromWorkspace.frameLeft, top: fromWorkspace.frameTop, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
       innerCanvas: { left: fromWorkspace.frameLeft + fromWorkspace.canvasLeft, top: fromWorkspace.frameTop + fromWorkspace.canvasTop, width: fromWorkspace.canvasWidth, height: fromWorkspace.canvasHeight },
       overlayContainer: { top: fromWorkspace.frameTop, left: fromWorkspace.frameLeft, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
@@ -376,8 +420,84 @@ export function renderWorkspaceTransitionOverlay(
           animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + detailsRect.left + detailsRect.width),
         },
       },
-    })
-  }
+      })
+      deps.logDebug?.("transition_first_frame", {
+        from: transition.from,
+        to: transition.to,
+        progress,
+        viewportWidth: viewport.width,
+        viewportHeight: viewport.height,
+        outerFrame: { left: fromWorkspace.frameLeft, top: fromWorkspace.frameTop, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+        innerCanvas: { left: fromWorkspace.frameLeft + fromWorkspace.canvasLeft, top: fromWorkspace.frameTop + fromWorkspace.canvasTop, width: fromWorkspace.canvasWidth, height: fromWorkspace.canvasHeight },
+        overlayContainer: { top: fromWorkspace.frameTop, left: fromWorkspace.frameLeft, width: fromWorkspace.frameWidth, height: fromWorkspace.frameHeight },
+        frameRightEdge: fromWorkspace.frameLeft + fromWorkspace.frameWidth,
+        canvasRightEdge: fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth,
+        session: {
+          liveOuter: {
+            left: fromWorkspace.frameLeft + fromWorkspace.session.left,
+            top: fromWorkspace.frameTop + fromWorkspace.session.top,
+            width: fromWorkspace.session.width,
+            height: fromWorkspace.session.height,
+          },
+          animatedOuter: {
+            left: fromWorkspace.frameLeft + sessionRect.left,
+            top: fromWorkspace.frameTop + sessionRect.top,
+            width: sessionRectWithSharedGap.width,
+            height: sessionRectWithSharedGap.height,
+          },
+          from: fromWorkspace.session,
+          target: sessionMiniTarget,
+          current: sessionRectWithSharedGap,
+          rightEdges: {
+            from: sessionFromRight,
+            target: sessionTargetRight,
+            current: sessionRectWithSharedGap.left + sessionRectWithSharedGap.width,
+            liveOuter: fromWorkspace.frameLeft + fromWorkspace.session.left + fromWorkspace.session.width,
+            animatedOuter: fromWorkspace.frameLeft + sessionRectWithSharedGap.left + sessionRectWithSharedGap.width,
+          },
+          distanceToFrameRight: {
+            liveOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + fromWorkspace.session.left + fromWorkspace.session.width),
+            animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + sessionRectWithSharedGap.left + sessionRectWithSharedGap.width),
+          },
+          distanceToCanvasRight: {
+            liveOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + fromWorkspace.session.left + fromWorkspace.session.width),
+            animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + sessionRectWithSharedGap.left + sessionRectWithSharedGap.width),
+          },
+        },
+        details: {
+          liveOuter: {
+            left: fromWorkspace.frameLeft + detailsPinnedTarget.left,
+            top: fromWorkspace.frameTop + detailsPinnedTarget.top,
+            width: detailsPinnedTarget.width,
+            height: detailsPinnedTarget.height,
+          },
+          animatedOuter: {
+            left: fromWorkspace.frameLeft + detailsRect.left,
+            top: fromWorkspace.frameTop + detailsRect.top,
+            width: detailsRect.width,
+            height: detailsRect.height,
+          },
+          start: detailsEnterStart,
+          target: detailsPinnedTarget,
+          current: detailsRect,
+          rightEdges: {
+            start: detailsStartRight,
+            target: detailsTargetRight,
+            current: detailsCurrentRight,
+            liveOuter: fromWorkspace.frameLeft + detailsPinnedTarget.left + detailsPinnedTarget.width,
+            animatedOuter: fromWorkspace.frameLeft + detailsRect.left + detailsRect.width,
+          },
+          distanceToFrameRight: {
+            liveOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + detailsPinnedTarget.left + detailsPinnedTarget.width),
+            animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.frameWidth) - (fromWorkspace.frameLeft + detailsRect.left + detailsRect.width),
+          },
+          distanceToCanvasRight: {
+            liveOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + detailsPinnedTarget.left + detailsPinnedTarget.width),
+            animatedOuter: (fromWorkspace.frameLeft + fromWorkspace.canvasLeft + fromWorkspace.canvasWidth) - (fromWorkspace.frameLeft + detailsRect.left + detailsRect.width),
+          },
+        },
+      })
+    }
   return [
     Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
     Box(

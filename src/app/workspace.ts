@@ -1,17 +1,10 @@
 import { appendFile } from "node:fs/promises"
 import { join } from "node:path"
 
-import type { AppState } from "../core/types"
-import { applyEditorText } from "../prompt/editor"
+import type { ShellWorkspaceControllerDeps } from "../core/types"
 
 const DEBUG_WORKSPACE_TRANSITION = true
 const WORKSPACE_DEBUG_LOG_PATH = join(process.cwd(), "workspace-transition-debug.log")
-
-type WorkspaceControllerDeps = {
-  state: AppState
-  redraw: () => void
-  openPromptEditor: () => void
-}
 
 async function appendWorkspaceDebugLog(event: string, payload: Record<string, unknown>): Promise<void> {
   if (!DEBUG_WORKSPACE_TRANSITION) return
@@ -34,8 +27,8 @@ function easeOutPower(progress: number, power: number): number {
   return lateEaseStart + (easedTailProgress * (1 - lateEaseStart))
 }
 
-export function createWorkspaceController(deps: WorkspaceControllerDeps) {
-  const { state, redraw } = deps
+export function createWorkspaceController(deps: ShellWorkspaceControllerDeps) {
+  const { shellState: state, redraw } = deps
 
   function desiredPromptPaneRatio(): number {
     if (state.layoutMode !== "wide") return 1
@@ -60,7 +53,7 @@ export function createWorkspaceController(deps: WorkspaceControllerDeps) {
     stopWorkspaceTransition()
     stopPromptPaneAnimation()
     if (nextFocus && state.editorModal?.target.kind === "prompt") {
-      applyEditorText(state, state.editorModal)
+      deps.applyPromptEditorText()
       state.editorModal.renderable.blur()
       state.editorModal = null
     }
@@ -96,8 +89,8 @@ export function createWorkspaceController(deps: WorkspaceControllerDeps) {
     void appendWorkspaceDebugLog("transition_start", {
       from: state.workspaceTransition.from,
       to: state.workspaceTransition.to,
-      viewportWidth: process.stdout.columns || 120,
-      viewportHeight: process.stdout.rows || 36,
+       viewportWidth: deps.getViewport().width,
+       viewportHeight: deps.getViewport().height,
       promptPaneRatio: state.promptPaneRatio,
       promptPaneTargetRatio: state.promptPaneTargetRatio,
       layoutMode: state.layoutMode,
@@ -115,8 +108,8 @@ export function createWorkspaceController(deps: WorkspaceControllerDeps) {
           progress: transition.progress,
           linearProgress,
           elapsed,
-          viewportWidth: process.stdout.columns || 120,
-          viewportHeight: process.stdout.rows || 36,
+           viewportWidth: deps.getViewport().width,
+           viewportHeight: deps.getViewport().height,
         })
         finishWorkspaceTransition(nextFocus, openPromptEditorAfterTransition)
         return
@@ -177,7 +170,7 @@ export function createWorkspaceController(deps: WorkspaceControllerDeps) {
   function togglePaneFocus(): void {
     if (state.workspaceTransition) return
     if (state.editorModal?.target.kind === "prompt") {
-      applyEditorText(state, state.editorModal)
+      deps.applyPromptEditorText()
       state.editorModal.renderable.blur()
       state.editorModal = null
       startWorkspaceTransition(true)
