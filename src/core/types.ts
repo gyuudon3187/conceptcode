@@ -78,6 +78,25 @@ export type PromptSuggestionState = {
   visibleStartIndex: number
 }
 
+export type PromptSuggestionPrefix = PromptSuggestionState["prefix"]
+
+export type PromptSuggestionContext = {
+  prefix: PromptSuggestionPrefix
+  query: string
+  mode: PromptSuggestionState["mode"]
+}
+
+export type PromptSuggestionEntry = {
+  value: string
+  description?: string
+}
+
+export type PromptSuggestionProvider = {
+  suggestions: (context: PromptSuggestionContext) => PromptSuggestionEntry[]
+  isResolvedValue?: (context: { prefix: PromptSuggestionPrefix; query: string; value: string }) => boolean
+  acceptTrailingText?: (context: { prefix: PromptSuggestionPrefix; value: string; suffix: string }) => string
+}
+
 export type EditorModalState = {
   target: BufferModalTarget
   renderable: TextareaRenderable
@@ -342,6 +361,18 @@ export type ShellSessionModalViewModel = {
   title: string
   items: ShellSessionListItem[]
   footerHint: string
+}
+
+export type ShellInspectorLegendItem = {
+  label: string
+  color: RGBA
+}
+
+export type ShellInspectorViewModel = {
+  layout: ShellOverlayLayout
+  title: string
+  closeHint: string
+  legendItems: ShellInspectorLegendItem[]
 }
 
 export type ShellListNavigationState = {

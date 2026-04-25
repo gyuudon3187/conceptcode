@@ -445,7 +445,7 @@ Handoff notes for next session:
   - quit flow and renderer lifecycle still terminate through app wiring because shutdown, persistence, and prompt-draft sync remain app-owned.
 - Start Milestone 7 in a fresh session.
 
-### [ ] Milestone 7: Separate prompt editor host from ConceptCode prompt semantics
+### [x] Milestone 7: Separate prompt editor host from ConceptCode prompt semantics
 
 Difficulty: High
 
@@ -493,14 +493,23 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- When finishing this milestone, update this roadmap in the same session:
-  - change the milestone checkbox from `[ ]` to `[x]`
-  - replace this placeholder handoff section with concrete `Already completed in code:` notes
-  - record the provider contract that was introduced or narrowed
-  - record any remaining places where generic editor code still imports concept or file suggestion logic
-  - say whether the next milestone should start in a fresh session
+- Already completed in code:
+  - `src/core/types.ts` now defines reusable prompt-suggestion provider contracts via `PromptSuggestionPrefix`, `PromptSuggestionContext`, `PromptSuggestionEntry`, and `PromptSuggestionProvider`.
+  - `src/prompt/editor.ts` now accepts prompt-suggestion providers for host behaviors such as suggestion visibility, selection movement, acceptance, and refresh while keeping generic editor-host mechanics local to the editor module.
+  - `src/prompt/editor.ts` now exposes `conceptCodePromptSuggestionProvider(...)` so ConceptCode-owned semantics for `@concept`, `&file`, and `/command` remain app-local behind the provider boundary.
+  - `src/conceptcode-ui/panes.ts` now renders the prompt suggestion overlay from provider-fed entries and descriptions instead of reaching directly into ConceptCode slash-command description logic.
+  - `src/app/keybindings.ts` now wires prompt editor navigation and acceptance through the provider boundary rather than relying on mixed editor-host suggestion logic.
+- Provider contract introduced this milestone:
+  - `PromptSuggestionProvider.suggestions(...)` returns editor-facing entries for the current prefix/query/mode.
+  - `PromptSuggestionProvider.isResolvedValue(...)` lets the app decide when a single entry represents an already-resolved token.
+  - `PromptSuggestionProvider.acceptTrailingText(...)` lets the app control acceptance suffix behavior such as keeping directory references open with a trailing `/`.
+- Remaining intentional app coupling:
+  - `src/prompt/editor.ts` still contains ConceptCode-specific token parsing and highlight rules for `@...`, `&...`, and `/...`; the host/provider split is in place, but token grammar extraction itself is still local.
+  - `src/prompt/editor.ts::conceptCodePromptSuggestionProvider(...)` still imports graph nodes, project files, project directories, and UI mode directly because those semantics remain ConceptCode-owned.
+  - `src/app/keybindings.ts` still owns prompt editor host key handling as the app-side wiring boundary, even though suggestion sourcing and descriptions now flow through the provider contract.
+- Start Milestone 8 in a fresh session.
 
-### [ ] Milestone 8: Make inspector chrome generic while keeping preview content local
+### [x] Milestone 8: Make inspector chrome generic while keeping preview content local
 
 Difficulty: Medium
 
@@ -548,12 +557,21 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- When finishing this milestone, update this roadmap in the same session:
-  - change the milestone checkbox from `[ ]` to `[x]`
-  - replace this placeholder handoff section with concrete `Already completed in code:` notes
-  - record the preview provider contract
-  - record which preview-building semantics remain intentionally app-local
-  - say whether the next milestone should start in a fresh session
+- Already completed in code:
+  - `src/core/types.ts` now defines reusable shell inspector view models via `ShellInspectorLegendItem` and `ShellInspectorViewModel`.
+  - `src/shell/render/inspector.ts` now owns the generic inspector container renderer including title bar, close hint, scroll container, and legend footer slot.
+  - `src/conceptcode-ui/overlays.ts` now exposes `inspectorOverlayViewModel(...)` so ConceptCode provides inspector layout/title/legend data without owning the reusable chrome.
+  - `src/ui/view.ts` now renders inspector chrome through the shell renderer and refreshes preview content through an app-owned preview provider boundary.
+  - `src/ui/snippet.ts` now exposes `InspectorPreviewProvider` plus `conceptCodeInspectorPreviewProvider`, keeping snippet/subtree/metadata preview generation app-local behind a provider contract.
+- Preview provider contract introduced this milestone:
+  - `InspectorPreviewProvider.titleFor(...)` returns the inspector title for the selected node and preview kind.
+  - `InspectorPreviewProvider.previewFor(...)` returns preview text lines plus optional legend items and syntax-style hints.
+  - `InspectorPreviewProvider.legendItemsFor(...)` adapts app preview legend data into shell-facing inspector legend items.
+- Preview-building semantics intentionally still app-local:
+  - snippet source loading, file-language detection, Shiki tokenization, and numbered source rendering remain in `src/ui/snippet.ts`
+  - subtree tree-shape rendering and concept-kind legend derivation remain in `src/ui/snippet.ts`
+  - metadata preview formatting and inspector title semantics for snippet/subtree/metadata remain ConceptCode-owned
+- Start Milestone 9 in a fresh session.
 
 ### [ ] Milestone 9: Extract `src/shell/` into `packages/agent-tui`
 

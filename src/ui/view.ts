@@ -3,13 +3,14 @@ import { RGBA, type Renderable, type VNode, Box, ScrollBoxRenderable, Text, Text
 import { currentNode } from "../core/state"
 import type { AppState, ShellWorkspaceFrameViewModel, WorkspaceFocus } from "../core/types"
 import { shellWorkspaceUiState } from "../core/state"
-import { renderAppOverlays } from "../conceptcode-ui/overlays"
+import { inspectorOverlayViewModel, renderAppOverlays } from "../conceptcode-ui/overlays"
 import { activeSession } from "../sessions/store"
 import { renderConceptPreviewPane, renderDetailsPane, renderDetailsTransitionBody, renderPromptBudgetPane, renderPromptPane, renderPromptPreviewPane, renderPromptSuggestionOverlay, renderSessionTransitionBody } from "../conceptcode-ui/panes"
 import { renderWorkspaceFrame } from "../shell/render/frame"
+import { renderInspectorOverlay } from "../shell/render/inspector"
 import { renderConceptList } from "./concepts-list"
 import { renderConfirmModal, renderCreateConceptModal, renderSessionModal } from "./modals"
-import { getSnippetSyntaxStyle, buildMetadataPreview, buildSnippetPreview, buildSubtreePreview, type ContextPreview } from "./snippet"
+import { conceptCodeInspectorPreviewProvider, getSnippetSyntaxStyle, type ContextPreview } from "./snippet"
 import { COLORS } from "./theme"
 import { promptPreviewChunks, promptPreviewLines, promptPreviewWidth, textNodesForChunks } from "./text"
 import { renderWorkspaceTransitionOverlay, wideWorkspaceGeometry, workspaceRects, type WorkspaceRects } from "./workspace-transition"
@@ -119,7 +120,8 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   const viewModel = frameViewModel(state)
   const conceptsContent = renderConceptsPaneContent(state, listScroll)
   const overlays: Array<Renderable | VNode<any, any[]>> = []
-  overlays.push(...renderAppOverlays(state, mainScroll))
+  overlays.push(...renderAppOverlays(state))
+  overlays.push(...renderInspectorOverlay(inspectorOverlayViewModel(state), mainScroll))
   overlays.push(...renderPromptSuggestionOverlay(state))
 
   if (state.createConceptModal) {
@@ -183,12 +185,12 @@ export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainSc
 
   if (shouldRefreshContext) {
     contextPreviewKey = nextContextKey
-    const previewBuilder = state.inspector?.kind === "snippet" ? buildSnippetPreview : state.inspector?.kind === "subtree" ? buildSubtreePreview : buildMetadataPreview
     if (state.inspector) {
-      void previewBuilder(state, selectedNode).then(async (preview: ContextPreview) => {
+      const title = conceptCodeInspectorPreviewProvider.titleFor(state, selectedNode, state.inspector.kind)
+      void conceptCodeInspectorPreviewProvider.previewFor(state, selectedNode, state.inspector.kind).then(async (preview: ContextPreview) => {
         if (renderVersion !== contextRenderVersion || contextPreviewKey !== nextContextKey) return
-        state.contextTitle = preview.title
-        state.contextLegendItems = preview.legendItems ?? []
+        state.contextTitle = title
+        state.contextLegendItems = conceptCodeInspectorPreviewProvider.legendItemsFor(preview).map((item) => ({ kindLabel: item.label, color: item.color }))
         if (preview.useSyntaxStyle) {
           await getSnippetSyntaxStyle()
           if (renderVersion !== contextRenderVersion || contextPreviewKey !== nextContextKey) return
