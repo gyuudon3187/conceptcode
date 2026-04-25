@@ -59,6 +59,23 @@ export async function handleSessionModalKey(state: AppState, key: KeyEvent, deps
   const modal = state.sessionModal
   if (!modal) return false
   const entries = sessionModalEntries(state)
+  const viewportHeight = process.stdout.rows || 24
+  const topMargin = state.layoutMode === "wide" ? 5 : 3
+  const bottomMargin = topMargin
+  const modalHeight = Math.max(8, viewportHeight - topMargin - bottomMargin)
+  const contentHeight = Math.max(1, modalHeight - 6)
+  const visibleRowCount = Math.max(1, Math.floor((contentHeight + 1) / 3))
+  const keepSelectionVisible = (): void => {
+    const maxStart = Math.max(0, entries.length - visibleRowCount)
+    if (modal.selectedIndex < modal.scrollTop) {
+      modal.scrollTop = modal.selectedIndex
+      return
+    }
+    if (modal.selectedIndex >= modal.scrollTop + visibleRowCount) {
+      modal.scrollTop = modal.selectedIndex - visibleRowCount + 1
+    }
+    modal.scrollTop = Math.max(0, Math.min(modal.scrollTop, maxStart))
+  }
   if (key.name === "escape" || (key.ctrl && key.name === "q")) {
     key.preventDefault()
     key.stopPropagation()
@@ -70,6 +87,7 @@ export async function handleSessionModalKey(state: AppState, key: KeyEvent, deps
     key.preventDefault()
     key.stopPropagation()
     modal.selectedIndex = Math.min(entries.length - 1, modal.selectedIndex + 1)
+    keepSelectionVisible()
     deps.draw()
     return true
   }
@@ -77,6 +95,7 @@ export async function handleSessionModalKey(state: AppState, key: KeyEvent, deps
     key.preventDefault()
     key.stopPropagation()
     modal.selectedIndex = Math.max(0, modal.selectedIndex - 1)
+    keepSelectionVisible()
     deps.draw()
     return true
   }

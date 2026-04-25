@@ -51,9 +51,12 @@ export function handleResize(state: AppState, width: number): void {
 }
 
 export function moveCursor(state: AppState, delta: number): boolean {
+  const visible = visiblePaths(state)
+  if (visible.length === 0 || delta === 0) {
+    return false
+  }
   const previous = state.cursor
-  state.cursor += delta
-  clampCursor(state)
+  state.cursor = (state.cursor + delta % visible.length + visible.length) % visible.length
   const changed = state.cursor !== previous
   if (changed) {
     applySelectionChange(state)

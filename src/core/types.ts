@@ -166,6 +166,7 @@ export type ConfirmModalState =
 
 export type SessionModalState = {
   selectedIndex: number
+  scrollTop: number
 }
 
 export type WorkspaceFocus = "session" | "concepts"

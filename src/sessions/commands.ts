@@ -16,7 +16,7 @@ export function openSessionModal(state: AppState): void {
   if (state.editorModal?.target.kind === "prompt") {
     state.editorModal.renderable.blur()
   }
-  state.sessionModal = { selectedIndex: activeIndex }
+  state.sessionModal = { selectedIndex: activeIndex, scrollTop: Math.max(0, activeIndex - 3) }
 }
 
 export function closeSessionModal(state: AppState): void {
