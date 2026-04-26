@@ -14,7 +14,7 @@ import { renderConfirmModal, renderCreateConceptModal, renderSessionModal } from
 import { conceptCodeInspectorPreviewProvider, getSnippetSyntaxStyle, type ContextPreview } from "./snippet"
 import { COLORS } from "./theme"
 import { promptPreviewChunks, promptPreviewLines, promptPreviewWidth, textNodesForChunks } from "./text"
-import { renderWorkspaceTransitionOverlay, wideWorkspaceGeometry, workspaceRects, type WorkspaceRects } from "./workspace-transition"
+import { renderWorkspaceTransitionOverlay, wideWorkspaceGeometry, type WorkspaceRects } from "./workspace-transition"
 
 function currentViewport() {
   return {
@@ -82,13 +82,6 @@ export function renderPromptThreadContent(state: AppState, editor: NonNullable<A
 
 function renderConceptsPaneContent(state: AppState, listScroll: ScrollBoxRenderable): Renderable | VNode<any, any[]> {
   return state.conceptNavigationFocused ? listScroll : renderPromptBudgetPane(state)
-}
-
-
-function renderTransitionPaneContent(state: AppState, focus: WorkspaceFocus, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): WorkspaceRects & { sessionNode: Renderable | VNode<any, any[]>; contextNode: Renderable | VNode<any, any[]>; conceptPreviewNode: Renderable | VNode<any, any[]>; detailsNode: Renderable | VNode<any, any[]>; conceptsNode: Renderable | VNode<any, any[]> } | null {
-  const rects = workspaceRects(workspaceUiState(state), currentViewport())
-  if (!rects) return null
-  return renderTransitionPaneContentWithRects(state, focus, rects, listScroll, mainScroll, promptScroll)
 }
 
 function renderTransitionPaneContentWithRects(state: AppState, focus: WorkspaceFocus, rects: WorkspaceRects, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): WorkspaceRects & { sessionNode: Renderable | VNode<any, any[]>; contextNode: Renderable | VNode<any, any[]>; conceptPreviewNode: Renderable | VNode<any, any[]>; detailsNode: Renderable | VNode<any, any[]>; conceptsNode: Renderable | VNode<any, any[]> } | null {
