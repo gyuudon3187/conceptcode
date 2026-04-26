@@ -86,6 +86,8 @@ export type ShellFramePaneDescriptor = {
   borderColor?: string
   shellFrame?: boolean
   content: unknown
+  footerStart?: unknown
+  footerEnd?: unknown
 }
 
 export type ShellOverlayLayout = {

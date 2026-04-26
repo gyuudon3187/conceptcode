@@ -41,6 +41,13 @@ function promptModePresentation(mode: AppState["uiMode"]): { label: string; colo
   return { label: "CONCEPTUALIZE", color: COLORS.conceptualize, tone: "Graph editing mode" }
 }
 
+function conceptNamespacePresentation(mode: AppState["conceptNamespaceMode"]): { label: string; color: string } {
+  if (mode === "domain") {
+    return { label: "DOMAIN", color: COLORS.conceptualize }
+  }
+  return { label: "IMPLEMENTATION", color: COLORS.accent }
+}
+
 function renderPromptMessageHeader(message: ReturnType<typeof activeSession>["messages"][number]): Renderable | VNode<any, any[]> {
   if (message.role === "assistant") {
     const statusSuffix = message.status === "streaming" ? "thinking ·" : message.status === "error" ? "error ·" : ""
@@ -112,6 +119,7 @@ function frameViewModel(state: AppState): ShellWorkspaceFrameViewModel {
 export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): Renderable | VNode<any, any[]> {
   const viewModel = frameViewModel(state)
   const conceptsContent = renderConceptsPaneContent(state, listScroll)
+  const conceptNamespace = conceptNamespacePresentation(state.conceptNamespaceMode)
   const overlays: Array<Renderable | VNode<any, any[]>> = []
   overlays.push(...renderAppOverlays(state))
   overlays.push(...renderInspectorOverlay(inspectorOverlayViewModel(state), mainScroll))
@@ -139,6 +147,8 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
         title: "Concepts",
         borderColor: state.conceptNavigationFocused ? COLORS.borderActive : COLORS.border,
         content: conceptsContent,
+        footerStart: Text({ content: conceptNamespace.label, fg: conceptNamespace.color, attributes: TextAttributes.BOLD }),
+        footerEnd: Text({ content: state.conceptNavigationFocused ? "Tab namespace, Shift+Tab focus" : "Tab focus", fg: COLORS.border }),
       },
       supportTop: state.conceptNavigationFocused
         ? { key: "details", content: renderDetailsPane(state) }

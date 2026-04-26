@@ -68,7 +68,7 @@ export async function handleSessionModalKey(state: AppState, key: KeyEvent, deps
   const entries = sessionModalEntries(state)
   const visibleRowCount = sessionModalVisibleRowCount(state.layoutMode, process.stdout.rows || 24)
   const command = sessionModalCommand(key)
-  if (command?.kind === "cancel") {
+  if (command?.kind === "cancel" || key.name === "q") {
     key.preventDefault()
     key.stopPropagation()
     closeSessionModal(state)

@@ -7,6 +7,7 @@ function renderPane(
   descriptor: ShellFramePaneDescriptor,
   options: Record<string, unknown>,
 ): Renderable | VNode<any, any[]> {
+  const footer = descriptor.footerStart || descriptor.footerEnd
   return Box(
     {
       ...options,
@@ -17,7 +18,14 @@ function renderPane(
       backgroundColor: COLORS.panel,
       flexDirection: "column",
     },
-    descriptor.content as Renderable | VNode<any, any[]>,
+    Box({ width: "100%", flexGrow: 1, minHeight: 0 }, descriptor.content as Renderable | VNode<any, any[]>),
+    ...(footer
+      ? [Box(
+          { width: "100%", flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
+          (descriptor.footerStart as Renderable | VNode<any, any[]>) ?? Box({ width: 0 }),
+          (descriptor.footerEnd as Renderable | VNode<any, any[]>) ?? Box({ width: 0 }),
+        )]
+      : []),
   )
 }
 

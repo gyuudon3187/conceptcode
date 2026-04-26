@@ -130,7 +130,7 @@ function sessionModalViewModel(state: SessionModalHostState): ShellSessionModalV
     layout,
     title: "Sessions",
     items,
-    footerHint: sessions.length > 1 ? "Enter -> Switch  n -> New  d -> Delete  Esc -> Close" : "Enter -> Switch  n -> New  Esc -> Close",
+    footerHint: sessions.length > 1 ? "Enter -> Switch  n -> New  d -> Delete  q/Esc -> Close" : "Enter -> Switch  n -> New  q/Esc -> Close",
   }
 }
 
