@@ -1,4 +1,4 @@
-import type { RGBA } from "@opentui/core"
+import type { RGBA, Timeline } from "@opentui/core"
 
 export type LayoutMode = "wide" | "narrow"
 
@@ -64,6 +64,7 @@ export type ShellWorkspaceControllerState = ShellWorkspaceState & {
   editorModal: { target: { kind: string }; renderable: { blur: () => void; focus: () => void } } | null
   promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
   workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
+  workspaceTransitionTimeline: Timeline | null
 }
 
 export type ShellWorkspaceControllerDeps = {

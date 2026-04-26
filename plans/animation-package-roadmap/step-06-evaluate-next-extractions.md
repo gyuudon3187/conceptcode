@@ -96,6 +96,9 @@ Post-roadmap follow-up note from 2026-04-26:
 
 - A later session attempted to migrate the fixed-duration workspace transition driver in `src/app/workspace.ts` from manual `setTimeout` stepping to `@opentui/core` `Timeline`.
 - The experiment regressed runtime behavior: the app rendered the first transition frame and then jumped to completion without visible intermediate animation, so the migration was reverted.
+- Re-investigation found the main integration gap: `TimelineEngine.attach()` advances timelines on renderer frame callbacks and requests live mode, but it does not itself call `renderer.requestRender()` on each timeline update.
+- In this app's `@opentui/core` usage, that means timeline progress can advance without repainting the app tree unless the controller explicitly redraws from the animation `onUpdate` path.
+- A minimal controller-only proof using `Timeline` for `state.workspaceTransition.progress` and calling the app `redraw()` from `onUpdate` restored visible intermediate workspace animation in the live TUI without reintroducing the earlier hang.
 - `agent-tui/animation` remains the correct home for stateless rect/progress helpers, while any future `Timeline` adoption should be treated as a separate controller-layer experiment and revalidated in the live TUI before landing.
 
 ## Acceptance criteria

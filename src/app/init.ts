@@ -116,6 +116,7 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     ctrlCExitTimeout: null,
     promptPaneAnimationTimeout: null,
     workspaceTransitionTimeout: null,
+    workspaceTransitionTimeline: null,
   }
   const promptEditorUiState: PromptEditorUiState = {
     uiMode: "plan",

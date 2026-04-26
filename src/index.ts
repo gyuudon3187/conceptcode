@@ -1,4 +1,4 @@
-import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
+import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, createCliRenderer, engine, type CliRenderer, type KeyEvent } from "@opentui/core"
 import { createScrollBox } from "agent-tui/render/scroll"
 
 import { copyWithStatus } from "./app/clipboard"
@@ -105,6 +105,7 @@ async function main(): Promise<void> {
   function mountRenderer(nextRenderer: CliRenderer): void {
     unbindRendererResize?.()
     renderer = nextRenderer
+    engine.attach(renderer)
     listScroll = createScrollBox(renderer)
     mainScroll = createScrollBox(renderer)
     promptScroll = createScrollBox(renderer)

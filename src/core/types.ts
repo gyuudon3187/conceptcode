@@ -1,5 +1,6 @@
 import type { TextareaRenderable } from "@opentui/core"
 
+import type { Timeline } from "@opentui/core"
 import type { RGBA } from "@opentui/core"
 import type {
   LayoutMode,
@@ -227,6 +228,7 @@ export type ModalTransientState = {
   ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
   promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
   workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
+  workspaceTransitionTimeline: Timeline | null
 }
 
 export type PromptEditorUiState = {

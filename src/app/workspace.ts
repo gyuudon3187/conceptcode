@@ -1,3 +1,4 @@
+import { createTimeline, engine } from "@opentui/core"
 import { appendFile } from "node:fs/promises"
 import { join } from "node:path"
 
@@ -43,6 +44,11 @@ export function createWorkspaceController(deps: ShellWorkspaceControllerDeps) {
   }
 
   function stopWorkspaceTransition(): void {
+    if (state.workspaceTransitionTimeline) {
+      state.workspaceTransitionTimeline.pause()
+      engine.unregister(state.workspaceTransitionTimeline)
+      state.workspaceTransitionTimeline = null
+    }
     if (state.workspaceTransitionTimeout) {
       clearTimeout(state.workspaceTransitionTimeout)
       state.workspaceTransitionTimeout = null
@@ -89,36 +95,46 @@ export function createWorkspaceController(deps: ShellWorkspaceControllerDeps) {
     void appendWorkspaceDebugLog("transition_start", {
       from: state.workspaceTransition.from,
       to: state.workspaceTransition.to,
-       viewportWidth: deps.getViewport().width,
-       viewportHeight: deps.getViewport().height,
+      viewportWidth: deps.getViewport().width,
+      viewportHeight: deps.getViewport().height,
       promptPaneRatio: state.promptPaneRatio,
       promptPaneTargetRatio: state.promptPaneTargetRatio,
       layoutMode: state.layoutMode,
     })
-    const step = () => {
-      const transition = state.workspaceTransition
-      if (!transition) return
-      const elapsed = Date.now() - transition.startedAt
-      const linearProgress = Math.min(1, elapsed / state.uiLayoutConfig.workspaceTransitionDurationMs)
-      transition.progress = easeOutPower(linearProgress, state.uiLayoutConfig.workspaceTransitionEndEasePower)
-      if (transition.progress >= 1) {
+    const progressState = { value: 0 }
+    const timeline = createTimeline({
+      autoplay: false,
+      duration: state.uiLayoutConfig.workspaceTransitionDurationMs,
+      onComplete: () => {
+        const transition = state.workspaceTransition
+        if (!transition || state.workspaceTransitionTimeline !== timeline) return
+        const elapsed = Date.now() - transition.startedAt
         void appendWorkspaceDebugLog("transition_end", {
           from: transition.from,
           to: transition.to,
           progress: transition.progress,
-          linearProgress,
+          linearProgress: progressState.value,
           elapsed,
-           viewportWidth: deps.getViewport().width,
-           viewportHeight: deps.getViewport().height,
+          viewportWidth: deps.getViewport().width,
+          viewportHeight: deps.getViewport().height,
         })
         finishWorkspaceTransition(nextFocus, openPromptEditorAfterTransition)
-        return
-      }
-      redraw()
-      state.workspaceTransitionTimeout = setTimeout(step, state.uiLayoutConfig.workspaceTransitionStepMs)
-    }
+      },
+    })
+    timeline.add(progressState, {
+      duration: state.uiLayoutConfig.workspaceTransitionDurationMs,
+      value: 1,
+      ease: "linear",
+      onUpdate: () => {
+        const transition = state.workspaceTransition
+        if (!transition || state.workspaceTransitionTimeline !== timeline) return
+        transition.progress = easeOutPower(progressState.value, state.uiLayoutConfig.workspaceTransitionEndEasePower)
+        redraw()
+      },
+    })
+    state.workspaceTransitionTimeline = timeline
     redraw()
-    state.workspaceTransitionTimeout = setTimeout(step, state.uiLayoutConfig.workspaceTransitionStepMs)
+    timeline.play()
   }
 
   function animatePromptPane(): void {
