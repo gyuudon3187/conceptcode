@@ -226,8 +226,7 @@ export type ModalTransientState = {
   sessionModal: SessionModalState | null
   pendingCtrlCExit: boolean
   ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
-  promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
-  workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
+  promptPaneAnimationTimeline: Timeline | null
   workspaceTransitionTimeline: Timeline | null
 }
 

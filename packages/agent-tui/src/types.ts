@@ -9,10 +9,9 @@ export type UiLayoutConfig = {
   conceptsToSessionTransitionExpandedPromptRatio: number
   conceptsToSessionRightStackStartWidthRatio: number
   conceptsToSessionDetailsHeightAcceleration: number
-  promptAnimationEpsilon: number
-  promptAnimationStepMs: number
-  promptAnimationLerp: number
-  workspaceTransitionStepMs: number
+  promptAnimationSnapEpsilon: number
+  promptAnimationDurationMs: number
+  promptAnimationEase: "linear" | "inQuad" | "outQuad" | "inOutQuad" | "inExpo" | "outExpo" | "inOutSine" | "outBounce" | "outElastic" | "inBounce" | "inCirc" | "outCirc" | "inOutCirc" | "inBack" | "outBack" | "inOutBack"
   workspaceTransitionDurationMs: number
   workspaceTransitionAcceleration: number
   workspaceTransitionEndEasePower: number
@@ -62,8 +61,7 @@ export type ShellWorkspaceState = {
 
 export type ShellWorkspaceControllerState = ShellWorkspaceState & {
   editorModal: { target: { kind: string }; renderable: { blur: () => void; focus: () => void } } | null
-  promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
-  workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
+  promptPaneAnimationTimeline: Timeline | null
   workspaceTransitionTimeline: Timeline | null
 }
 

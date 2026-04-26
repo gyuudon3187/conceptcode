@@ -1,4 +1,4 @@
-import { createTimeline, engine } from "@opentui/core"
+import { createTimeline, engine, type Timeline } from "@opentui/core"
 import { appendFile } from "node:fs/promises"
 import { join } from "node:path"
 
@@ -31,28 +31,48 @@ function easeOutPower(progress: number, power: number): number {
 export function createWorkspaceController(deps: ShellWorkspaceControllerDeps) {
   const { shellState: state, redraw } = deps
 
+  type TimelineStateKey = "promptPaneAnimationTimeline" | "workspaceTransitionTimeline"
+
+  function stopTimeline(key: TimelineStateKey): void {
+    const timeline = state[key]
+    if (!timeline) return
+    timeline.pause()
+    engine.unregister(timeline)
+    state[key] = null
+  }
+
+  function startTimeline(options: {
+    key: TimelineStateKey
+    duration: number
+    configure: (timeline: Timeline) => void
+    onComplete: (timeline: Timeline) => void
+  }): void {
+    stopTimeline(options.key)
+    const timeline = createTimeline({
+      autoplay: false,
+      duration: options.duration,
+      onComplete: () => {
+        if (state[options.key] !== timeline) return
+        options.onComplete(timeline)
+      },
+    })
+    options.configure(timeline)
+    state[options.key] = timeline
+    redraw()
+    timeline.play()
+  }
+
   function desiredPromptPaneRatio(): number {
     if (state.layoutMode !== "wide") return 1
     return state.promptPaneMode === "expanded" ? state.uiLayoutConfig.expandedPromptRatio : state.uiLayoutConfig.collapsedPromptRatio
   }
 
   function stopPromptPaneAnimation(): void {
-    if (state.promptPaneAnimationTimeout) {
-      clearTimeout(state.promptPaneAnimationTimeout)
-      state.promptPaneAnimationTimeout = null
-    }
+    stopTimeline("promptPaneAnimationTimeline")
   }
 
   function stopWorkspaceTransition(): void {
-    if (state.workspaceTransitionTimeline) {
-      state.workspaceTransitionTimeline.pause()
-      engine.unregister(state.workspaceTransitionTimeline)
-      state.workspaceTransitionTimeline = null
-    }
-    if (state.workspaceTransitionTimeout) {
-      clearTimeout(state.workspaceTransitionTimeout)
-      state.workspaceTransitionTimeout = null
-    }
+    stopTimeline("workspaceTransitionTimeline")
   }
 
   function finishWorkspaceTransition(nextFocus: boolean, openPromptEditorAfterTransition = false): void {
@@ -102,10 +122,23 @@ export function createWorkspaceController(deps: ShellWorkspaceControllerDeps) {
       layoutMode: state.layoutMode,
     })
     const progressState = { value: 0 }
-    const timeline = createTimeline({
-      autoplay: false,
+    startTimeline({
+      key: "workspaceTransitionTimeline",
       duration: state.uiLayoutConfig.workspaceTransitionDurationMs,
-      onComplete: () => {
+      configure: (timeline) => {
+        timeline.add(progressState, {
+          duration: state.uiLayoutConfig.workspaceTransitionDurationMs,
+          value: 1,
+          ease: "linear",
+          onUpdate: () => {
+            const transition = state.workspaceTransition
+            if (!transition || state.workspaceTransitionTimeline !== timeline) return
+            transition.progress = easeOutPower(progressState.value, state.uiLayoutConfig.workspaceTransitionEndEasePower)
+            redraw()
+          },
+        })
+      },
+      onComplete: (timeline) => {
         const transition = state.workspaceTransition
         if (!transition || state.workspaceTransitionTimeline !== timeline) return
         const elapsed = Date.now() - transition.startedAt
@@ -121,20 +154,6 @@ export function createWorkspaceController(deps: ShellWorkspaceControllerDeps) {
         finishWorkspaceTransition(nextFocus, openPromptEditorAfterTransition)
       },
     })
-    timeline.add(progressState, {
-      duration: state.uiLayoutConfig.workspaceTransitionDurationMs,
-      value: 1,
-      ease: "linear",
-      onUpdate: () => {
-        const transition = state.workspaceTransition
-        if (!transition || state.workspaceTransitionTimeline !== timeline) return
-        transition.progress = easeOutPower(progressState.value, state.uiLayoutConfig.workspaceTransitionEndEasePower)
-        redraw()
-      },
-    })
-    state.workspaceTransitionTimeline = timeline
-    redraw()
-    timeline.play()
   }
 
   function animatePromptPane(): void {
@@ -145,20 +164,38 @@ export function createWorkspaceController(deps: ShellWorkspaceControllerDeps) {
       redraw()
       return
     }
-    const step = () => {
-      const delta = state.promptPaneTargetRatio - state.promptPaneRatio
-      if (Math.abs(delta) <= state.uiLayoutConfig.promptAnimationEpsilon) {
-        state.promptPaneRatio = state.promptPaneTargetRatio
-        state.promptPaneAnimationTimeout = null
-        redraw()
-        return
-      }
-      state.promptPaneRatio += delta * state.uiLayoutConfig.promptAnimationLerp
+    const startRatio = state.promptPaneRatio
+    const targetRatio = state.promptPaneTargetRatio
+    const distance = Math.abs(targetRatio - startRatio)
+    if (distance <= state.uiLayoutConfig.promptAnimationSnapEpsilon) {
+      state.promptPaneRatio = targetRatio
       redraw()
-      state.promptPaneAnimationTimeout = setTimeout(step, state.uiLayoutConfig.promptAnimationStepMs)
+      return
     }
-    redraw()
-    state.promptPaneAnimationTimeout = setTimeout(step, state.uiLayoutConfig.promptAnimationStepMs)
+    const progressState = { value: 0 }
+    const duration = state.uiLayoutConfig.promptAnimationDurationMs
+    startTimeline({
+      key: "promptPaneAnimationTimeline",
+      duration,
+      configure: (timeline) => {
+        timeline.add(progressState, {
+          duration,
+          value: 1,
+          ease: state.uiLayoutConfig.promptAnimationEase,
+          onUpdate: () => {
+            if (state.promptPaneAnimationTimeline !== timeline) return
+            state.promptPaneRatio = startRatio + ((targetRatio - startRatio) * progressState.value)
+            redraw()
+          },
+        })
+      },
+      onComplete: (timeline) => {
+        if (state.promptPaneAnimationTimeline !== timeline) return
+        state.promptPaneRatio = targetRatio
+        state.promptPaneAnimationTimeline = null
+        redraw()
+      },
+    })
   }
 
   function refreshPromptPaneTarget(): void {
@@ -169,13 +206,13 @@ export function createWorkspaceController(deps: ShellWorkspaceControllerDeps) {
       state.promptPaneRatio = 1
       return
     }
-    if (Math.abs(nextTarget - state.promptPaneRatio) <= state.uiLayoutConfig.promptAnimationEpsilon) {
+    if (Math.abs(nextTarget - state.promptPaneRatio) <= state.uiLayoutConfig.promptAnimationSnapEpsilon) {
       stopPromptPaneAnimation()
       state.promptPaneTargetRatio = nextTarget
       state.promptPaneRatio = nextTarget
       return
     }
-    if (Math.abs(nextTarget - state.promptPaneTargetRatio) <= state.uiLayoutConfig.promptAnimationEpsilon) {
+    if (Math.abs(nextTarget - state.promptPaneTargetRatio) <= state.uiLayoutConfig.promptAnimationSnapEpsilon) {
       state.promptPaneTargetRatio = nextTarget
       return
     }

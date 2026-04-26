@@ -22,10 +22,9 @@ export const DEFAULT_UI_LAYOUT_CONFIG: UiLayoutConfig = {
   conceptsToSessionTransitionExpandedPromptRatio: 0.58,
   conceptsToSessionRightStackStartWidthRatio: 1,
   conceptsToSessionDetailsHeightAcceleration: 1,
-  promptAnimationEpsilon: 0.015,
-  promptAnimationStepMs: 16,
-  promptAnimationLerp: 0.28,
-  workspaceTransitionStepMs: 16,
+  promptAnimationSnapEpsilon: 0.015,
+  promptAnimationDurationMs: 96,
+  promptAnimationEase: "outQuad",
   workspaceTransitionDurationMs: 5000,
   workspaceTransitionAcceleration: 1.22,
   workspaceTransitionEndEasePower: 3,
@@ -114,8 +113,7 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     sessionModal: null,
     pendingCtrlCExit: false,
     ctrlCExitTimeout: null,
-    promptPaneAnimationTimeout: null,
-    workspaceTransitionTimeout: null,
+    promptPaneAnimationTimeline: null,
     workspaceTransitionTimeline: null,
   }
   const promptEditorUiState: PromptEditorUiState = {

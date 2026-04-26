@@ -34,17 +34,14 @@ ui_layout:
   # vertically sooner without changing its width timing or other panes.
   conceptsToSessionDetailsHeightAcceleration: 1.15
 
-  # Stops prompt-pane width animation when the current ratio is close enough to target.
-  promptAnimationEpsilon: 0.015
+  # Snaps prompt-pane width animation to its target when the remaining ratio delta is small enough.
+  promptAnimationSnapEpsilon: 0.015
 
-  # Milliseconds between prompt-pane animation steps.
-  promptAnimationStepMs: 16
+  # Total prompt-pane animation duration in milliseconds.
+  promptAnimationDurationMs: 96
 
-  # Fraction of remaining distance applied on each prompt-pane animation step.
-  promptAnimationLerp: 0.28
-
-  # Milliseconds between workspace-transition animation steps.
-  workspaceTransitionStepMs: 16
+  # Easing function used for prompt-pane width animation.
+  promptAnimationEase: outQuad
 
   # Total workspace-transition duration in milliseconds.
   workspaceTransitionDurationMs: 800
