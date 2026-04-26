@@ -1,0 +1,22 @@
+{
+  "name": "agent-tui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./animation": "./src/animation.ts",
+    "./types": "./src/types.ts",
+    "./theme": "./src/theme.ts",
+    "./text": "./src/text.ts",
+    "./layout/geometry": "./src/layout/geometry.ts",
+    "./render/frame": "./src/render/frame.ts",
+    "./render/inspector": "./src/render/inspector.ts",
+    "./render/overlay": "./src/render/overlay.ts",
+    "./render/scroll": "./src/render/scroll.ts",
+    "./render/session-modal": "./src/render/session-modal.ts",
+    "./keybindings": "./src/keybindings.ts"
+  },
+  "peerDependencies": {
+    "@opentui/core": "^0.1.96"
+  }
+}

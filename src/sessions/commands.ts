@@ -1,17 +1,36 @@
 import type { CliRenderer } from "@opentui/core"
 
-import type { AppState, ChatSession, EditorModalState } from "../core/types"
+import type { ShellSessionListItem } from "agent-tui/types"
+
+import { sessionModalHostState } from "../core/state"
+import type { AppState, ChatSession, EditorModalState, SessionModalHostState } from "../core/types"
 import { activeSession, createNamedSession, saveSessions, sessionActivityAt, syncSessionMetadata } from "./store"
 
 type SyncPromptDraft = (state: AppState, editor: EditorModalState) => void
 type OpenPromptEditor = (state: AppState, renderer: CliRenderer, redraw: () => void) => void
 
-export function sessionModalEntries(state: AppState): ChatSession[] {
+export function sessionModalEntries(state: Pick<SessionModalHostState, "sessions">): ChatSession[] {
   return [...state.sessions].sort((left, right) => sessionActivityAt(right).localeCompare(sessionActivityAt(left)))
 }
 
+export function sessionModalItem(session: ChatSession, selected: boolean): ShellSessionListItem {
+  const activityAt = sessionActivityAt(session)
+  const badge = session.lastMode === "plan"
+    ? { label: "PLAN", color: "#74c0fc" }
+    : session.lastMode === "build"
+      ? { label: "BUILD", color: "#ffa94d" }
+      : { label: "CONCEPTUALIZE", color: "#8ce99a" }
+  return {
+    id: session.id,
+    title: session.title,
+    subtitle: `${session.messages.filter((message) => message.text.trim()).length} messages  ${activityAt.replace("T", " ").slice(0, 16)}`,
+    badge,
+    selected,
+  }
+}
+
 export function openSessionModal(state: AppState): void {
-  const entries = sessionModalEntries(state)
+  const entries = sessionModalEntries(sessionModalHostState(state))
   const activeIndex = Math.max(0, entries.findIndex((session) => session.id === state.activeSessionId))
   if (state.editorModal?.target.kind === "prompt") {
     state.editorModal.renderable.blur()
@@ -50,7 +69,7 @@ export async function deleteSession(state: AppState, sessionId: string): Promise
   const deletingActive = state.activeSessionId === sessionId
   state.sessions.splice(existingIndex, 1)
   if (state.sessionModal) {
-    const entries = sessionModalEntries(state)
+    const entries = sessionModalEntries(sessionModalHostState(state))
     state.sessionModal.selectedIndex = Math.max(0, Math.min(state.sessionModal.selectedIndex, entries.length - 1))
     state.sessionModal.scrollTop = Math.max(0, Math.min(state.sessionModal.scrollTop, entries.length - 1))
   }

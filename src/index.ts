@@ -1,4 +1,5 @@
-import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
+import { RGBA, ScrollBoxRenderable, SyntaxStyle, TextareaRenderable, createCliRenderer, engine, type CliRenderer, type KeyEvent } from "@opentui/core"
+import { createScrollBox } from "agent-tui/render/scroll"
 
 import { copyWithStatus } from "./app/clipboard"
 import { createInitialAppState, loadProjectPaths, parseArgs } from "./app/init"
@@ -6,11 +7,11 @@ import { bindKeyHandler } from "./app/keybindings"
 import { clearCtrlCExitState } from "./app/platform"
 import { createWorkspaceController } from "./app/workspace"
 import { loadConceptGraph } from "./core/model"
-import { clampCursor, handleResize } from "./core/state"
+import { clampCursor, handleResize, workspaceUiState } from "./core/state"
 import type { AppState, InspectorKind } from "./core/types"
 import { openExternalEditor } from "./platform/editor"
 import { startDummyChatServer } from "./platform/chat"
-import { openPromptEditor, syncPromptDraft } from "./prompt/editor"
+import { applyEditorText, openPromptEditor, syncPromptDraft } from "./prompt/editor"
 import { createPromptThreadController } from "./prompt/thread"
 import { activeSession } from "./sessions/store"
 import { scrollListForCursor } from "./ui/concepts-list"
@@ -37,18 +38,6 @@ function openInspector(state: AppState, kind: InspectorKind): void {
 
 function closeInspector(state: AppState): void {
   state.inspector = null
-}
-
-function createScrollBox(renderer: CliRenderer): ScrollBoxRenderable {
-  const scroll = new ScrollBoxRenderable(renderer, {
-    width: "100%",
-    height: "100%",
-    viewportCulling: false,
-    scrollbarOptions: { showArrows: false },
-  })
-  scroll.verticalScrollBar.visible = false
-  scroll.horizontalScrollBar.visible = false
-  return scroll
 }
 
 async function main(): Promise<void> {
@@ -98,14 +87,25 @@ async function main(): Promise<void> {
   }
 
   workspace = createWorkspaceController({
-    state,
+    shellState: state,
     redraw: draw,
     openPromptEditor: () => openPromptEditorFor(),
+    applyPromptEditorText: () => {
+      const editorModal = state.editorModal
+      if (editorModal?.target.kind === "prompt") {
+        applyEditorText(state, editorModal)
+      }
+    },
+    getViewport: () => ({
+      width: renderer?.terminalWidth || process.stdout.columns || 120,
+      height: renderer?.terminalHeight || process.stdout.rows || 36,
+    }),
   })
 
   function mountRenderer(nextRenderer: CliRenderer): void {
     unbindRendererResize?.()
     renderer = nextRenderer
+    engine.attach(renderer)
     listScroll = createScrollBox(renderer)
     mainScroll = createScrollBox(renderer)
     promptScroll = createScrollBox(renderer)

@@ -2,12 +2,13 @@ import { resolve } from "node:path"
 
 import { RGBA, SyntaxStyle, TextAttributes } from "@opentui/core"
 import type { TextChunk } from "@opentui/core"
+import type { ShellInspectorLegendItem } from "agent-tui/types"
 import { bundledThemes, codeToTokens } from "shiki"
 import type { BundledLanguage, ThemeRegistrationResolved, ThemedToken, TokensResult } from "shiki"
 import type { RawThemeSetting } from "@shikijs/types"
 
 import { sourceLinesForNode, sourcePathForNode } from "../core/model"
-import type { AppState, ConceptNode } from "../core/types"
+import type { AppState, ConceptNode, InspectorKind } from "../core/types"
 
 const SHIKI_THEME = "dark-plus"
 const DEFAULT_CODE_FG = RGBA.fromHex("#e5e9f0")
@@ -133,6 +134,12 @@ export type ContextPreview = {
   lines: SnippetLine[]
   legendItems?: PreviewLegendItem[]
   useSyntaxStyle?: boolean
+}
+
+export type InspectorPreviewProvider = {
+  titleFor: (state: AppState, node: ConceptNode, kind: InspectorKind) => string
+  previewFor: (state: AppState, node: ConceptNode, kind: InspectorKind) => Promise<ContextPreview>
+  legendItemsFor: (preview: ContextPreview) => ShellInspectorLegendItem[]
 }
 
 const TREE_CONNECTOR_FG = RGBA.fromHex("#6a7b8a")
@@ -346,4 +353,27 @@ export async function buildSnippetPreview(state: AppState, node: ConceptNode): P
     lines: renderedLines,
     useSyntaxStyle: true,
   }
+}
+
+export const conceptCodeInspectorPreviewProvider: InspectorPreviewProvider = {
+  titleFor(_state, node, kind) {
+    if (kind === "snippet") {
+      return node.loc ? `Snippet ${node.loc.file}:${node.loc.startLine}-${node.loc.endLine}` : "Snippet"
+    }
+    if (kind === "subtree") {
+      return `Subtree ${node.title}`
+    }
+    return `Metadata ${node.title}`
+  },
+  previewFor(state, node, kind) {
+    if (kind === "snippet") return buildSnippetPreview(state, node)
+    if (kind === "subtree") return buildSubtreePreview(state, node)
+    return buildMetadataPreview(state, node)
+  },
+  legendItemsFor(preview) {
+    return (preview.legendItems ?? []).map((item) => ({
+      label: item.kindLabel,
+      color: item.color,
+    }))
+  },
 }

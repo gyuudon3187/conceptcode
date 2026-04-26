@@ -1,4 +1,45 @@
-import type { AppState, ConceptNamespaceMode, ConceptNode, LayoutMode } from "./types"
+import type { LayoutMode } from "agent-tui/types"
+
+import type {
+  AppState,
+  ConceptGraphState,
+  ConceptNamespaceMode,
+  ConceptNode,
+  ModalTransientState,
+  PromptEditorHostState,
+  PromptEditorUiState,
+  SessionChatState,
+  SessionModalHostState,
+  WorkspaceUiState,
+} from "./types"
+
+export function conceptGraphState(state: AppState): ConceptGraphState {
+  return state
+}
+
+export function promptEditorUiState(state: AppState): PromptEditorUiState {
+  return state
+}
+
+export function promptEditorHostState(state: AppState): PromptEditorHostState {
+  return state
+}
+
+export function workspaceUiState(state: AppState): WorkspaceUiState {
+  return state
+}
+
+export function sessionChatState(state: AppState): SessionChatState {
+  return state
+}
+
+export function modalTransientState(state: AppState): ModalTransientState {
+  return state
+}
+
+export function sessionModalHostState(state: AppState): SessionModalHostState {
+  return state
+}
 
 export function namespaceRootPath(mode: ConceptNamespaceMode): "impl" | "domain" {
   return mode === "implementation" ? "impl" : "domain"
@@ -47,7 +88,7 @@ export function scrollMain(state: AppState, delta: number): void {
 }
 
 export function handleResize(state: AppState, width: number): void {
-  state.layoutMode = width >= 120 ? "wide" : "narrow"
+  workspaceUiState(state).layoutMode = width >= 120 ? "wide" : "narrow"
 }
 
 export function moveCursor(state: AppState, delta: number): boolean {

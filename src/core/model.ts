@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, extname, isAbsolute, resolve } from "node:path"
 
-import type { ConceptNamespace, ConceptNode, GraphPayload, JsonValue, KindDefinition, SourceLoc, UiLayoutConfig } from "./types"
+import type { UiLayoutConfig } from "agent-tui/types"
+
+import type { ConceptNamespace, ConceptNode, GraphPayload, JsonValue, KindDefinition, SourceLoc } from "./types"
 
 function asObject(value: JsonValue | undefined): Record<string, JsonValue> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -185,17 +187,15 @@ function uiLayoutConfigFromOptions(optionsPath: string | undefined): Partial<UiL
   const root = asObject(payload)
   const uiLayout = asObject(root.ui_layout)
   const result: Partial<UiLayoutConfig> = {}
-  const numericKeys: Array<keyof UiLayoutConfig> = [
+  const numericKeys: Array<Exclude<keyof UiLayoutConfig, "promptAnimationEase">> = [
     "collapsedPromptRatio",
     "conceptsToSessionTransitionCollapsedPromptRatio",
     "expandedPromptRatio",
     "conceptsToSessionTransitionExpandedPromptRatio",
     "conceptsToSessionRightStackStartWidthRatio",
     "conceptsToSessionDetailsHeightAcceleration",
-    "promptAnimationEpsilon",
-    "promptAnimationStepMs",
-    "promptAnimationLerp",
-    "workspaceTransitionStepMs",
+    "promptAnimationSnapEpsilon",
+    "promptAnimationDurationMs",
     "workspaceTransitionDurationMs",
     "workspaceTransitionAcceleration",
     "workspaceTransitionEndEasePower",
@@ -221,6 +221,10 @@ function uiLayoutConfigFromOptions(optionsPath: string | undefined): Partial<UiL
     if (typeof value === "number" && Number.isFinite(value)) {
       result[key] = value
     }
+  }
+  const promptAnimationEase = uiLayout.promptAnimationEase
+  if (typeof promptAnimationEase === "string") {
+    result.promptAnimationEase = promptAnimationEase as UiLayoutConfig["promptAnimationEase"]
   }
   return result
 }

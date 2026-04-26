@@ -1,6 +1,13 @@
 import type { TextareaRenderable } from "@opentui/core"
 
+import type { Timeline } from "@opentui/core"
 import type { RGBA } from "@opentui/core"
+import type {
+  LayoutMode,
+  ShellWorkspaceState,
+  UiLayoutConfig,
+  WorkspaceTransitionState,
+} from "agent-tui/types"
 import type { EffectivePromptTokenBreakdown } from "../prompt/payload"
 
 export type JsonPrimitive = null | boolean | number | string
@@ -35,8 +42,6 @@ export type GraphPayload = {
 
 export type ConceptNamespace = "impl" | "domain"
 export type ConceptNamespaceMode = "implementation" | "domain"
-
-export type LayoutMode = "wide" | "narrow"
 
 export type UiMode = "plan" | "build" | "conceptualize"
 
@@ -76,6 +81,25 @@ export type PromptSuggestionState = {
   end: number
   selectedIndex: number
   visibleStartIndex: number
+}
+
+export type PromptSuggestionPrefix = PromptSuggestionState["prefix"]
+
+export type PromptSuggestionContext = {
+  prefix: PromptSuggestionPrefix
+  query: string
+  mode: PromptSuggestionState["mode"]
+}
+
+export type PromptSuggestionEntry = {
+  value: string
+  description?: string
+}
+
+export type PromptSuggestionProvider = {
+  suggestions: (context: PromptSuggestionContext) => PromptSuggestionEntry[]
+  isResolvedValue?: (context: { prefix: PromptSuggestionPrefix; query: string; value: string }) => boolean
+  acceptTrailingText?: (context: { prefix: PromptSuggestionPrefix; value: string; suffix: string }) => string
 }
 
 export type EditorModalState = {
@@ -177,49 +201,12 @@ export type SessionModalState = {
   scrollTop: number
 }
 
-export type WorkspaceFocus = "session" | "concepts"
-
-export type WorkspaceTransitionState = {
-  from: WorkspaceFocus
-  to: WorkspaceFocus
-  progress: number
-  startedAt: number
-  loggedFirstFrame?: boolean
-}
-
-export type UiLayoutConfig = {
-  collapsedPromptRatio: number
-  conceptsToSessionTransitionCollapsedPromptRatio: number
-  expandedPromptRatio: number
-  conceptsToSessionTransitionExpandedPromptRatio: number
-  conceptsToSessionRightStackStartWidthRatio: number
-  conceptsToSessionDetailsHeightAcceleration: number
-  promptAnimationEpsilon: number
-  promptAnimationStepMs: number
-  promptAnimationLerp: number
-  workspaceTransitionStepMs: number
-  workspaceTransitionDurationMs: number
-  workspaceTransitionAcceleration: number
-  workspaceTransitionEndEasePower: number
-  workspaceTransitionStaggerDelay: number
-  workspaceTransitionFadeStart: number
-  workspaceTransitionFadeEnd: number
-  viewportHorizontalInset: number
-  rootPadding: number
-  interPaneGap: number
-  minFrameWidth: number
-  minFrameHeight: number
-  minPromptPaneWidth: number
-  minSidebarWidth: number
-  supportHeight: number
-  minPreviewHeight: number
-  minPaneWidth: number
-  minPaneHeight: number
-  transitionChipWidth: number
-  transitionChipHeight: number
-}
-
-export type AppState = {
+// Internal ownership boundary after the local shell extraction:
+// - App-owned state keeps concept graph semantics, prompt semantics, sessions, and inspectors.
+// - Extracted shell contracts live in `agent-tui`, while app-local state keeps the runtime flat.
+// This keeps the runtime `AppState` flat, but names the slices explicitly so new
+// code can depend on narrower contracts instead of the full state object.
+export type ConceptGraphState = {
   jsonPath: string
   graphPayload: GraphPayload
   nodes: Map<string, ConceptNode>
@@ -230,34 +217,61 @@ export type AppState = {
   currentParentPath: string
   cursor: number
   kindDefinitions: KindDefinition[]
+}
+
+export type ModalTransientState = {
   createConceptModal: CreateConceptModalState | null
   confirmModal: ConfirmModalState | null
-  layoutMode: LayoutMode
-  uiMode: UiMode
-  inspector: InspectorState | null
-  mainScrollTop: number
-  mainViewportHeight: number
-  contextTitle: string
-  contextLegendItems: Array<{ kindLabel: string; color: RGBA }>
-  sessions: ChatSession[]
-  activeSessionId: string
-  promptPaneRatio: number
-  promptPaneTargetRatio: number
-  promptPaneMode: "collapsed" | "expanded"
-  uiLayoutConfig: UiLayoutConfig
-  promptScrollTop: number
-  promptViewportHeight: number
-  conceptNavigationFocused: boolean
-  startupDrawComplete: boolean
   editorModal: EditorModalState | null
   sessionModal: SessionModalState | null
   pendingCtrlCExit: boolean
   ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
-  promptPaneAnimationTimeout: ReturnType<typeof setTimeout> | null
+  promptPaneAnimationTimeline: Timeline | null
+  workspaceTransitionTimeline: Timeline | null
+}
+
+export type PromptEditorUiState = {
+  uiMode: UiMode
+  inspector: InspectorState | null
+  contextTitle: string
+  contextLegendItems: Array<{ kindLabel: string; color: RGBA }>
   promptTokenBreakdown: EffectivePromptTokenBreakdown
+}
+
+export type WorkspaceUiState = {
+  layoutMode: LayoutMode
+  uiLayoutConfig: UiLayoutConfig
+  conceptNavigationFocused: boolean
+  startupDrawComplete: boolean
+  mainViewportHeight: number
+  promptViewportHeight: number
+  promptPaneRatio: number
+  promptPaneTargetRatio: number
+  promptPaneMode: "collapsed" | "expanded"
+  promptScrollTop: number
+  mainScrollTop: number
+  workspaceTransition: WorkspaceTransitionState | null
+}
+
+export type SessionChatState = {
+  sessions: ChatSession[]
+  activeSessionId: string
   chatTransport: ChatTransport
   activeResponseId: string | null
   activeAssistantMessageId: string | null
-  workspaceTransition: WorkspaceTransitionState | null
-  workspaceTransitionTimeout: ReturnType<typeof setTimeout> | null
 }
+
+export type PromptEditorHostState = Pick<
+  WorkspaceUiState,
+  "layoutMode" | "mainScrollTop" | "mainViewportHeight" | "promptPaneRatio" | "promptPaneTargetRatio" | "promptPaneMode" | "promptScrollTop" | "promptViewportHeight"
+> &
+  Pick<SessionChatState, "sessions" | "activeSessionId"> &
+  PromptEditorUiState
+
+export type SessionModalHostState = Pick<WorkspaceUiState, "layoutMode"> & Pick<SessionChatState, "sessions" | "activeSessionId"> & Pick<ModalTransientState, "sessionModal">
+
+export type AppState = ConceptGraphState &
+  ModalTransientState &
+  PromptEditorUiState &
+  WorkspaceUiState &
+  SessionChatState

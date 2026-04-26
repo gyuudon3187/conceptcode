@@ -1,6 +1,16 @@
 import { readFile } from "node:fs/promises"
 
-import type { AppState, KindDefinition, UiLayoutConfig } from "../core/types"
+import type { UiLayoutConfig } from "agent-tui/types"
+
+import type {
+  AppState,
+  ConceptGraphState,
+  KindDefinition,
+  ModalTransientState,
+  PromptEditorUiState,
+  SessionChatState,
+  WorkspaceUiState,
+} from "../core/types"
 import { createSseChatTransport } from "../platform/chat"
 import { EMPTY_PROMPT_TOKEN_BREAKDOWN } from "../prompt/payload"
 import { loadSessions } from "../sessions/store"
@@ -12,10 +22,9 @@ export const DEFAULT_UI_LAYOUT_CONFIG: UiLayoutConfig = {
   conceptsToSessionTransitionExpandedPromptRatio: 0.58,
   conceptsToSessionRightStackStartWidthRatio: 1,
   conceptsToSessionDetailsHeightAcceleration: 1,
-  promptAnimationEpsilon: 0.015,
-  promptAnimationStepMs: 16,
-  promptAnimationLerp: 0.28,
-  workspaceTransitionStepMs: 16,
+  promptAnimationSnapEpsilon: 0.015,
+  promptAnimationDurationMs: 96,
+  promptAnimationEase: "outQuad",
   workspaceTransitionDurationMs: 5000,
   workspaceTransitionAcceleration: 1.22,
   workspaceTransitionEndEasePower: 3,
@@ -85,7 +94,7 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
   const { sessions, activeSessionId } = await loadSessions(input.conceptsPath, "plan")
   const resolvedUiLayoutConfig: UiLayoutConfig = { ...DEFAULT_UI_LAYOUT_CONFIG, ...input.uiLayoutConfig }
   const initialNamespaceMode = input.nodes.has("impl") ? "implementation" : "domain"
-  const state: AppState = {
+  const conceptGraphState: ConceptGraphState = {
     jsonPath: input.conceptsPath,
     graphPayload: input.graphPayload,
     nodes: input.nodes,
@@ -96,36 +105,51 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     currentParentPath: initialNamespaceMode === "implementation" ? "impl" : "domain",
     cursor: 0,
     kindDefinitions: input.kindDefinitions,
+  }
+  const modalTransientState: ModalTransientState = {
     createConceptModal: null,
     confirmModal: null,
-    layoutMode: "wide",
-    uiMode: "plan",
-    inspector: null,
-    mainScrollTop: 0,
-    mainViewportHeight: 18,
-    contextTitle: "Inspector",
-    contextLegendItems: [],
-    sessions,
-    activeSessionId,
-    promptPaneRatio: resolvedUiLayoutConfig.expandedPromptRatio,
-    promptPaneTargetRatio: resolvedUiLayoutConfig.expandedPromptRatio,
-    promptPaneMode: "expanded",
-    uiLayoutConfig: resolvedUiLayoutConfig,
-    promptScrollTop: 0,
-    promptViewportHeight: 12,
-    conceptNavigationFocused: false,
-    startupDrawComplete: false,
     editorModal: null,
     sessionModal: null,
     pendingCtrlCExit: false,
     ctrlCExitTimeout: null,
-    promptPaneAnimationTimeout: null,
+    promptPaneAnimationTimeline: null,
+    workspaceTransitionTimeline: null,
+  }
+  const promptEditorUiState: PromptEditorUiState = {
+    uiMode: "plan",
+    inspector: null,
+    contextTitle: "Inspector",
+    contextLegendItems: [],
     promptTokenBreakdown: EMPTY_PROMPT_TOKEN_BREAKDOWN,
+  }
+  const workspaceUiState: WorkspaceUiState = {
+    layoutMode: "wide",
+    uiLayoutConfig: resolvedUiLayoutConfig,
+    conceptNavigationFocused: false,
+    startupDrawComplete: false,
+    mainViewportHeight: 18,
+    promptViewportHeight: 12,
+    promptPaneRatio: resolvedUiLayoutConfig.expandedPromptRatio,
+    promptPaneTargetRatio: resolvedUiLayoutConfig.expandedPromptRatio,
+    promptPaneMode: "expanded",
+    promptScrollTop: 0,
+    mainScrollTop: 0,
+    workspaceTransition: null,
+  }
+  const sessionChatState: SessionChatState = {
+    sessions,
+    activeSessionId,
     chatTransport: createSseChatTransport(input.dummyChatServerBaseUrl),
     activeResponseId: null,
     activeAssistantMessageId: null,
-    workspaceTransition: null,
-    workspaceTransitionTimeout: null,
+  }
+  const state: AppState = {
+    ...conceptGraphState,
+    ...modalTransientState,
+    ...promptEditorUiState,
+    ...workspaceUiState,
+    ...sessionChatState,
   }
   return state
 }

@@ -39,7 +39,7 @@ This avoids designing the package API around accidental current coupling.
 
 ## Milestones
 
-### [ ] Milestone 1: Define internal ownership boundaries
+### [x] Milestone 1: Define internal ownership boundaries
 
 Difficulty: Medium
 
@@ -90,10 +90,19 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record which fields are intended to move into shell-owned state.
-- Record any unresolved `AppState` hotspots that still block shell extraction.
+- Already completed in code:
+  - `src/core/types.ts` now names explicit state slices including `ConceptGraphState`, `ModalTransientState`, `PromptEditorUiState`, `WorkspaceUiState`, and `SessionChatState`.
+  - `src/core/state.ts` now exposes slice selectors including `conceptGraphState(...)`, `promptEditorUiState(...)`, `promptEditorHostState(...)`, `workspaceUiState(...)`, `sessionChatState(...)`, `sessionModalHostState(...)`, and `modalTransientState(...)`.
+  - `src/app/init.ts` now initializes the slices separately while keeping the runtime `AppState` flat.
+- Current ownership split to preserve:
+  - app-owned: concept graph semantics, prompt semantics, sessions/chat, inspectors
+  - shell-owned direction: layout mode, workspace chrome, pane ratios, viewport sizing, transition state, modal primitives
+- Important nuance for future sessions:
+  - `AppState` is still read directly in many rendering and transition modules; that is expected at this stage.
+  - Milestone 1 created the type and selector seam, not a full runtime restructuring.
+- Start the next new extraction work at Milestone 3, not Milestone 1.
 
-### [ ] Milestone 2: Create a local `src/shell/` layer for generic primitives
+### [x] Milestone 2: Create a local `src/shell/` layer for generic primitives
 
 Difficulty: Medium
 
@@ -144,10 +153,21 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record which `src/ui/text.ts` functions intentionally remained app-specific.
-- Record whether any moved helpers still rely on ConceptCode naming or prompt semantics.
+- Already completed in code:
+  - `src/shell/theme.ts` contains reusable theme tokens.
+  - `src/shell/text.ts` contains reusable text helpers and prompt-preview formatting helpers.
+  - `src/shell/layout/geometry.ts` contains reusable layout and interpolation helpers used by workspace transitions.
+  - `src/shell/render/scroll.ts` contains `createScrollBox(...)`.
+  - `src/index.ts` now imports `createScrollBox` from `src/shell/render/scroll`.
+- Functions intentionally still app-local:
+  - `src/ui/text.ts::promptPreviewWidth(...)` remains app-local because it still reads app shell state directly rather than a generic viewport/layout input.
+  - `src/ui/text.ts::promptPreviewChunks` is still ConceptCode-flavored because it highlights `@...` prompt references.
+  - `src/ui/workspace-transition.ts` still lives outside `src/shell/`; Milestone 2 only moved low-risk generic helpers, not the transition engine itself.
+- Remaining caution for Milestone 3:
+  - `src/ui/workspace-transition.ts` depends on shell-style geometry helpers already, but still consumes full `AppState` and remains structurally app-owned.
+- Start the next new extraction work at Milestone 3.
 
-### [ ] Milestone 3: Extract workspace controller and transition engine behind shell interfaces
+### [x] Milestone 3: Extract workspace controller and transition engine behind shell interfaces
 
 Difficulty: High
 
@@ -201,10 +221,24 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the final shell state interface.
-- Record any remaining direct `AppState` reads in transition/layout code that still need to be eliminated.
+- Already completed in code:
+  - `src/core/types.ts` now defines shell-facing contracts including `ShellViewportState`, `ShellWorkspaceState`, `ShellWorkspaceControllerState`, `ShellWorkspaceControllerDeps`, and `ShellWorkspaceTransitionViewState`.
+  - `src/app/workspace.ts` now drives prompt-pane animation, workspace focus switching, and transition timing from `ShellWorkspaceControllerDeps` instead of the full `AppState`.
+  - `src/ui/workspace-transition.ts` now computes geometry and animated overlay rects from shell layout/view state plus an explicit viewport, with ConceptCode pane content still injected through the render callback boundary.
+  - `src/ui/view.ts` now passes `workspaceUiState(state)` and an explicit viewport into the shell transition/layout helpers rather than giving those helpers the full `AppState`.
+- Final shell state interfaces introduced this milestone:
+  - `ShellViewportState`
+  - `ShellWorkspaceState`
+  - `ShellWorkspaceControllerState`
+  - `ShellWorkspaceControllerDeps`
+  - `ShellWorkspaceTransitionViewState`
+- Remaining direct app coupling intentionally deferred to Milestone 4:
+  - `src/ui/view.ts` still owns frame composition and still reads `AppState` directly while assembling pane content.
+  - The transition pane renderer callback still takes `AppState` because the actual pane bodies are still ConceptCode-owned.
+  - Debug logging still lives locally in both workspace modules; it is structurally optional now but not yet centralized under `src/shell/`.
+- Start Milestone 4 in a fresh session.
 
-### [ ] Milestone 4: Split frame composition from ConceptCode pane content
+### [x] Milestone 4: Split frame composition from ConceptCode pane content
 
 Difficulty: High
 
@@ -259,10 +293,23 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the pane descriptor or callback contract.
-- Record which renderers are still app-specific by design.
+- Already completed in code:
+  - `src/shell/render/frame.ts` now owns reusable workspace frame composition from shell view models plus injected pane descriptors.
+  - `src/shell/render/overlay.ts` now owns reusable overlay backdrop/card primitives used by modal and inspector chrome.
+  - `src/conceptcode-ui/panes.ts` now owns ConceptCode-specific pane bodies including details, concept preview, prompt budget, prompt pane, prompt suggestion overlay content, and transition pane bodies.
+  - `src/conceptcode-ui/overlays.ts` now owns ConceptCode-specific overlay content for the inspector and concept-summary editor while using shell overlay primitives for chrome.
+  - `src/ui/view.ts` now acts as the assembly boundary that wires shell composition to app-owned pane and overlay providers instead of owning both concerns directly.
+- Pane descriptor and shell composition contract introduced this milestone:
+  - `ShellFramePaneDescriptor`
+  - `ShellWorkspaceFrameViewModel`
+  - `ShellOverlayLayout`
+- Renderers still app-specific by design:
+  - concept details, concept preview, prompt budget, prompt suggestion descriptions, and prompt/session content stay under `src/conceptcode-ui/`
+  - inspector preview generation remains app-local in `src/ui/snippet.ts`
+  - transition pane renderer wiring still lives in `src/ui/view.ts`, but pane bodies are injected from the app side
+- Start Milestone 5 in a fresh session.
 
-### [ ] Milestone 5: Make session shell UI generic while keeping session persistence local
+### [x] Milestone 5: Make session shell UI generic while keeping session persistence local
 
 Difficulty: Medium
 
@@ -314,10 +361,22 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the session view model contract.
-- Record which session operations remain intentionally app-owned.
+- Already completed in code:
+  - `src/core/types.ts` now defines reusable shell session modal view models via `ShellSessionListItem` and `ShellSessionModalViewModel`.
+  - `src/shell/render/session-modal.ts` now owns the generic session modal renderer and session-row chrome using shell view models instead of `ChatSession`.
+  - `src/ui/modals.ts` now assembles a shell session modal view model from `SessionModalHostState` and delegates the rendering to the shell session modal renderer.
+  - `src/sessions/commands.ts` now owns app-side session display adapters through `sessionModalEntries(...)` and `sessionModalItem(...)` while keeping session actions and persistence local.
+- Session operations intentionally still app-owned:
+  - `openSessionModal(...)`
+  - `closeSessionModal(...)`
+  - `switchToSession(...)`
+  - `createAndSwitchSession(...)`
+  - `deleteSession(...)`
+  - graph-scoped session persistence via `persistSessions(...)` and the session store
+- The shell session UI no longer depends on ConceptCode-specific storage policy or graph path semantics.
+- Start Milestone 6 in a fresh session.
 
-### [ ] Milestone 6: Split keybindings into shell routing and app commands
+### [x] Milestone 6: Split keybindings into shell routing and app commands
 
 Difficulty: High
 
@@ -372,10 +431,21 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the command boundary.
-- Record any still-mixed key paths that were deferred.
+- Already completed in code:
+  - `src/shell/keybindings.ts` now owns reusable shell key routing helpers for confirm/cancel handling, wraparound session-list navigation, inspector scrolling, focus switching, and viewport-aware session modal row visibility.
+  - `src/core/types.ts` now defines shell command and list-navigation contracts via `ShellKeyCommand` and `ShellListNavigationState`.
+  - `src/app/commands.ts` now owns ConceptCode-specific browser commands such as concept navigation, inspector opening, draft creation/removal prompts, summary editing, path/payload copy behavior, help modal content, and quit/session actions.
+  - `src/app/keybindings.ts` now acts as the wiring boundary that applies shell routing first for generic modal/list/focus cases and delegates app-specific commands through the app command layer.
+- Command boundary introduced this milestone:
+  - shell routing classifies generic key events into command-style intents such as cancel, confirm, move, scroll, create, delete, and toggle-focus
+  - app command handling executes ConceptCode semantics after that routing boundary, especially concept-tree navigation, prompt/session commands, inspectors, clipboard payload behavior, and summary editing
+- Intentionally deferred or still-mixed key paths:
+  - `src/app/keybindings.ts` still owns prompt editor host key handling because the editor host and suggestion semantics remain mixed until Milestone 7.
+  - create-concept modal editing still stays app-local in `src/concepts/drafts.ts`; only generic modal precedence and confirm/cancel routing were extracted here.
+  - quit flow and renderer lifecycle still terminate through app wiring because shutdown, persistence, and prompt-draft sync remain app-owned.
+- Start Milestone 7 in a fresh session.
 
-### [ ] Milestone 7: Separate prompt editor host from ConceptCode prompt semantics
+### [x] Milestone 7: Separate prompt editor host from ConceptCode prompt semantics
 
 Difficulty: High
 
@@ -423,10 +493,23 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the provider contract.
-- Record any remaining places where generic editor code still imports concept or file suggestion logic.
+- Already completed in code:
+  - `src/core/types.ts` now defines reusable prompt-suggestion provider contracts via `PromptSuggestionPrefix`, `PromptSuggestionContext`, `PromptSuggestionEntry`, and `PromptSuggestionProvider`.
+  - `src/prompt/editor.ts` now accepts prompt-suggestion providers for host behaviors such as suggestion visibility, selection movement, acceptance, and refresh while keeping generic editor-host mechanics local to the editor module.
+  - `src/prompt/editor.ts` now exposes `conceptCodePromptSuggestionProvider(...)` so ConceptCode-owned semantics for `@concept`, `&file`, and `/command` remain app-local behind the provider boundary.
+  - `src/conceptcode-ui/panes.ts` now renders the prompt suggestion overlay from provider-fed entries and descriptions instead of reaching directly into ConceptCode slash-command description logic.
+  - `src/app/keybindings.ts` now wires prompt editor navigation and acceptance through the provider boundary rather than relying on mixed editor-host suggestion logic.
+- Provider contract introduced this milestone:
+  - `PromptSuggestionProvider.suggestions(...)` returns editor-facing entries for the current prefix/query/mode.
+  - `PromptSuggestionProvider.isResolvedValue(...)` lets the app decide when a single entry represents an already-resolved token.
+  - `PromptSuggestionProvider.acceptTrailingText(...)` lets the app control acceptance suffix behavior such as keeping directory references open with a trailing `/`.
+- Remaining intentional app coupling:
+  - `src/prompt/editor.ts` still contains ConceptCode-specific token parsing and highlight rules for `@...`, `&...`, and `/...`; the host/provider split is in place, but token grammar extraction itself is still local.
+  - `src/prompt/editor.ts::conceptCodePromptSuggestionProvider(...)` still imports graph nodes, project files, project directories, and UI mode directly because those semantics remain ConceptCode-owned.
+  - `src/app/keybindings.ts` still owns prompt editor host key handling as the app-side wiring boundary, even though suggestion sourcing and descriptions now flow through the provider contract.
+- Start Milestone 8 in a fresh session.
 
-### [ ] Milestone 8: Make inspector chrome generic while keeping preview content local
+### [x] Milestone 8: Make inspector chrome generic while keeping preview content local
 
 Difficulty: Medium
 
@@ -474,9 +557,23 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the preview provider contract.
+- Already completed in code:
+  - `src/core/types.ts` now defines reusable shell inspector view models via `ShellInspectorLegendItem` and `ShellInspectorViewModel`.
+  - `src/shell/render/inspector.ts` now owns the generic inspector container renderer including title bar, close hint, scroll container, and legend footer slot.
+  - `src/conceptcode-ui/overlays.ts` now exposes `inspectorOverlayViewModel(...)` so ConceptCode provides inspector layout/title/legend data without owning the reusable chrome.
+  - `src/ui/view.ts` now renders inspector chrome through the shell renderer and refreshes preview content through an app-owned preview provider boundary.
+  - `src/ui/snippet.ts` now exposes `InspectorPreviewProvider` plus `conceptCodeInspectorPreviewProvider`, keeping snippet/subtree/metadata preview generation app-local behind a provider contract.
+- Preview provider contract introduced this milestone:
+  - `InspectorPreviewProvider.titleFor(...)` returns the inspector title for the selected node and preview kind.
+  - `InspectorPreviewProvider.previewFor(...)` returns preview text lines plus optional legend items and syntax-style hints.
+  - `InspectorPreviewProvider.legendItemsFor(...)` adapts app preview legend data into shell-facing inspector legend items.
+- Preview-building semantics intentionally still app-local:
+  - snippet source loading, file-language detection, Shiki tokenization, and numbered source rendering remain in `src/ui/snippet.ts`
+  - subtree tree-shape rendering and concept-kind legend derivation remain in `src/ui/snippet.ts`
+  - metadata preview formatting and inspector title semantics for snippet/subtree/metadata remain ConceptCode-owned
+- Start Milestone 9 in a fresh session.
 
-### [ ] Milestone 9: Extract `src/shell/` into `packages/agent-tui`
+### [x] Milestone 9: Extract `src/shell/` into `packages/agent-tui`
 
 Difficulty: High
 
@@ -516,9 +613,73 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record the final package entrypoints and any deferred cleanup work.
+- Already completed in code:
+  - `packages/agent-tui/` now contains the extracted OpenTUI shell package with `src/` entrypoints for shell theme, text helpers, geometry helpers, key routing, overlay primitives, inspector chrome, session modal rendering, workspace frame composition, and scroll-box creation.
+  - `packages/agent-tui/src/types.ts` now owns the shell-facing contracts previously proven locally, including layout config, workspace transition state, workspace controller deps, frame/overlay/session/inspector view models, and shell key-command/list-navigation types.
+  - The former local shell modules under `src/shell/` were removed after their code moved into `packages/agent-tui/src/`.
+  - App imports now consume the package through `agent-tui/*` paths from `src/index.ts`, `src/app/workspace.ts`, `src/app/keybindings.ts`, `src/ui/view.ts`, `src/ui/modals.ts`, `src/ui/workspace-transition.ts`, `src/ui/text.ts`, `src/ui/theme.ts`, `src/conceptcode-ui/overlays.ts`, `src/sessions/commands.ts`, `src/core/model.ts`, and `src/app/init.ts`.
+  - `package.json` now declares the local file dependency on `agent-tui`, and `tsconfig.json` now includes package sources plus path aliases for `agent-tui` and `agent-tui/*`.
+  - `packages/agent-tui/README.md` now documents package scope, main entrypoints, and the expected host-app integration style.
+- Final package entrypoints and exported surfaces:
+  - `agent-tui`:
+    - re-exports theme tokens, text helpers, geometry helpers, renderers, keybinding helpers, and all shell-facing types
+  - `agent-tui/types`:
+    - `LayoutMode`
+    - `UiLayoutConfig`
+    - `WorkspaceFocus`
+    - `WorkspaceTransitionState`
+    - `ShellViewportState`
+    - `ShellWorkspaceState`
+    - `ShellWorkspaceControllerState`
+    - `ShellWorkspaceControllerDeps`
+    - `ShellWorkspaceTransitionViewState`
+    - `ShellFramePaneDescriptor`
+    - `ShellOverlayLayout`
+    - `ShellSessionListItem`
+    - `ShellSessionModalViewModel`
+    - `ShellInspectorLegendItem`
+    - `ShellInspectorViewModel`
+    - `ShellListNavigationState`
+    - `ShellKeyCommand`
+    - `ShellWorkspaceFrameViewModel`
+  - `agent-tui/theme`:
+    - `COLORS`
+  - `agent-tui/text`:
+    - `textNodesForChunks(...)`
+    - `truncateSingleLine(...)`
+    - `truncateFromStart(...)`
+    - `promptPreviewLines(...)`
+    - `highlightPromptReferenceChunks(...)`
+  - `agent-tui/layout/geometry`:
+    - geometry types `PaneRect`, `WideWorkspaceGeometry`, `GeometryViewport`
+    - layout helpers and interpolation helpers including `wideWorkspaceGeometryForRatio(...)`
+  - `agent-tui/render/frame`:
+    - `renderWorkspaceFrame(...)`
+  - `agent-tui/render/overlay`:
+    - `renderOverlayBackdrop(...)`
+    - `renderOverlayCard(...)`
+  - `agent-tui/render/inspector`:
+    - `renderInspectorOverlay(...)`
+  - `agent-tui/render/session-modal`:
+    - `renderSessionModal(...)`
+  - `agent-tui/render/scroll`:
+    - `createScrollBox(...)`
+  - `agent-tui/keybindings`:
+    - `sessionModalVisibleRowCount(...)`
+    - `keepShellListSelectionVisible(...)`
+    - `moveShellListSelection(...)`
+    - `confirmOrCancelCommand(...)`
+    - `sessionModalCommand(...)`
+    - `inspectorCommand(...)`
+    - `sharedFocusCommand(...)`
+- Deferred cleanup work or remaining boundary caveats:
+  - `src/ui/workspace-transition.ts` still remains app-local even though it now depends on package geometry/types; the transition engine still takes `AppState` through the pane-render callback boundary.
+  - `packages/agent-tui/src/types.ts` uses a deliberately minimal structural type for prompt-editor modal state in `ShellWorkspaceControllerState` so the package stays decoupled from app-local editor types.
+  - Shell-focused types are still re-exported from `src/core/types.ts` for compatibility with existing app-local imports; Milestone 10 can tighten or reduce those compatibility re-exports if desired.
+  - The package is currently consumed through a local file dependency plus TypeScript path aliases; a later packaging pass may want stronger workspace tooling or publish-ready build metadata, but that is not required for this extraction milestone.
+- The next milestone should start in a fresh session.
 
-### [ ] Milestone 10: Stabilization, cleanup, and extraction audit
+### [x] Milestone 10: Stabilization, cleanup, and extraction audit
 
 Difficulty: Medium
 
@@ -564,7 +725,29 @@ Completion criteria:
 
 Handoff notes for next session:
 
-- Record any known follow-up work for a second extraction pass, such as reusable prompt editor enhancements.
+- Already completed in code:
+  - `packages/agent-tui/src/geometry.test.ts` now covers shell layout math and transition interpolation helpers including `wideWorkspaceGeometryForRatio(...)`, `interpolateVerticalStack(...)`, `interpolateBottomRightAnchoredRect(...)`, and `interpolateTopRightAnchoredRectWithIndependentHeightProgress(...)`.
+  - `packages/agent-tui/src/keybindings.test.ts` now covers shell key-routing behavior including session modal viewport row sizing, wraparound list navigation, selection visibility clamping, and generic command classification.
+  - `packages/agent-tui/README.md` now records the extraction audit boundary explicitly, including what remains shell-owned versus app-owned and the known follow-up work for a second extraction pass.
+- Extraction audit results:
+  - `packages/agent-tui/src/` imports only package-local modules plus `@opentui/core`; no package module imports `src/` or other ConceptCode-specific code.
+  - The exported package surface remains shell-scoped rather than domain-scoped: geometry/layout helpers, frame and overlay renderers, inspector chrome, session modal rendering, text/theme helpers, key routing, and shell-facing view-model/types.
+  - Remaining coupling is documented rather than hidden:
+    - `src/ui/workspace-transition.ts` is still app-local because transition pane bodies are still rendered through app-owned callbacks.
+    - `src/core/types.ts` still re-exports shell-focused types from `agent-tui/types` as compatibility glue for existing app-local imports.
+    - prompt-editor token grammar is still app-local even though suggestion provider boundaries now exist.
+- Tests added or updated for core shell behavior:
+  - layout math
+  - transition interpolation helpers
+  - session modal viewport behavior
+  - wraparound list navigation and command routing helpers
+- Known follow-up work for a second extraction pass:
+  - decide whether to remove or narrow the compatibility re-exports in `src/core/types.ts`
+  - decide whether `src/ui/workspace-transition.ts` should move into the package once pane-render callback contracts are generic enough
+  - decide whether prompt token parsing/highlighting should be extracted beyond the current provider boundary
+- Naming cleanup completed after Milestone 10:
+  - `src/core/types.ts` now uses `WorkspaceUiState` for the app-local state slice name instead of `ShellWorkspaceUiState` to avoid implying that this wrapper type lives in the extracted package.
+- Further cleanup should happen in a fresh session if pursued; Milestone 10 itself is complete.
 
 ## Suggested execution grouping
 
