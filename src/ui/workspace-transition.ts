@@ -98,14 +98,11 @@ function renderAnimatedPane(rect: PaneRect, child: Renderable | VNode<any, any[]
 type TransitionWorkspacePaneContent = {
   sessionNode: Renderable | VNode<any, any[]>
   contextNode: Renderable | VNode<any, any[]>
-  conceptPreviewNode: Renderable | VNode<any, any[]>
   detailsNode: Renderable | VNode<any, any[]>
   conceptsNode: Renderable | VNode<any, any[]>
 }
 
 type TransitionPaneRenderer = (state: AppState, focus: WorkspaceFocus, rects: WorkspaceRects, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null) => TransitionWorkspacePaneContent | null
-
-type TransitionDebugLogger = (event: string, payload: Record<string, unknown>) => void
 
 type ShellWorkspaceTransitionOverlayDeps = {
   shellState: ShellWorkspaceTransitionViewState
@@ -114,18 +111,15 @@ type ShellWorkspaceTransitionOverlayDeps = {
   mainScroll: ScrollBoxRenderable
   promptScroll: ScrollBoxRenderable | null
   renderTransitionPaneContentWithRects: TransitionPaneRenderer
-  logDebug?: TransitionDebugLogger
 }
 
 type TransitionOverlayContext = {
   transition: NonNullable<ShellWorkspaceTransitionViewState["workspaceTransition"]>
   config: UiLayoutConfig
-  viewport: ShellViewportState
   fromWorkspaceRects: WorkspaceRects
   toWorkspaceRects: WorkspaceRects
   fromWorkspacePaneContent: TransitionWorkspacePaneContent
   toWorkspacePaneContent: TransitionWorkspacePaneContent
-  logDebug?: TransitionDebugLogger
 }
 
 type SessionToConceptsLeftStackState = {
@@ -143,6 +137,10 @@ type SessionToConceptsRightStackState = {
   sessionMiniTarget: PaneRect
   detailsEnterStart: PaneRect
   detailsPinnedTarget: PaneRect
+}
+
+function transitionChipRect(left: number, config: UiLayoutConfig): PaneRect {
+  return { left, top: 0, width: config.transitionChipWidth, height: config.transitionChipHeight }
 }
 
 function renderTransitionOverlayFrame(
@@ -180,7 +178,7 @@ function resolveTransitionWorkspaceRects(
 }
 
 function renderConceptsToSessionOverlay(context: TransitionOverlayContext): Array<Renderable | VNode<any, any[]>> {
-  const { transition, config, viewport, fromWorkspaceRects, toWorkspaceRects, fromWorkspacePaneContent, toWorkspacePaneContent, logDebug } = context
+  const { transition, config, fromWorkspaceRects, toWorkspaceRects, fromWorkspacePaneContent, toWorkspacePaneContent } = context
   const progress = transition.progress
   const conceptsToSessionRightStackStartWidth = Math.max(
     config.minPaneWidth,
@@ -210,54 +208,22 @@ function renderConceptsToSessionOverlay(context: TransitionOverlayContext): Arra
     width: conceptsToSessionRightStackStartWidth,
     height: fromWorkspaceRects.details.height,
   }
-  const detailsExitTarget: PaneRect = { left: rightAlignedLeft(fromWorkspaceRects.frameWidth, config.transitionChipWidth), top: 0, width: config.transitionChipWidth, height: config.transitionChipHeight }
-  const rightStackProgress = acceleratedProgress(progress, config.workspaceTransitionAcceleration)
-  const detailsHeightProgress = acceleratedProgress(rightStackProgress, config.conceptsToSessionDetailsHeightAcceleration)
-  const detailsRect = interpolateTopRightAnchoredRectWithIndependentHeightProgress(detailsSourceRect, detailsExitTarget, rightStackProgress, detailsHeightProgress)
-  const detailsVisibleProgress = blendProgress(rightStackProgress, config.workspaceTransitionFadeStart, config.workspaceTransitionFadeEnd)
+  const transitionProgress = acceleratedProgress(progress, config.workspaceTransitionAcceleration)
+  const detailsExitTarget = transitionChipRect(rightAlignedLeft(fromWorkspaceRects.frameWidth, config.transitionChipWidth), config)
+  const detailsHeightProgress = acceleratedProgress(transitionProgress, config.conceptsToSessionDetailsHeightAcceleration)
+  const detailsRect = interpolateTopRightAnchoredRectWithIndependentHeightProgress(detailsSourceRect, detailsExitTarget, transitionProgress, detailsHeightProgress)
+  const detailsVisibleProgress = blendProgress(transitionProgress, config.workspaceTransitionFadeStart, config.workspaceTransitionFadeEnd)
   const showDetailsPane = detailsVisibleProgress < 1
-  const sessionRectWithSoloGrowth = interpolateBottomRightAnchoredRect(sessionEnterStart, toWorkspaceRects.session, rightStackProgress)
-  const contextEnterStart: PaneRect = { left: 0, top: 0, width: config.transitionChipWidth, height: config.transitionChipHeight }
-  const leftStackProgress = acceleratedProgress(progress, config.workspaceTransitionAcceleration)
+  const sessionRectWithSoloGrowth = interpolateBottomRightAnchoredRect(sessionEnterStart, toWorkspaceRects.session, transitionProgress)
+  const contextEnterStart = transitionChipRect(0, config)
   const contextDelay = config.workspaceTransitionStaggerDelay
-  const contextProgress = delayedProgress(leftStackProgress, contextDelay)
-  const showContextPane = revealAfter(leftStackProgress, contextDelay)
-  const conceptsAnimatedRect = interpolateBottomRightAnchoredRect(fromWorkspaceRects.concepts, conceptsMiniTarget, leftStackProgress)
+  const contextProgress = delayedProgress(transitionProgress, contextDelay)
+  const showContextPane = revealAfter(transitionProgress, contextDelay)
+  const conceptsAnimatedRect = interpolateBottomRightAnchoredRect(fromWorkspaceRects.concepts, conceptsMiniTarget, transitionProgress)
   const contextRect = interpolatePinnedEnter(contextEnterStart, contextPinnedTarget, contextProgress, 3)
   const conceptsRectWithSharedGap = showContextPane
     ? stackRemainderBelow(contextRect, conceptsAnimatedRect, fromWorkspaceRects.frameHeight, config.interPaneGap, config.minPaneHeight)
     : conceptsAnimatedRect
-
-  if (!transition.loggedFirstFrame) {
-    transition.loggedFirstFrame = true
-    logDebug?.("transition_first_frame", {
-      from: transition.from,
-      to: transition.to,
-      progress,
-      viewportWidth: viewport.width,
-      viewportHeight: viewport.height,
-      concepts: {
-        from: fromWorkspaceRects.concepts,
-        miniTarget: conceptsMiniTarget,
-        current: conceptsRectWithSharedGap,
-      },
-      session: {
-        from: sessionEnterStart,
-        target: toWorkspaceRects.session,
-        current: sessionRectWithSoloGrowth,
-      },
-      details: {
-        from: fromWorkspaceRects.details,
-        exitTarget: detailsExitTarget,
-        current: detailsRect,
-      },
-      context: {
-        enterStart: contextEnterStart,
-        target: contextPinnedTarget,
-        current: contextRect,
-      },
-    })
-  }
 
   return renderTransitionOverlayFrame(fromWorkspaceRects, [
     renderAnimatedPane(sessionRectWithSoloGrowth, fromWorkspacePaneContent.sessionNode, COLORS.borderActive, progress > 0.35 ? "Session" : undefined),
@@ -276,16 +242,16 @@ function planSessionToConceptsLeftStack(context: TransitionOverlayContext): Sess
     width: toWorkspaceRects.context.width,
     height: toWorkspaceRects.concepts.height,
   }
-  const contextExitTarget: PaneRect = { left: 0, top: 0, width: config.transitionChipWidth, height: config.transitionChipHeight }
-  const leftStackProgress = acceleratedProgress(progress, config.workspaceTransitionAcceleration)
-  const leftStack = interpolateVerticalStack(fromWorkspaceRects.context, fromWorkspaceRects.conceptPreview, contextExitTarget, conceptsPinnedTarget, leftStackProgress, config.interPaneGap)
+  const contextExitTarget = transitionChipRect(0, config)
+  const transitionProgress = acceleratedProgress(progress, config.workspaceTransitionAcceleration)
+  const leftStack = interpolateVerticalStack(fromWorkspaceRects.context, fromWorkspaceRects.conceptPreview, contextExitTarget, conceptsPinnedTarget, transitionProgress, config.interPaneGap)
   const contextRect = leftStack.topRect
   const conceptRect = leftStack.bottomRect
-  const contextVisibleProgress = blendProgress(leftStackProgress, config.workspaceTransitionFadeStart, config.workspaceTransitionFadeEnd)
+  const contextVisibleProgress = blendProgress(transitionProgress, config.workspaceTransitionFadeStart, config.workspaceTransitionFadeEnd)
   const showContextPane = contextVisibleProgress < 1
-  const conceptSoloBlend = blendProgress(leftStackProgress, 0.72, 0.9)
-  const conceptSoloTop = interpolateValue(fromWorkspaceRects.conceptPreview.top, conceptsPinnedTarget.top, leftStackProgress)
-  const conceptBottom = interpolateValue(fromWorkspaceRects.conceptPreview.top + fromWorkspaceRects.conceptPreview.height, conceptsPinnedTarget.top + conceptsPinnedTarget.height, leftStackProgress)
+  const conceptSoloBlend = blendProgress(transitionProgress, 0.72, 0.9)
+  const conceptSoloTop = interpolateValue(fromWorkspaceRects.conceptPreview.top, conceptsPinnedTarget.top, transitionProgress)
+  const conceptBottom = interpolateValue(fromWorkspaceRects.conceptPreview.top + fromWorkspaceRects.conceptPreview.height, conceptsPinnedTarget.top + conceptsPinnedTarget.height, transitionProgress)
   const maxConceptTopWhileContextVisible = contextRect.top + contextRect.height + config.interPaneGap
   const blendedConceptTop = interpolateValue(conceptRect.top, conceptSoloTop, conceptSoloBlend)
   const clampedConceptTop = Math.max(blendedConceptTop, maxConceptTopWhileContextVisible)
@@ -314,18 +280,18 @@ function planSessionToConceptsRightStack(context: TransitionOverlayContext): Ses
     width: toWorkspaceRects.session.width,
     height: toWorkspaceRects.conceptPreview.height,
   }
-  const detailsEnterStart: PaneRect = { left: rightAlignedLeft(fromWorkspaceRects.frameWidth, config.transitionChipWidth), top: 0, width: config.transitionChipWidth, height: config.transitionChipHeight }
+  const detailsEnterStart = transitionChipRect(rightAlignedLeft(fromWorkspaceRects.frameWidth, config.transitionChipWidth), config)
   const detailsPinnedTarget: PaneRect = {
     left: rightAlignedLeft(fromWorkspaceRects.frameWidth, toWorkspaceRects.session.width),
     top: toWorkspaceRects.details.top,
     width: toWorkspaceRects.session.width,
     height: toWorkspaceRects.details.height,
   }
-  const rightStackProgress = acceleratedProgress(progress, config.workspaceTransitionAcceleration)
+  const transitionProgress = acceleratedProgress(progress, config.workspaceTransitionAcceleration)
   const detailsDelay = config.workspaceTransitionStaggerDelay
-  const detailsProgress = delayedProgress(rightStackProgress, detailsDelay)
-  const showDetailsPane = revealAfter(rightStackProgress, detailsDelay)
-  const sessionRect = interpolateBottomRightAnchoredRect(fromWorkspaceRects.session, sessionMiniTarget, rightStackProgress)
+  const detailsProgress = delayedProgress(transitionProgress, detailsDelay)
+  const showDetailsPane = revealAfter(transitionProgress, detailsDelay)
+  const sessionRect = interpolateBottomRightAnchoredRect(fromWorkspaceRects.session, sessionMiniTarget, transitionProgress)
   const detailsRect = interpolatePinnedEnter(detailsEnterStart, detailsPinnedTarget, detailsProgress, config.minPaneHeight)
 
   return {
@@ -340,51 +306,11 @@ function planSessionToConceptsRightStack(context: TransitionOverlayContext): Ses
   }
 }
 
-function buildSessionToConceptsDebugPayload(
-  context: TransitionOverlayContext,
-  leftStack: SessionToConceptsLeftStackState,
-  rightStack: SessionToConceptsRightStackState,
-): Record<string, unknown> {
-  const { transition, viewport, fromWorkspaceRects } = context
-  return {
-    from: transition.from,
-    to: transition.to,
-    progress: transition.progress,
-    viewportWidth: viewport.width,
-    viewportHeight: viewport.height,
-    session: {
-      from: fromWorkspaceRects.session,
-      target: rightStack.sessionMiniTarget,
-      current: rightStack.sessionRectWithSharedGap,
-    },
-    details: {
-      enterStart: rightStack.detailsEnterStart,
-      target: rightStack.detailsPinnedTarget,
-      current: rightStack.detailsRect,
-    },
-    context: {
-      from: fromWorkspaceRects.context,
-      exitTarget: leftStack.contextExitTarget,
-      current: leftStack.contextRect,
-    },
-    concepts: {
-      from: fromWorkspaceRects.conceptPreview,
-      target: leftStack.conceptsPinnedTarget,
-      current: leftStack.conceptRectWithSoloGrowth,
-    },
-  }
-}
-
 function renderSessionToConceptsOverlay(context: TransitionOverlayContext): Array<Renderable | VNode<any, any[]>> {
-  const { transition, logDebug, fromWorkspaceRects, fromWorkspacePaneContent, toWorkspacePaneContent } = context
+  const { transition, fromWorkspaceRects, fromWorkspacePaneContent, toWorkspacePaneContent } = context
   const progress = transition.progress
   const leftStack = planSessionToConceptsLeftStack(context)
   const rightStack = planSessionToConceptsRightStack(context)
-
-  if (!transition.loggedFirstFrame) {
-    transition.loggedFirstFrame = true
-    logDebug?.("transition_first_frame", buildSessionToConceptsDebugPayload(context, leftStack, rightStack))
-  }
 
   return renderTransitionOverlayFrame(fromWorkspaceRects, [
     renderAnimatedPane(rightStack.sessionRectWithSharedGap, fromWorkspacePaneContent.sessionNode, COLORS.borderActive, "Session"),
@@ -409,19 +335,17 @@ export function renderWorkspaceTransitionOverlay(
   const toWorkspacePaneContent = renderTransitionPaneContentWithRects(state, transition.to, toWorkspaceRects, listScroll, mainScroll, promptScroll)
   if (!fromWorkspacePaneContent || !toWorkspacePaneContent) return []
 
-  const context: TransitionOverlayContext = {
+  const overlayContext: TransitionOverlayContext = {
     transition,
     config,
-    viewport,
     fromWorkspaceRects,
     toWorkspaceRects,
     fromWorkspacePaneContent,
     toWorkspacePaneContent,
-    logDebug: deps.logDebug,
   }
 
   if (transition.from === "concepts" && transition.to === "session") {
-    return renderConceptsToSessionOverlay(context)
+    return renderConceptsToSessionOverlay(overlayContext)
   }
-  return renderSessionToConceptsOverlay(context)
+  return renderSessionToConceptsOverlay(overlayContext)
 }

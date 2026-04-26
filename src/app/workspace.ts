@@ -110,7 +110,6 @@ export function createWorkspaceController(deps: ShellWorkspaceControllerDeps) {
       to: nextFocus ? "concepts" : "session",
       progress: 0,
       startedAt: Date.now(),
-      loggedFirstFrame: false,
     }
     void appendWorkspaceDebugLog("transition_start", {
       from: state.workspaceTransition.from,
