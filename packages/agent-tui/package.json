@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./animation": "./src/animation.ts",
     "./types": "./src/types.ts",
     "./theme": "./src/theme.ts",
     "./text": "./src/text.ts",
