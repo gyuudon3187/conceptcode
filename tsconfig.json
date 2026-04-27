@@ -16,6 +16,12 @@
       ],
       "agent-tui/*": [
         "./packages/agent-tui/src/*"
+      ],
+      "coding-agent": [
+        "./packages/coding-agent/src/index.ts"
+      ],
+      "coding-agent/*": [
+        "./packages/coding-agent/src/*"
       ]
     }
   },

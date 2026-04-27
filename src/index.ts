@@ -10,7 +10,6 @@ import { loadConceptGraph } from "./core/model"
 import { clampCursor, handleResize, workspaceUiState } from "./core/state"
 import type { AppState, InspectorKind } from "./core/types"
 import { openExternalEditor } from "./platform/editor"
-import { startDummyChatServer } from "./platform/chat"
 import { applyEditorText, openPromptEditor, syncPromptDraft } from "./prompt/editor"
 import { createPromptThreadController } from "./prompt/thread"
 import { activeSession } from "./sessions/store"
@@ -43,7 +42,6 @@ function closeInspector(state: AppState): void {
 async function main(): Promise<void> {
   const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
   const { graphPayload, nodes, kindDefinitions, uiLayoutConfig } = loadConceptGraph(conceptsPath, optionsPath)
-  const dummyChatServer = await startDummyChatServer()
   const { projectFiles, projectDirectories } = await loadProjectPaths(process.cwd())
   const state: AppState = await createInitialAppState({
     conceptsPath,
@@ -51,15 +49,10 @@ async function main(): Promise<void> {
     nodes,
     kindDefinitions,
     uiLayoutConfig,
-    dummyChatServerBaseUrl: dummyChatServer.baseUrl,
     projectFiles,
     projectDirectories,
   })
   state.uiMode = activeSession(state).lastMode
-
-  process.on("exit", () => {
-    void dummyChatServer.stop()
-  })
 
   let renderer: CliRenderer
   let listScroll!: ScrollBoxRenderable

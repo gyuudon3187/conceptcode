@@ -1,0 +1,13 @@
+{
+  "name": "coding-agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./host-adapter": "./src/host-adapter/index.ts",
+    "./types": "./src/types.ts",
+    "./react-loop": "./src/react-loop.ts",
+    "./model-adapter": "./src/model-adapter.ts",
+    "./tool-executor": "./src/tool-executor.ts"
+  }
+}

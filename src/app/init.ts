@@ -11,7 +11,7 @@ import type {
   SessionChatState,
   WorkspaceUiState,
 } from "../core/types"
-import { createSseChatTransport } from "../platform/chat"
+import { createCodingAgentChatTransport } from "../platform/coding-agent"
 import { EMPTY_PROMPT_TOKEN_BREAKDOWN } from "../prompt/payload"
 import { loadSessions } from "../sessions/store"
 
@@ -85,7 +85,6 @@ type CreateInitialAppStateInput = {
   nodes: AppState["nodes"]
   kindDefinitions: KindDefinition[]
   uiLayoutConfig?: Partial<UiLayoutConfig>
-  dummyChatServerBaseUrl: string
   projectFiles: string[]
   projectDirectories: string[]
 }
@@ -140,7 +139,7 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
   const sessionChatState: SessionChatState = {
     sessions,
     activeSessionId,
-    chatTransport: createSseChatTransport(input.dummyChatServerBaseUrl),
+    chatTransport: createCodingAgentChatTransport(),
     activeResponseId: null,
     activeAssistantMessageId: null,
   }
