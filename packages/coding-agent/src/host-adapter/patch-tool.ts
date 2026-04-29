@@ -1,5 +1,5 @@
 import type { CodingAgentToolInput, ToolDef, ToolPathIntent } from "../types"
-import { ensureParentDirectory, TEXT_DECODER } from "./file-tool-utils"
+import { ensureParentDirectory, summarizeDiff, TEXT_DECODER } from "./file-tool-utils"
 import { sha256 } from "./hash-file-content"
 import { normalizeWorkspacePath } from "./path-utils"
 import {
@@ -12,6 +12,28 @@ type PatchOperation =
   | { type: "add"; path: string; lines: string[] }
   | { type: "delete"; path: string }
   | { type: "update"; path: string; moveTo?: string; hunks: Array<{ oldLines: string[]; newLines: string[] }> }
+
+type PreparedFile = {
+  absolutePath: string
+  displayPath: string
+  exists: boolean
+  originalText: string | null
+  originalSha256: string | null
+}
+
+type PlannedChange =
+  | { type: "add"; absolutePath: string; displayPath: string; content: string }
+  | { type: "delete"; absolutePath: string; displayPath: string }
+  | {
+      type: "update"
+      absolutePath: string
+      displayPath: string
+      originalText: string
+      originalSha256: string
+      nextText: string
+      moveToPath?: string
+      moveToDisplayPath?: string
+    }
 
 function parsePatch(patch: string): PatchOperation[] {
   const lines = patch.replace(/\r\n/g, "\n").split("\n")
@@ -107,36 +129,173 @@ async function patchPathIntents(input: CodingAgentToolInput, ctx: Parameters<Non
   return intents
 }
 
-async function applyUpdateOperation(ctx: Parameters<ToolDef["execute"]>[1], operation: Extract<PatchOperation, { type: "update" }>): Promise<string> {
-  const sourcePath = await normalizeWorkspacePath(ctx, operation.path, "write")
-  await assertReadBeforeModify(ctx, sourcePath)
-  const originalBuffer = await ctx.fs.readFile(sourcePath)
-  const original = TEXT_DECODER.decode(originalBuffer)
-  let nextText = original
-  for (const hunk of operation.hunks) {
-    const before = hunk.oldLines.join("\n")
-    const after = hunk.newLines.join("\n")
-    const occurrences = nextText.split(before).length - 1
-    if (occurrences === 0) {
-      throw new Error(`Patch hunk not found in ${operation.path}`)
-    }
-    if (occurrences > 1) {
-      throw new Error(`Patch hunk is ambiguous in ${operation.path}`)
+function splitPatchLines(text: string): string[] {
+  return text.split("\n")
+}
+
+function findUniqueSequence(lines: string[], target: string[]): number {
+  if (target.length === 0) {
+    throw new Error("Patch hunk must include at least one context or removed line")
+  }
+  const matches: number[] = []
+  for (let index = 0; index <= lines.length - target.length; index += 1) {
+    let matched = true
+    for (let offset = 0; offset < target.length; offset += 1) {
+      if (lines[index + offset] !== target[offset]) {
+        matched = false
+        break
       }
-      nextText = nextText.replace(before, after)
+    }
+    if (matched) {
+      matches.push(index)
+      if (matches.length > 1) {
+        break
+      }
+    }
   }
-  const result = await ctx.fs.writeFileIfHashMatches(sourcePath, nextText, sha256(originalBuffer))
-  if (result.type === "conflict") {
-    throw new Error(WRITE_CHANGED_SINCE_READ_ERROR)
+  if (matches.length === 0) {
+    return -1
   }
-  if (operation.moveTo) {
-    const destinationPath = await normalizeWorkspacePath(ctx, operation.moveTo, "write")
-    await assertReadBeforeModify(ctx, destinationPath)
-    await ensureParentDirectory(ctx, destinationPath)
-    await ctx.fs.rename(sourcePath, destinationPath)
-    return `updated ${operation.path} -> ${operation.moveTo}`
+  if (matches.length > 1) {
+    return -2
   }
-  return `updated ${operation.path}`
+  return matches[0] ?? -1
+}
+
+function applyHunksToText(path: string, originalText: string, hunks: Array<{ oldLines: string[]; newLines: string[] }>): string {
+  let nextLines = splitPatchLines(originalText)
+  for (const hunk of hunks) {
+    const matchIndex = findUniqueSequence(nextLines, hunk.oldLines)
+    if (matchIndex === -1) {
+      throw new Error(`Patch hunk not found in ${path}`)
+    }
+    if (matchIndex === -2) {
+      throw new Error(`Patch hunk is ambiguous in ${path}`)
+    }
+    nextLines = [
+      ...nextLines.slice(0, matchIndex),
+      ...hunk.newLines,
+      ...nextLines.slice(matchIndex + hunk.oldLines.length),
+    ]
+  }
+  return nextLines.join("\n")
+}
+
+async function loadPreparedFile(
+  ctx: Parameters<ToolDef["execute"]>[1],
+  cache: Map<string, PreparedFile>,
+  path: string,
+  action: "write" | "delete",
+): Promise<PreparedFile> {
+  const absolutePath = await normalizeWorkspacePath(ctx, path, action)
+  const cached = cache.get(absolutePath)
+  if (cached) {
+    return cached
+  }
+  const exists = await ctx.fs.exists(absolutePath)
+  if (!exists) {
+    const prepared: PreparedFile = {
+      absolutePath,
+      displayPath: path,
+      exists: false,
+      originalText: null,
+      originalSha256: null,
+    }
+    cache.set(absolutePath, prepared)
+    return prepared
+  }
+  await assertReadBeforeModify(ctx, absolutePath)
+  const originalBuffer = await ctx.fs.readFile(absolutePath)
+  const prepared: PreparedFile = {
+    absolutePath,
+    displayPath: path,
+    exists: true,
+    originalText: TEXT_DECODER.decode(originalBuffer),
+    originalSha256: sha256(originalBuffer),
+  }
+  cache.set(absolutePath, prepared)
+  return prepared
+}
+
+async function planPatchOperations(ctx: Parameters<ToolDef["execute"]>[1], operations: PatchOperation[]): Promise<PlannedChange[]> {
+  const preparedFiles = new Map<string, PreparedFile>()
+  const virtualFiles = new Map<string, { exists: boolean; text: string | null }>()
+  const plans: PlannedChange[] = []
+
+  for (const operation of operations) {
+    if (operation.type === "add") {
+      const absolutePath = await normalizeWorkspacePath(ctx, operation.path, "write")
+      const existing = virtualFiles.get(absolutePath)
+      if (existing?.exists) {
+        throw new Error(WRITE_TARGET_ALREADY_EXISTS_ERROR)
+      }
+      if (!existing) {
+        const prepared = await loadPreparedFile(ctx, preparedFiles, operation.path, "write")
+        if (prepared.exists) {
+          throw new Error(WRITE_TARGET_ALREADY_EXISTS_ERROR)
+        }
+      }
+      const content = operation.lines.join("\n")
+      virtualFiles.set(absolutePath, { exists: true, text: content })
+      plans.push({ type: "add", absolutePath, displayPath: operation.path, content })
+      continue
+    }
+
+    if (operation.type === "delete") {
+      const prepared = await loadPreparedFile(ctx, preparedFiles, operation.path, "delete")
+      const virtual = virtualFiles.get(prepared.absolutePath) ?? { exists: prepared.exists, text: prepared.originalText }
+      if (!virtual.exists) {
+        throw new Error(`File does not exist: ${operation.path}`)
+      }
+      virtualFiles.set(prepared.absolutePath, { exists: false, text: null })
+      plans.push({ type: "delete", absolutePath: prepared.absolutePath, displayPath: operation.path })
+      continue
+    }
+
+    const prepared = await loadPreparedFile(ctx, preparedFiles, operation.path, "write")
+    const virtual = virtualFiles.get(prepared.absolutePath) ?? { exists: prepared.exists, text: prepared.originalText }
+    if (!virtual.exists || virtual.text == null || prepared.originalSha256 == null || prepared.originalText == null) {
+      throw new Error(`File does not exist: ${operation.path}`)
+    }
+    const nextText = applyHunksToText(operation.path, virtual.text, operation.hunks)
+    if (operation.moveTo) {
+      const moveToPath = await normalizeWorkspacePath(ctx, operation.moveTo, "write")
+      const moveTargetVirtual = virtualFiles.get(moveToPath)
+      if (moveTargetVirtual?.exists) {
+        throw new Error(WRITE_TARGET_ALREADY_EXISTS_ERROR)
+      }
+      if (!moveTargetVirtual) {
+        const targetPrepared = await loadPreparedFile(ctx, preparedFiles, operation.moveTo, "write")
+        if (targetPrepared.exists) {
+          throw new Error(WRITE_TARGET_ALREADY_EXISTS_ERROR)
+        }
+      }
+      virtualFiles.set(prepared.absolutePath, { exists: false, text: null })
+      virtualFiles.set(moveToPath, { exists: true, text: nextText })
+      plans.push({
+        type: "update",
+        absolutePath: prepared.absolutePath,
+        displayPath: operation.path,
+        originalText: prepared.originalText,
+        originalSha256: prepared.originalSha256,
+        nextText,
+        moveToPath,
+        moveToDisplayPath: operation.moveTo,
+      })
+      continue
+    }
+    virtualFiles.set(prepared.absolutePath, { exists: true, text: nextText })
+    plans.push({
+      type: "update",
+      absolutePath: prepared.absolutePath,
+      displayPath: operation.path,
+      originalText: prepared.originalText,
+      originalSha256: prepared.originalSha256,
+      nextText,
+    })
+  }
+
+  return plans
 }
 
 export function createApplyPatchTool(): ToolDef<CodingAgentToolInput> {
@@ -154,34 +313,50 @@ export function createApplyPatchTool(): ToolDef<CodingAgentToolInput> {
     async execute(input, ctx) {
       const patch = String(input.patch ?? "")
       const operations = parsePatch(patch)
+      const plans = await planPatchOperations(ctx, operations)
       const summaries: string[] = []
       let filesWritten = 0
-      for (const operation of operations) {
-        if (operation.type === "add") {
-          const path = await normalizeWorkspacePath(ctx, operation.path, "write")
-          await ensureParentDirectory(ctx, path)
-          const result = await ctx.fs.writeFileIfMissing(path, operation.lines.join("\n"))
+      let added = 0
+      let deleted = 0
+      let updated = 0
+      let renamed = 0
+      for (const plan of plans) {
+        if (plan.type === "add") {
+          await ensureParentDirectory(ctx, plan.absolutePath)
+          const result = await ctx.fs.writeFileIfMissing(plan.absolutePath, plan.content)
           if (result.type === "conflict") {
             throw new Error(WRITE_TARGET_ALREADY_EXISTS_ERROR)
           }
-          summaries.push(`added ${operation.path}`)
+          summaries.push(`added ${plan.displayPath}`)
           filesWritten += 1
+          added += 1
           continue
         }
-        if (operation.type === "delete") {
-          const path = await normalizeWorkspacePath(ctx, operation.path, "delete")
-          await assertReadBeforeModify(ctx, path)
-          await ctx.fs.remove(path)
-          summaries.push(`deleted ${operation.path}`)
+        if (plan.type === "delete") {
+          await ctx.fs.remove(plan.absolutePath)
+          summaries.push(`deleted ${plan.displayPath}`)
           filesWritten += 1
+          deleted += 1
           continue
         }
-        summaries.push(await applyUpdateOperation(ctx, operation))
+        const result = await ctx.fs.writeFileIfHashMatches(plan.absolutePath, plan.nextText, plan.originalSha256)
+        if (result.type === "conflict") {
+          throw new Error(WRITE_CHANGED_SINCE_READ_ERROR)
+        }
+        if (plan.moveToPath && plan.moveToDisplayPath) {
+          await ensureParentDirectory(ctx, plan.moveToPath)
+          await ctx.fs.rename(plan.absolutePath, plan.moveToPath)
+          summaries.push(`updated ${plan.displayPath} -> ${plan.moveToDisplayPath}`)
+          renamed += 1
+        } else {
+          summaries.push(`updated ${plan.displayPath}\n${summarizeDiff(plan.originalText, plan.nextText)}`)
+        }
         filesWritten += 1
+        updated += 1
       }
       return {
         text: summaries.join("\n"),
-        metadata: { filesWritten, truncated: false },
+        metadata: { filesWritten, added, deleted, updated, renamed, truncated: false },
       }
     },
   }

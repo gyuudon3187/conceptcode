@@ -259,6 +259,76 @@ describe("host tools", () => {
     expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("someone else changed this")
   })
 
+  test("preflights patches before mutating any files", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "old.txt"), "before")
+    const registry = await createRegistry(workspace)
+
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: new.txt",
+      "+hello",
+      "*** Update File: old.txt",
+      "@@",
+      "-before",
+      "+after",
+      "*** End Patch",
+    ].join("\n")
+    const result = await registry.runTool({ toolName: "apply_patch", input: { patch } })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain(READ_BEFORE_WRITE_ERROR)
+    expect(await Bun.file(join(workspace, "new.txt")).exists()).toBe(false)
+    expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("before")
+  })
+
+  test("matches patch hunks by unique line context", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "old.txt"), "alpha\nbeta\nkeep\nalpha\nbeta\nchange-me")
+    const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "old.txt" } })
+
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: old.txt",
+      "@@",
+      " alpha",
+      " beta",
+      "-change-me",
+      "+changed",
+      "*** End Patch",
+    ].join("\n")
+    const result = await registry.runTool({ toolName: "apply_patch", input: { patch } })
+
+    expect(result.isError).toBeUndefined()
+    expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("alpha\nbeta\nkeep\nalpha\nbeta\nchanged")
+  })
+
+  test("fails patch hunks when line context is ambiguous", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "old.txt"), "alpha\nbeta\nchange-me\nalpha\nbeta\nchange-me")
+    const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "old.txt" } })
+
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: old.txt",
+      "@@",
+      " alpha",
+      " beta",
+      "-change-me",
+      "+changed",
+      "*** End Patch",
+    ].join("\n")
+    const result = await registry.runTool({ toolName: "apply_patch", input: { patch } })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("ambiguous")
+    expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("alpha\nbeta\nchange-me\nalpha\nbeta\nchange-me")
+  })
+
   test("fails invalid patches cleanly", async () => {
     const workspace = await createWorkspace()
     const registry = await createRegistry(workspace)
