@@ -12,6 +12,13 @@ export {
   createLocalFileSystemBackend,
 } from "./host-adapter"
 export { createDummyStreamingCodingAgentModel } from "./model-adapter"
+export {
+  applyPrimaryAgentToMessages,
+  BUILD_PRIMARY_AGENT,
+  definePrimaryAgent,
+  parsePrimaryAgentPrompt,
+  PLAN_PRIMARY_AGENT,
+} from "./primary-agents"
 export { ToolRegistry, createToolExecutor, createToolRegistry } from "./tool-executor"
 export type {
   CodingAgentMessage,
@@ -47,3 +54,4 @@ export type {
   ToolResult,
 } from "./types"
 export type { CodingAgentHostEnvironment, CodingAgentHostOs } from "./host-adapter"
+export type { CodingAgentPrimaryAgent, CodingAgentPrimaryAgentDefinition } from "./primary-agents"

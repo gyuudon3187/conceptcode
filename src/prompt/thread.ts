@@ -148,7 +148,7 @@ export function createPromptThreadController() {
       .filter((message) => message.text.trim().length > 0)
       .map((message) => ({ role: message.role, text: message.text }))
     try {
-      for await (const event of state.chatTransport.streamTurn({ messages: requestMessages, mode: state.uiMode })) {
+      for await (const event of state.chatTransport.streamTurn({ messages: requestMessages, primaryAgentId: state.uiMode })) {
         if (event.type === "response.created") {
           rebindActiveAssistantMessageId(state, event.messageId)
           state.activeResponseId = event.responseId

@@ -5,6 +5,7 @@ import type {
   CodingAgentToolDefinition,
   CodingAgentToolCall,
 } from "../types"
+import { parsePrimaryAgentPrompt } from "../primary-agents"
 
 export function latestUserPrompt(messages: CodingAgentMessage[]): string {
   return [...messages].reverse().find((message) => message.role === "user")?.content.trim() ?? ""
@@ -22,6 +23,19 @@ function extractQuotedValues(prompt: string): string[] {
   return [...prompt.matchAll(/"([^"]+)"|'([^']+)'/g)].map((match) => match[1] ?? match[2]).filter(Boolean)
 }
 
+function toolAllowedForPrimaryAgent(agentId: string | null, toolName: string): boolean {
+  if (agentId !== "plan") {
+    return true
+  }
+  return toolName === "read_file"
+    || toolName === "read_many"
+    || toolName === "list_dir"
+    || toolName === "tree"
+    || toolName === "stat"
+    || toolName === "glob"
+    || toolName === "grep"
+}
+
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -34,7 +48,8 @@ export function createCapabilitySummary(tools: CodingAgentToolDefinition[], os: 
 }
 
 function chooseToolCall(prompt: string, tools: CodingAgentToolDefinition[]): CodingAgentToolCall | null {
-  const normalizedPrompt = prompt.trim()
+  const primaryAgentPrompt = parsePrimaryAgentPrompt(prompt)
+  const normalizedPrompt = primaryAgentPrompt.prompt.trim()
   if (!normalizedPrompt) {
     return null
   }
@@ -43,22 +58,22 @@ function chooseToolCall(prompt: string, tools: CodingAgentToolDefinition[]): Cod
   const quotedValues = extractQuotedValues(normalizedPrompt)
   const firstQuotedValue = quotedValues[0]
 
-  if (availableTools.has("edit_file") && /\bedit\b|\breplace\b|\bchange\b|\bpatch\b/i.test(normalizedPrompt) && quotedValues.length >= 3) {
+  if (availableTools.has("edit_file") && toolAllowedForPrimaryAgent(primaryAgentPrompt.agentId, "edit_file") && /\bedit\b|\breplace\b|\bchange\b|\bpatch\b/i.test(normalizedPrompt) && quotedValues.length >= 3) {
     return { toolName: "edit_file", input: { path: quotedValues[0], old: quotedValues[1], new: quotedValues[2] } }
   }
-  if (availableTools.has("read_file") && /\bread\b|\bopen\b|\bshow\b|\binspect\b/i.test(normalizedPrompt) && firstQuotedValue) {
+  if (availableTools.has("read_file") && toolAllowedForPrimaryAgent(primaryAgentPrompt.agentId, "read_file") && /\bread\b|\bopen\b|\bshow\b|\binspect\b/i.test(normalizedPrompt) && firstQuotedValue) {
     return { toolName: "read_file", input: { path: firstQuotedValue } }
   }
-  if (availableTools.has("list_dir") && /\blist\b|\bdirectory\b|\bfolder\b/i.test(normalizedPrompt)) {
+  if (availableTools.has("list_dir") && toolAllowedForPrimaryAgent(primaryAgentPrompt.agentId, "list_dir") && /\blist\b|\bdirectory\b|\bfolder\b/i.test(normalizedPrompt)) {
     return { toolName: "list_dir", input: { path: firstQuotedValue ?? "." } }
   }
-  if (availableTools.has("glob") && /\bglob\b|\bpattern\b|\*\*/i.test(normalizedPrompt) && firstQuotedValue) {
+  if (availableTools.has("glob") && toolAllowedForPrimaryAgent(primaryAgentPrompt.agentId, "glob") && /\bglob\b|\bpattern\b|\*\*/i.test(normalizedPrompt) && firstQuotedValue) {
     return { toolName: "glob", input: { pattern: firstQuotedValue } }
   }
-  if (availableTools.has("grep") && /\bgrep\b|\bsearch\b|\bmatch\b/i.test(normalizedPrompt) && firstQuotedValue) {
+  if (availableTools.has("grep") && toolAllowedForPrimaryAgent(primaryAgentPrompt.agentId, "grep") && /\bgrep\b|\bsearch\b|\bmatch\b/i.test(normalizedPrompt) && firstQuotedValue) {
     return { toolName: "grep", input: { pattern: firstQuotedValue } }
   }
-  if (availableTools.has("shell") && /\bshell\b|\bcommand\b|\brun\b|\btest\b|\bbuild\b/i.test(normalizedPrompt)) {
+  if (availableTools.has("shell") && toolAllowedForPrimaryAgent(primaryAgentPrompt.agentId, "shell") && /\bshell\b|\bcommand\b|\brun\b|\btest\b|\bbuild\b/i.test(normalizedPrompt)) {
     const command = firstQuotedValue ?? normalizedPrompt.replace(/^run\s+/i, "").trim()
     if (command) {
       return { toolName: "shell", input: { command } }
@@ -72,6 +87,7 @@ export function createHostStepModel(tools: CodingAgentToolDefinition[], capabili
   return {
     async complete(messages: CodingAgentMessage[]): Promise<CodingAgentModelTurn> {
       const prompt = latestUserPrompt(messages)
+      const primaryAgentPrompt = parsePrimaryAgentPrompt(prompt)
       const toolMessage = latestToolMessage(messages)
       const assistantMessage = latestAssistantMessage(messages)
 
@@ -92,12 +108,13 @@ export function createHostStepModel(tools: CodingAgentToolDefinition[], capabili
         message: [
           "Coding-agent host runtime ready.",
           capabilitySummary,
-          prompt ? `Latest prompt: ${prompt}` : "Latest prompt was empty.",
+          primaryAgentPrompt.agentId ? `Primary agent: ${primaryAgentPrompt.agentId}.` : null,
+          primaryAgentPrompt.prompt ? `Latest prompt: ${primaryAgentPrompt.prompt}` : "Latest prompt was empty.",
           "No tool call was inferred from the current prompt.",
           tools.length > 0
             ? 'Try explicit requests like: read "src/index.ts", list ".", edit "src/index.ts" "old" "new", grep "createToolExecutor", glob "src/**/*.ts", or run "bun test".'
             : "No host tools are currently available.",
-        ].join("\n"),
+        ].filter(Boolean).join("\n"),
         toolCalls: [],
         done: true,
       }

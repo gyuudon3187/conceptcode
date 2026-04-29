@@ -9,7 +9,7 @@ function createDummyResponseText(request: ChatTurnRequest): string {
   const latestUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.text.trim() ?? ""
   const referencedConcepts = [...latestUserMessage.matchAll(/@[a-zA-Z0-9_.-]+/g)].map((match) => match[0])
   const referencedFiles = [...latestUserMessage.matchAll(/&[^\s&]+/g)].map((match) => match[0])
-  const modeLabel = request.mode === "plan" ? "plan" : request.mode === "build" ? "build" : "conceptualize"
+  const modeLabel = request.primaryAgentId === "plan" ? "plan" : request.primaryAgentId === "build" ? "build" : "conceptualize"
   const focusLine = referencedConcepts.length > 0
     ? `I am focusing on ${referencedConcepts.join(", ")}.`
     : "I am focusing on the concepts implied by your prompt."

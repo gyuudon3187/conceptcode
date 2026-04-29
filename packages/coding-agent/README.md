@@ -11,6 +11,7 @@ This package currently owns coding-agent primitives such as:
 - a host-injected tool executor boundary
 - a centralized registry for structured tools
 - a reusable host adapter with native filesystem/search tools plus a guarded shell escape hatch
+- a primary-agent envelope for built-in and host-defined agent profiles
 - a dummy streaming adapter used for placeholder model behavior
 
 It does not yet own provider-specific integrations or a full streaming tool-execution loop.
@@ -25,6 +26,37 @@ It does not yet own provider-specific integrations or a full streaming tool-exec
 - `coding-agent/host-adapter`
 
 ## Current package surface
+
+### Primary agents
+
+`coding-agent` owns the contract for attaching a primary agent to the latest user turn.
+
+- Built-ins: `PLAN_PRIMARY_AGENT`, `BUILD_PRIMARY_AGENT`
+- Host-defined plugins: `definePrimaryAgent({ id, instructions })`
+- Message shaping: `applyPrimaryAgentToMessages(messages, agent)`
+
+The current wire contract is a package-owned envelope embedded into the latest user message, which lets package internals recover both the agent id and the raw user prompt consistently.
+
+Example:
+
+```ts
+import {
+  applyPrimaryAgentToMessages,
+  definePrimaryAgent,
+  PLAN_PRIMARY_AGENT,
+} from "coding-agent"
+
+const conceptualize = definePrimaryAgent({
+  id: "conceptualize",
+  instructions: [
+    "Focus on concept-graph structure and metadata updates.",
+    "Prefer graph-oriented changes and avoid unrelated source-code edits unless explicitly requested.",
+  ],
+})
+
+const planMessages = applyPrimaryAgentToMessages([{ role: "user", content: "investigate the bug" }], PLAN_PRIMARY_AGENT)
+const graphMessages = applyPrimaryAgentToMessages([{ role: "user", content: "reshape the graph" }], conceptualize)
+```
 
 ### ReAct loop
 

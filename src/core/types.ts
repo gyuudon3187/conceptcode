@@ -154,7 +154,7 @@ export type ChatStreamEvent =
 
 export type ChatTurnRequest = {
   messages: Array<{ role: "user" | "assistant"; text: string }>
-  mode: UiMode
+  primaryAgentId: UiMode
 }
 
 export type ChatTransport = {

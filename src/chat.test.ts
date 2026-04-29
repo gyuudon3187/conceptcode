@@ -15,7 +15,7 @@ describe("dummy chat transport", () => {
     const events: ChatStreamEvent[] = []
 
     for await (const event of transport.streamTurn({
-      mode: "build",
+      primaryAgentId: "build",
       messages: [{ role: "user", text: "test @impl.views.layout &src/index.ts" }],
     })) {
       events.push(event)
@@ -43,7 +43,7 @@ describe("dummy chat transport", () => {
     const deltas: string[] = []
 
     for await (const event of transport.streamTurn({
-      mode: "conceptualize",
+      primaryAgentId: "conceptualize",
       messages: [{ role: "user", text: "reshape @impl.views and update the graph diff" }],
     })) {
       if (event.type === "response.output_text.delta") {
