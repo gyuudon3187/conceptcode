@@ -4,16 +4,16 @@ Reusable coding-agent scaffolding extracted from `ConceptCode`.
 
 ## Scope
 
-This package currently owns early coding-agent primitives such as:
+This package currently owns coding-agent primitives such as:
 
 - shared message, tool, loop, and streaming types
 - a minimal non-streaming ReAct loop
 - a host-injected tool executor boundary
-- a small helper for registering host-defined tools into an executor
-- a reusable host adapter with shared filesystem tools and OS-specific runtime tools
+- a centralized registry for structured tools
+- a reusable host adapter with native filesystem/search tools plus a guarded shell escape hatch
 - a dummy streaming adapter used for placeholder model behavior
 
-It does not yet own provider-specific integrations, rich tool schemas, or a full streaming tool-execution loop.
+It does not yet own provider-specific integrations or a full streaming tool-execution loop.
 
 ## Main exports
 
@@ -49,26 +49,30 @@ That executor:
 - runs tool calls by name
 - keeps host-runtime behavior out of the core ReAct loop
 
-`createToolExecutor(tools)` is the package's small convenience helper for registering host-defined tools into a `CodingAgentToolExecutor`.
+`createToolRegistry(tools, context)` is the central registration path for structured tools. `createToolExecutor(...)` remains as a convenience adapter that can wrap a registry-backed tool set into the existing `CodingAgentToolExecutor` interface.
 
-`coding-agent/host-adapter` is the package's reusable local-runtime adapter surface. It currently provides cross-OS `read_file` and `edit` tools, detects the host OS, enables Linux-specific tools when supported binaries are present on `PATH`, and leaves unsupported OSes with only the shared host tools until explicit OS support is added.
+`coding-agent/host-adapter` is the package's reusable local-runtime adapter surface. It now provides:
 
-Current shared cross-OS tools:
+- a shared `ToolContext`
+- a filesystem backend abstraction
+- native file tools for common reads/writes/patches
+- structured `glob` and `grep` tools that prefer ripgrep behind the scenes
+- a structured `shell` tool for builds, tests, package managers, git, and project scripts
+- centralized mode-based permissions and audit logging
+
+Current host tools:
 
 - `read_file`
-  - reads a UTF-8 file inside the workspace
-  - accepts `filePath`, `offset`, and `limit`
-  - returns JSON text with `path`, `startLine`, `endLine`, `truncated`, `nextOffset`, and numbered `content`
-- `edit`
-  - performs a surgical exact-match replacement in one file
-  - accepts `filePath`, `oldText`, `newText`, and optional `expectedOccurrences`
-  - currently only supports `expectedOccurrences = 1`
-
-Current Linux-specific tools:
-
-- `bash`
-- `find`
+- `read_many`
+- `list_dir`
+- `tree`
+- `stat`
+- `write_file`
+- `edit_file`
+- `apply_patch`
 - `glob`
+- `grep`
+- `shell`
 
 Example:
 
@@ -92,7 +96,58 @@ const toolExecutor = createToolExecutor(tools)
 
 The host can also implement `CodingAgentToolExecutor` directly when it needs dynamic tools, remote execution, authorization checks, or runtime-specific behavior.
 
-For example, a host can call `createHostTools(...)`, `createHostToolExecutor(...)`, or `createHostStreamingCodingAgentModel(...)` to wire cross-OS tools such as `read_file` and `edit` plus any supported OS-specific tools into the generic ReAct loop.
+For example, a host can call `createHostToolRegistry(...)`, `createHostTools(...)`, `createHostToolExecutor(...)`, or `createHostStreamingCodingAgentModel(...)` to wire the built-in native tools into the generic ReAct loop.
+
+## Tooling architecture
+
+### Add a new tool
+
+1. Define a `ToolDef<Input, Meta>` with `id`, `description`, `schema`, and `execute(input, ctx)`.
+2. Use `ToolContext` instead of reading process-global state directly.
+3. If the tool touches paths, provide `getPathIntents(...)` so the registry can apply centralized permission checks and audit logging.
+4. Return a `ToolResult` with concise `text` plus structured `metadata`.
+5. Register the tool through `createToolRegistry(...)` or add it to the host tool list in `host-adapter/index.ts`.
+
+### Native tools vs shell
+
+Use native tools for:
+
+- reading files
+- listing directories
+- writing files
+- exact text edits
+- patch application
+- path and content search
+
+Use `shell` only for:
+
+- tests
+- builds
+- package-manager commands
+- git commands
+- project-specific scripts that do not map cleanly to a structured tool
+
+The host adapter does not use shell as the default implementation for file IO or search.
+
+### Binary discovery
+
+Structured search tools hide backend selection from the model:
+
+1. Prefer a harness-managed pinned `rg` path from `ToolContext.environment.managedBinaries.rg`.
+2. Fall back to system `rg` on `PATH` when allowed.
+3. Fall back to native filesystem traversal if ripgrep is unavailable.
+
+The model-facing tool contract stays the same regardless of backend.
+
+### Permissions and modes
+
+The default host permission policy supports these modes:
+
+- `read-only`: native read/search/stat tools allowed, writes denied, shell restricted
+- `build-edit`: native edits allowed in-workspace, build/test/package shell commands allowed, destructive or unknown shell commands denied pending approval
+- `autonomous`: broader execution, but destructive/global/out-of-workspace actions still denied by default
+
+Workspace-bound path normalization, tool gating, shell classification, and audit logging are centralized around the registry and `ToolContext` helpers rather than duplicated per tool.
 
 ### Streaming adapter
 
@@ -121,7 +176,6 @@ Host apps should:
 
 ## Known follow-up work
 
-- add package-local tests
-- tighten tool input typing and validation around `inputSchema`
 - replace the heuristic host step model with provider-backed tool-calling
-- decide whether temporary app-local chat transport code should remain
+- expand shell policy from heuristic classification to stronger host-level approval flows when the surrounding app supports them
+- add more host backends beyond the local filesystem
