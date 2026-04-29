@@ -329,6 +329,96 @@ describe("host tools", () => {
     expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("alpha\nbeta\nchange-me\nalpha\nbeta\nchange-me")
   })
 
+  test("applies unified diff updates", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "old.txt"), "alpha\nbeta\ngamma")
+    const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "old.txt" } })
+
+    const patch = [
+      "diff --git a/old.txt b/old.txt",
+      "--- a/old.txt",
+      "+++ b/old.txt",
+      "@@ -1,3 +1,3 @@",
+      " alpha",
+      "-beta",
+      "+BETA",
+      " gamma",
+    ].join("\n")
+    const result = await registry.runTool({ toolName: "apply_patch", input: { patch } })
+
+    expect(result.isError).toBeUndefined()
+    expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("alpha\nBETA\ngamma")
+  })
+
+  test("applies unified diff add and delete operations", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "old.txt"), "before")
+    const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "old.txt" } })
+
+    const patch = [
+      "diff --git a/new.txt b/new.txt",
+      "new file mode 100644",
+      "--- /dev/null",
+      "+++ b/new.txt",
+      "@@ -0,0 +1,1 @@",
+      "+hello",
+      "diff --git a/old.txt b/old.txt",
+      "deleted file mode 100644",
+      "--- a/old.txt",
+      "+++ /dev/null",
+      "@@ -1,1 +0,0 @@",
+      "-before",
+    ].join("\n")
+    const result = await registry.runTool({ toolName: "apply_patch", input: { patch } })
+
+    expect(result.isError).toBeUndefined()
+    expect(await readFile(join(workspace, "new.txt"), "utf8")).toBe("hello")
+    expect(await Bun.file(join(workspace, "old.txt")).exists()).toBe(false)
+  })
+
+  test("applies unified diff renames", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "old.txt"), "before")
+    const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "old.txt" } })
+
+    const patch = [
+      "diff --git a/old.txt b/new.txt",
+      "rename from old.txt",
+      "rename to new.txt",
+      "--- a/old.txt",
+      "+++ b/new.txt",
+      "@@ -1,1 +1,1 @@",
+      "-before",
+      "+after",
+    ].join("\n")
+    const result = await registry.runTool({ toolName: "apply_patch", input: { patch } })
+
+    expect(result.isError).toBeUndefined()
+    expect(await Bun.file(join(workspace, "old.txt")).exists()).toBe(false)
+    expect(await readFile(join(workspace, "new.txt"), "utf8")).toBe("after")
+  })
+
+  test("rejects unsupported unified diff features", async () => {
+    const workspace = await createWorkspace()
+    const registry = await createRegistry(workspace)
+
+    const patch = [
+      "diff --git a/blob.bin b/blob.bin",
+      "GIT binary patch",
+      "literal 0",
+    ].join("\n")
+    const result = await registry.runTool({ toolName: "apply_patch", input: { patch } })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("Unsupported unified diff feature")
+  })
+
   test("fails invalid patches cleanly", async () => {
     const workspace = await createWorkspace()
     const registry = await createRegistry(workspace)

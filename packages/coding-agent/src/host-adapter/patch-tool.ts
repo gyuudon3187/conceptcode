@@ -35,7 +35,7 @@ type PlannedChange =
       moveToDisplayPath?: string
     }
 
-function parsePatch(patch: string): PatchOperation[] {
+function parseStructuredPatch(patch: string): PatchOperation[] {
   const lines = patch.replace(/\r\n/g, "\n").split("\n")
   if (lines[0] !== "*** Begin Patch" || lines[lines.length - 1] !== "*** End Patch") {
     throw new Error("Patch must start with *** Begin Patch and end with *** End Patch")
@@ -106,6 +106,137 @@ function parsePatch(patch: string): PatchOperation[] {
     throw new Error(`Unknown patch directive: ${line}`)
   }
   return operations
+}
+
+function stripGitPrefix(path: string, expectedPrefix: "a/" | "b/"): string {
+  if (path === "/dev/null") {
+    return path
+  }
+  if (!path.startsWith(expectedPrefix)) {
+    throw new Error(`Unsupported unified diff path: ${path}`)
+  }
+  return path.slice(expectedPrefix.length)
+}
+
+function parseUnifiedDiff(patch: string): PatchOperation[] {
+  const lines = patch.replace(/\r\n/g, "\n").split("\n")
+  const operations: PatchOperation[] = []
+  let index = 0
+
+  while (index < lines.length) {
+    if (lines[index] === "") {
+      index += 1
+      continue
+    }
+    const diffLine = lines[index]
+    if (!diffLine.startsWith("diff --git ")) {
+      throw new Error(`Unsupported unified diff feature: ${diffLine}`)
+    }
+    const diffMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(diffLine)
+    if (!diffMatch) {
+      throw new Error(`Unsupported unified diff header: ${diffLine}`)
+    }
+    index += 1
+
+    let renameFrom: string | undefined
+    let renameTo: string | undefined
+    let oldPath: string | undefined
+    let newPath: string | undefined
+    const hunks: Array<{ oldLines: string[]; newLines: string[] }> = []
+
+    while (index < lines.length && !lines[index].startsWith("diff --git ")) {
+      const line = lines[index]
+      if (line.startsWith("index ")) {
+        index += 1
+        continue
+      }
+      if (line.startsWith("new file mode ") || line.startsWith("deleted file mode ")) {
+        index += 1
+        continue
+      }
+      if (line.startsWith("rename from ")) {
+        renameFrom = line.slice("rename from ".length)
+        index += 1
+        continue
+      }
+      if (line.startsWith("rename to ")) {
+        renameTo = line.slice("rename to ".length)
+        index += 1
+        continue
+      }
+      if (line.startsWith("--- ")) {
+        oldPath = stripGitPrefix(line.slice(4), "a/")
+        index += 1
+        continue
+      }
+      if (line.startsWith("+++ ")) {
+        newPath = stripGitPrefix(line.slice(4), "b/")
+        index += 1
+        continue
+      }
+      if (line.startsWith("@@ ")) {
+        index += 1
+        const oldLines: string[] = []
+        const newLines: string[] = []
+        while (index < lines.length && !lines[index].startsWith("diff --git ") && !lines[index].startsWith("@@ ")) {
+          const hunkLine = lines[index]
+          if (hunkLine === "\\ No newline at end of file") {
+            throw new Error("Unsupported unified diff feature: missing final newline markers")
+          }
+          const prefix = hunkLine[0]
+          const value = hunkLine.slice(1)
+          if (prefix === " ") {
+            oldLines.push(value)
+            newLines.push(value)
+          } else if (prefix === "-") {
+            oldLines.push(value)
+          } else if (prefix === "+") {
+            newLines.push(value)
+          } else {
+            throw new Error(`Unsupported unified diff feature: ${hunkLine}`)
+          }
+          index += 1
+        }
+        hunks.push({ oldLines, newLines })
+        continue
+      }
+      if (line === "") {
+        index += 1
+        continue
+      }
+      throw new Error(`Unsupported unified diff feature: ${line}`)
+    }
+
+    const normalizedOldPath = oldPath ?? diffMatch[1]
+    const normalizedNewPath = newPath ?? diffMatch[2]
+    if (normalizedOldPath === "/dev/null") {
+      operations.push({ type: "add", path: normalizedNewPath, lines: hunks.flatMap((hunk) => hunk.newLines) })
+      continue
+    }
+    if (normalizedNewPath === "/dev/null") {
+      operations.push({ type: "delete", path: normalizedOldPath })
+      continue
+    }
+    operations.push({
+      type: "update",
+      path: renameFrom ?? normalizedOldPath,
+      moveTo: renameTo,
+      hunks,
+    })
+  }
+
+  return operations
+}
+
+function parsePatch(patch: string): PatchOperation[] {
+  const normalizedPatch = patch.replace(/\r\n/g, "\n")
+  if (normalizedPatch.startsWith("*** Begin Patch")) {
+    return parseStructuredPatch(normalizedPatch)
+  }
+  if (normalizedPatch.startsWith("diff --git ")) {
+    return parseUnifiedDiff(normalizedPatch)
+  }
+  throw new Error("Patch must be a structured patch or a supported unified diff")
 }
 
 async function patchPathIntents(input: CodingAgentToolInput, ctx: Parameters<NonNullable<ToolDef["getPathIntents"]>>[1]): Promise<ToolPathIntent[]> {
