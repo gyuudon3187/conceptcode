@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { createHostToolRegistry, DefaultPermissionPolicy, InMemoryToolAuditSink } from "./index"
-import { READ_BEFORE_WRITE_ERROR } from "./read-before-write"
+import { READ_BEFORE_WRITE_ERROR, WRITE_CHANGED_SINCE_READ_ERROR } from "./read-before-write"
 
 const workspaces: string[] = []
 
@@ -115,6 +115,20 @@ describe("host tools", () => {
     expect(await readFile(join(workspace, "notes.txt"), "utf8")).toBe("after")
   })
 
+  test("denies overwriting an existing file after it changes post-read", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "notes.txt"), "before")
+    const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "notes.txt" } })
+    await writeFile(join(workspace, "notes.txt"), "someone else changed this")
+    const result = await registry.runTool({ toolName: "write_file", input: { path: "notes.txt", content: "after" } })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain(WRITE_CHANGED_SINCE_READ_ERROR)
+    expect(await readFile(join(workspace, "notes.txt"), "utf8")).toBe("someone else changed this")
+  })
+
   test("denies writes outside the workspace", async () => {
     const workspace = await createWorkspace()
     const outsideRoot = await createWorkspace()
@@ -138,6 +152,19 @@ describe("host tools", () => {
     expect(result.isError).toBeUndefined()
     expect(await readFile(join(workspace, "edit.txt"), "utf8")).toContain("BETA")
     expect(result.output).toContain("Changed around line")
+  })
+
+  test("denies edits after the file changes post-read", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "edit.txt"), "alpha\nbeta\ngamma")
+    const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "edit.txt" } })
+    await writeFile(join(workspace, "edit.txt"), "alpha\nBETA by someone else\ngamma")
+    const result = await registry.runTool({ toolName: "edit_file", input: { path: "edit.txt", old: "BETA by someone else", new: "BETA" } })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain(WRITE_CHANGED_SINCE_READ_ERROR)
   })
 
   test("fails edit when old text is missing", async () => {
@@ -208,6 +235,28 @@ describe("host tools", () => {
     expect(result.isError).toBe(true)
     expect(result.output).toContain(READ_BEFORE_WRITE_ERROR)
     expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("before")
+  })
+
+  test("denies patch updates after the file changes post-read", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "old.txt"), "before")
+    const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "old.txt" } })
+    await writeFile(join(workspace, "old.txt"), "someone else changed this")
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: old.txt",
+      "@@",
+      "-someone else changed this",
+      "+after",
+      "*** End Patch",
+    ].join("\n")
+    const result = await registry.runTool({ toolName: "apply_patch", input: { patch } })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain(WRITE_CHANGED_SINCE_READ_ERROR)
+    expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("someone else changed this")
   })
 
   test("fails invalid patches cleanly", async () => {

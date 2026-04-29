@@ -83,9 +83,22 @@ export type FileStat = {
   mtimeMs: number
 }
 
+export type FileWriteApplied = {
+  type: "applied"
+}
+
+export type FileWriteConflict = {
+  type: "conflict"
+  reason: "changed" | "missing" | "already-exists"
+}
+
+export type ConditionalWriteResult = FileWriteApplied | FileWriteConflict
+
 export interface FileSystemBackend {
   readFile(path: string): Promise<Uint8Array>
   writeFile(path: string, data: Uint8Array | string): Promise<void>
+  writeFileIfHashMatches(path: string, data: Uint8Array | string, expectedSha256: string): Promise<ConditionalWriteResult>
+  writeFileIfMissing(path: string, data: Uint8Array | string): Promise<ConditionalWriteResult>
   readDir(path: string): Promise<DirEntryInfo[]>
   stat(path: string): Promise<FileStat>
   exists(path: string): Promise<boolean>
@@ -129,7 +142,7 @@ export type ToolContext = {
   permissions: PermissionPolicy
   audit: ToolAuditSink
   readState: {
-    filesReadThisRun: Set<string>
+    fileSnapshots: Map<string, { sha256: string; size: number }>
   }
   signal?: AbortSignal
   environment: ToolEnvironment

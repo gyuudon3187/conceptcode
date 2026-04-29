@@ -3,6 +3,7 @@ import { resolve } from "node:path"
 import type { CodingAgentToolInput, ToolDef, ToolResult } from "../types"
 import { displayWorkspacePath, normalizeWorkspacePath } from "./path-utils"
 import { clamp, decodeText, numberedLines, splitLines } from "./file-tool-utils"
+import { sha256 } from "./hash-file-content"
 import { markFileRead } from "./read-before-write"
 
 export function createReadFileTool(): ToolDef<CodingAgentToolInput> {
@@ -28,8 +29,8 @@ export function createReadFileTool(): ToolDef<CodingAgentToolInput> {
       if (!fileStat.isFile) {
         throw new Error(`Path is not a file: ${input.path}`)
       }
-      markFileRead(ctx, absolutePath)
       const buffer = await ctx.fs.readFile(absolutePath)
+      markFileRead(ctx, absolutePath, { sha256: sha256(buffer), size: buffer.byteLength })
       const decoded = decodeText(buffer)
       if (decoded.binary) {
         return {

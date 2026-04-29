@@ -1,7 +1,12 @@
 import type { CodingAgentToolInput, ToolDef, ToolPathIntent } from "../types"
 import { ensureParentDirectory, TEXT_DECODER } from "./file-tool-utils"
+import { sha256 } from "./hash-file-content"
 import { normalizeWorkspacePath } from "./path-utils"
-import { assertReadBeforeModify } from "./read-before-write"
+import {
+  assertReadBeforeModify,
+  WRITE_CHANGED_SINCE_READ_ERROR,
+  WRITE_TARGET_ALREADY_EXISTS_ERROR,
+} from "./read-before-write"
 
 type PatchOperation =
   | { type: "add"; path: string; lines: string[] }
@@ -105,7 +110,8 @@ async function patchPathIntents(input: CodingAgentToolInput, ctx: Parameters<Non
 async function applyUpdateOperation(ctx: Parameters<ToolDef["execute"]>[1], operation: Extract<PatchOperation, { type: "update" }>): Promise<string> {
   const sourcePath = await normalizeWorkspacePath(ctx, operation.path, "write")
   await assertReadBeforeModify(ctx, sourcePath)
-  const original = TEXT_DECODER.decode(await ctx.fs.readFile(sourcePath))
+  const originalBuffer = await ctx.fs.readFile(sourcePath)
+  const original = TEXT_DECODER.decode(originalBuffer)
   let nextText = original
   for (const hunk of operation.hunks) {
     const before = hunk.oldLines.join("\n")
@@ -116,10 +122,13 @@ async function applyUpdateOperation(ctx: Parameters<ToolDef["execute"]>[1], oper
     }
     if (occurrences > 1) {
       throw new Error(`Patch hunk is ambiguous in ${operation.path}`)
-    }
-    nextText = nextText.replace(before, after)
+      }
+      nextText = nextText.replace(before, after)
   }
-  await ctx.fs.writeFile(sourcePath, nextText)
+  const result = await ctx.fs.writeFileIfHashMatches(sourcePath, nextText, sha256(originalBuffer))
+  if (result.type === "conflict") {
+    throw new Error(WRITE_CHANGED_SINCE_READ_ERROR)
+  }
   if (operation.moveTo) {
     const destinationPath = await normalizeWorkspacePath(ctx, operation.moveTo, "write")
     await assertReadBeforeModify(ctx, destinationPath)
@@ -150,11 +159,11 @@ export function createApplyPatchTool(): ToolDef<CodingAgentToolInput> {
       for (const operation of operations) {
         if (operation.type === "add") {
           const path = await normalizeWorkspacePath(ctx, operation.path, "write")
-          if (await ctx.fs.exists(path)) {
-            throw new Error(`File already exists: ${operation.path}`)
-          }
           await ensureParentDirectory(ctx, path)
-          await ctx.fs.writeFile(path, operation.lines.join("\n"))
+          const result = await ctx.fs.writeFileIfMissing(path, operation.lines.join("\n"))
+          if (result.type === "conflict") {
+            throw new Error(WRITE_TARGET_ALREADY_EXISTS_ERROR)
+          }
           summaries.push(`added ${operation.path}`)
           filesWritten += 1
           continue

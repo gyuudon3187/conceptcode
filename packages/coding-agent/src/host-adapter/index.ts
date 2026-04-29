@@ -81,7 +81,7 @@ function createToolContext(environment: CodingAgentHostEnvironment): ToolContext
     permissions: environment.permissions ?? new DefaultPermissionPolicy({ mode: environment.mode ?? "build-edit" }),
     audit: environment.audit ?? new NoopToolAuditSink(),
     readState: {
-      filesReadThisRun: new Set<string>(),
+      fileSnapshots: new Map<string, { sha256: string; size: number }>(),
     },
     signal: environment.signal,
     environment: {

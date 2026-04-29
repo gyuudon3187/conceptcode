@@ -1,7 +1,13 @@
 import type { CodingAgentToolInput, ToolDef } from "../types"
 import { displayWorkspacePath, normalizeWorkspacePath } from "./path-utils"
 import { ensureParentDirectory, summarizeDiff, TEXT_DECODER } from "./file-tool-utils"
-import { assertReadBeforeModify } from "./read-before-write"
+import { sha256 } from "./hash-file-content"
+import {
+  assertReadBeforeModify,
+  getReadSnapshot,
+  WRITE_CHANGED_SINCE_READ_ERROR,
+  WRITE_TARGET_ALREADY_EXISTS_ERROR,
+} from "./read-before-write"
 
 export function createWriteFileTool(): ToolDef<CodingAgentToolInput> {
   return {
@@ -22,9 +28,23 @@ export function createWriteFileTool(): ToolDef<CodingAgentToolInput> {
     async execute(input, ctx) {
       const absolutePath = await normalizeWorkspacePath(ctx, String(input.path ?? ""), "write")
       const content = String(input.content ?? "")
-      await assertReadBeforeModify(ctx, absolutePath)
       await ensureParentDirectory(ctx, absolutePath)
-      await ctx.fs.writeFile(absolutePath, content)
+      if (!(await ctx.fs.exists(absolutePath))) {
+        const result = await ctx.fs.writeFileIfMissing(absolutePath, content)
+        if (result.type === "conflict") {
+          throw new Error(WRITE_TARGET_ALREADY_EXISTS_ERROR)
+        }
+      } else {
+        await assertReadBeforeModify(ctx, absolutePath)
+        const snapshot = getReadSnapshot(ctx, absolutePath)
+        if (!snapshot) {
+          throw new Error("Missing read snapshot for file write.")
+        }
+        const result = await ctx.fs.writeFileIfHashMatches(absolutePath, content, snapshot.sha256)
+        if (result.type === "conflict") {
+          throw new Error(WRITE_CHANGED_SINCE_READ_ERROR)
+        }
+      }
       return {
         text: `Wrote ${displayWorkspacePath(ctx, absolutePath)}`,
         metadata: {
@@ -64,7 +84,8 @@ export function createEditFileTool(): ToolDef<CodingAgentToolInput> {
       const oldText = String(input.old ?? "")
       const newText = String(input.new ?? "")
       const replaceAll = input.replaceAll === true
-      const original = TEXT_DECODER.decode(await ctx.fs.readFile(absolutePath))
+      const originalBuffer = await ctx.fs.readFile(absolutePath)
+      const original = TEXT_DECODER.decode(originalBuffer)
       const parts = original.split(oldText)
       const occurrences = oldText.length === 0 ? 0 : parts.length - 1
       if (occurrences === 0) {
@@ -74,7 +95,10 @@ export function createEditFileTool(): ToolDef<CodingAgentToolInput> {
         throw new Error(`Exact match is ambiguous in ${input.path}; found ${occurrences} occurrences`)
       }
       const nextText = replaceAll ? parts.join(newText) : original.replace(oldText, newText)
-      await ctx.fs.writeFile(absolutePath, nextText)
+      const result = await ctx.fs.writeFileIfHashMatches(absolutePath, nextText, sha256(originalBuffer))
+      if (result.type === "conflict") {
+        throw new Error(WRITE_CHANGED_SINCE_READ_ERROR)
+      }
       return {
         text: summarizeDiff(original, nextText),
         metadata: {

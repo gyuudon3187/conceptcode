@@ -106,6 +106,8 @@ Current host tools:
 - `grep`
 - `shell`
 
+For existing files, the native write tools enforce a read-before-write policy. `write_file`, `edit_file`, and `apply_patch` require the file to have been read earlier in the run, and they reject the change if the file content no longer matches the snapshot captured at read time. New file creation is still allowed without a prior read.
+
 Example:
 
 ```ts
