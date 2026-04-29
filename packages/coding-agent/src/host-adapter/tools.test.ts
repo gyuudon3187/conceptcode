@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { createHostToolRegistry, DefaultPermissionPolicy, InMemoryToolAuditSink } from "./index"
+import { READ_BEFORE_WRITE_ERROR } from "./read-before-write"
 
 const workspaces: string[] = []
 
@@ -90,6 +91,30 @@ describe("host tools", () => {
     expect(await readFile(join(workspace, "notes/out.txt"), "utf8")).toBe("hello")
   })
 
+  test("denies overwriting an existing file before reading it", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "notes.txt"), "before")
+    const registry = await createRegistry(workspace)
+
+    const result = await registry.runTool({ toolName: "write_file", input: { path: "notes.txt", content: "after" } })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain(READ_BEFORE_WRITE_ERROR)
+    expect(await readFile(join(workspace, "notes.txt"), "utf8")).toBe("before")
+  })
+
+  test("allows overwriting an existing file after reading it", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "notes.txt"), "before")
+    const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "notes.txt" } })
+    const result = await registry.runTool({ toolName: "write_file", input: { path: "notes.txt", content: "after" } })
+
+    expect(result.isError).toBeUndefined()
+    expect(await readFile(join(workspace, "notes.txt"), "utf8")).toBe("after")
+  })
+
   test("denies writes outside the workspace", async () => {
     const workspace = await createWorkspace()
     const outsideRoot = await createWorkspace()
@@ -106,6 +131,8 @@ describe("host tools", () => {
     await writeFile(join(workspace, "edit.txt"), "alpha\nbeta\ngamma")
     const registry = await createRegistry(workspace)
 
+    await registry.runTool({ toolName: "read_file", input: { path: "edit.txt" } })
+
     const result = await registry.runTool({ toolName: "edit_file", input: { path: "edit.txt", old: "beta", new: "BETA" } })
 
     expect(result.isError).toBeUndefined()
@@ -118,6 +145,8 @@ describe("host tools", () => {
     await writeFile(join(workspace, "edit.txt"), "alpha")
     const registry = await createRegistry(workspace)
 
+    await registry.runTool({ toolName: "read_file", input: { path: "edit.txt" } })
+
     const result = await registry.runTool({ toolName: "edit_file", input: { path: "edit.txt", old: "beta", new: "BETA" } })
 
     expect(result.isError).toBe(true)
@@ -129,6 +158,8 @@ describe("host tools", () => {
     await writeFile(join(workspace, "edit.txt"), "same\nsame")
     const registry = await createRegistry(workspace)
 
+    await registry.runTool({ toolName: "read_file", input: { path: "edit.txt" } })
+
     const result = await registry.runTool({ toolName: "edit_file", input: { path: "edit.txt", old: "same", new: "diff" } })
 
     expect(result.isError).toBe(true)
@@ -139,6 +170,8 @@ describe("host tools", () => {
     const workspace = await createWorkspace()
     await writeFile(join(workspace, "old.txt"), "before")
     const registry = await createRegistry(workspace)
+
+    await registry.runTool({ toolName: "read_file", input: { path: "old.txt" } })
 
     const patch = [
       "*** Begin Patch",
@@ -155,6 +188,26 @@ describe("host tools", () => {
     expect(result.isError).toBeUndefined()
     expect(await readFile(join(workspace, "new.txt"), "utf8")).toBe("hello")
     expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("after")
+  })
+
+  test("denies patch updates for unread existing files", async () => {
+    const workspace = await createWorkspace()
+    await writeFile(join(workspace, "old.txt"), "before")
+    const registry = await createRegistry(workspace)
+
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: old.txt",
+      "@@",
+      "-before",
+      "+after",
+      "*** End Patch",
+    ].join("\n")
+    const result = await registry.runTool({ toolName: "apply_patch", input: { patch } })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain(READ_BEFORE_WRITE_ERROR)
+    expect(await readFile(join(workspace, "old.txt"), "utf8")).toBe("before")
   })
 
   test("fails invalid patches cleanly", async () => {

@@ -1,6 +1,7 @@
 import type { CodingAgentToolInput, ToolDef } from "../types"
 import { displayWorkspacePath, normalizeWorkspacePath } from "./path-utils"
 import { ensureParentDirectory, summarizeDiff, TEXT_DECODER } from "./file-tool-utils"
+import { assertReadBeforeModify } from "./read-before-write"
 
 export function createWriteFileTool(): ToolDef<CodingAgentToolInput> {
   return {
@@ -21,6 +22,7 @@ export function createWriteFileTool(): ToolDef<CodingAgentToolInput> {
     async execute(input, ctx) {
       const absolutePath = await normalizeWorkspacePath(ctx, String(input.path ?? ""), "write")
       const content = String(input.content ?? "")
+      await assertReadBeforeModify(ctx, absolutePath)
       await ensureParentDirectory(ctx, absolutePath)
       await ctx.fs.writeFile(absolutePath, content)
       return {
@@ -58,6 +60,7 @@ export function createEditFileTool(): ToolDef<CodingAgentToolInput> {
       if (!(await ctx.fs.exists(absolutePath))) {
         throw new Error(`File does not exist: ${input.path}`)
       }
+      await assertReadBeforeModify(ctx, absolutePath)
       const oldText = String(input.old ?? "")
       const newText = String(input.new ?? "")
       const replaceAll = input.replaceAll === true

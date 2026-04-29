@@ -80,6 +80,9 @@ function createToolContext(environment: CodingAgentHostEnvironment): ToolContext
     fs: environment.filesystem ?? createLocalFileSystemBackend(),
     permissions: environment.permissions ?? new DefaultPermissionPolicy({ mode: environment.mode ?? "build-edit" }),
     audit: environment.audit ?? new NoopToolAuditSink(),
+    readState: {
+      filesReadThisRun: new Set<string>(),
+    },
     signal: environment.signal,
     environment: {
       managedBinaries: environment.managedBinaries,

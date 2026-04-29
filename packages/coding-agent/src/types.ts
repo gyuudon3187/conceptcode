@@ -128,6 +128,9 @@ export type ToolContext = {
   fs: FileSystemBackend
   permissions: PermissionPolicy
   audit: ToolAuditSink
+  readState: {
+    filesReadThisRun: Set<string>
+  }
   signal?: AbortSignal
   environment: ToolEnvironment
   mode: ToolMode

@@ -1,6 +1,7 @@
 import type { CodingAgentToolInput, ToolDef, ToolPathIntent } from "../types"
 import { ensureParentDirectory, TEXT_DECODER } from "./file-tool-utils"
 import { normalizeWorkspacePath } from "./path-utils"
+import { assertReadBeforeModify } from "./read-before-write"
 
 type PatchOperation =
   | { type: "add"; path: string; lines: string[] }
@@ -103,6 +104,7 @@ async function patchPathIntents(input: CodingAgentToolInput, ctx: Parameters<Non
 
 async function applyUpdateOperation(ctx: Parameters<ToolDef["execute"]>[1], operation: Extract<PatchOperation, { type: "update" }>): Promise<string> {
   const sourcePath = await normalizeWorkspacePath(ctx, operation.path, "write")
+  await assertReadBeforeModify(ctx, sourcePath)
   const original = TEXT_DECODER.decode(await ctx.fs.readFile(sourcePath))
   let nextText = original
   for (const hunk of operation.hunks) {
@@ -120,6 +122,7 @@ async function applyUpdateOperation(ctx: Parameters<ToolDef["execute"]>[1], oper
   await ctx.fs.writeFile(sourcePath, nextText)
   if (operation.moveTo) {
     const destinationPath = await normalizeWorkspacePath(ctx, operation.moveTo, "write")
+    await assertReadBeforeModify(ctx, destinationPath)
     await ensureParentDirectory(ctx, destinationPath)
     await ctx.fs.rename(sourcePath, destinationPath)
     return `updated ${operation.path} -> ${operation.moveTo}`
@@ -158,6 +161,7 @@ export function createApplyPatchTool(): ToolDef<CodingAgentToolInput> {
         }
         if (operation.type === "delete") {
           const path = await normalizeWorkspacePath(ctx, operation.path, "delete")
+          await assertReadBeforeModify(ctx, path)
           await ctx.fs.remove(path)
           summaries.push(`deleted ${operation.path}`)
           filesWritten += 1
