@@ -1,12 +1,6 @@
-import { dirname } from "node:path"
-
 import type { ShellToolInput, ToolContext, ToolDef, ToolResult } from "../types"
+import { discoverShell } from "./binaries"
 import { displayWorkspacePath, normalizeWorkspacePath } from "./path-utils"
-
-type ShellSpec = {
-  binary: string
-  argsFor(command: string): string[]
-}
 
 type ShellRunResult = {
   stdout: string
@@ -15,31 +9,6 @@ type ShellRunResult = {
   timedOut: boolean
   durationMs: number
   truncated: boolean
-}
-
-async function binaryExists(binary: string): Promise<boolean> {
-  const checker = process.platform === "win32" ? ["where", binary] : ["which", binary]
-  const proc = Bun.spawn(checker, { stdout: "ignore", stderr: "ignore" })
-  return (await proc.exited) === 0
-}
-
-async function resolveShellSpec(ctx: ToolContext): Promise<ShellSpec> {
-  const preferred = ctx.environment.shellPreference ?? []
-  const candidates = process.platform === "win32"
-    ? [...preferred, "pwsh", "powershell", "cmd"]
-    : [...preferred, "bash", "zsh", "sh"]
-  for (const candidate of candidates) {
-    if (await binaryExists(candidate)) {
-      if (candidate === "cmd") {
-        return { binary: candidate, argsFor: (command) => ["/d", "/s", "/c", command] }
-      }
-      if (candidate === "pwsh" || candidate === "powershell") {
-        return { binary: candidate, argsFor: (command) => ["-NoProfile", "-Command", command] }
-      }
-      return { binary: candidate, argsFor: (command) => ["-lc", command] }
-    }
-  }
-  throw new Error("No supported shell was found on this host")
 }
 
 function truncateText(text: string, maxBytes: number): { text: string; truncated: boolean } {
@@ -55,7 +24,7 @@ function truncateText(text: string, maxBytes: number): { text: string; truncated
 }
 
 async function runShellCommand(input: ShellToolInput, cwd: string, ctx: ToolContext): Promise<ShellRunResult> {
-  const shell = await resolveShellSpec(ctx)
+  const shell = await discoverShell(ctx)
   const startedAt = Date.now()
   const proc = Bun.spawn([shell.binary, ...shell.argsFor(input.command)], {
     cwd,

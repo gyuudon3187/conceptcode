@@ -22,43 +22,23 @@ function fromLegacyTool(tool: CodingAgentTool): ToolDef {
 
 export function createToolExecutor(tools: readonly ToolDef[] | readonly CodingAgentTool[], ctx?: ToolContext): CodingAgentToolExecutor {
   if (!ctx) {
-    const registry = new Map(tools.map((tool) => [isToolDef(tool) ? tool.id : tool.name, tool]))
+    if (tools.some((tool) => isToolDef(tool))) {
+      throw new Error("createToolExecutor requires a ToolContext when registering ToolDef instances")
+    }
+    const legacyTools = tools as readonly CodingAgentTool[]
+    const registry = new Map(legacyTools.map((tool) => [tool.name, tool]))
     return {
       listTools() {
-        return tools.map((tool) => ({
-          name: isToolDef(tool) ? tool.id : tool.name,
+        return legacyTools.map((tool) => ({
+          name: tool.name,
           description: tool.description,
-          inputSchema: isToolDef(tool) ? tool.schema : tool.inputSchema,
+          inputSchema: tool.inputSchema,
         }))
       },
       async runTool(call) {
         const tool = registry.get(call.toolName)
         if (!tool) {
           return { toolName: call.toolName, output: `Unknown tool: ${call.toolName}`, isError: true }
-        }
-        if (isToolDef(tool)) {
-          const result = await tool.execute(call.input, {
-            workspaceRoot: ".",
-            cwd: ".",
-            fs: undefined as never,
-            permissions: undefined as never,
-            audit: { log() {} },
-            environment: {},
-            mode: "autonomous",
-            limits: {
-              fileLinesDefault: 250,
-              fileLinesMax: 2000,
-              dirEntriesDefault: 200,
-              dirEntriesMax: 2000,
-              searchResultsDefault: 200,
-              searchResultsMax: 2000,
-              shellBytesDefault: 16_000,
-              shellBytesMax: 64_000,
-              treeEntriesDefault: 200,
-              treeEntriesMax: 2_000,
-            },
-          })
-          return { toolName: tool.id, output: result.text, metadata: result.metadata }
         }
         return tool.run(call.input)
       },

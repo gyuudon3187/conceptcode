@@ -1,18 +1,4 @@
-import type {
-  CodingAgentTool,
-  CodingAgentToolCall,
-  CodingAgentToolDefinition,
-  CodingAgentToolExecutor,
-  CodingAgentToolInput,
-  CodingAgentToolResult,
-  JsonSchema,
-  ToolAuditEntry,
-  ToolContext,
-  ToolDef,
-  ToolPathIntent,
-  ToolPermissionDecision,
-  ToolResult,
-} from "./types"
+import type { CodingAgentTool, CodingAgentToolCall, CodingAgentToolDefinition, CodingAgentToolExecutor, CodingAgentToolInput, CodingAgentToolResult, JsonSchema, ToolAuditEntry, ToolContext, ToolDef, ToolPermissionDecision } from "./types"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -109,95 +95,108 @@ async function logAudit(ctx: ToolContext, entry: ToolAuditEntry): Promise<void> 
   await ctx.audit.log(entry)
 }
 
+function createAuditEntry(
+  toolId: string,
+  input: CodingAgentToolInput,
+  permission: ToolPermissionDecision,
+  extras: Partial<ToolAuditEntry>,
+): ToolAuditEntry {
+  return {
+    toolId,
+    arguments: redactArguments(input),
+    normalizedPaths: extras.normalizedPaths ?? [],
+    permission,
+    filesRead: extras.filesRead ?? [],
+    filesWritten: extras.filesWritten ?? [],
+    command: extras.command,
+    exitCode: extras.exitCode,
+    error: extras.error,
+    durationMs: extras.durationMs ?? 0,
+    truncated: extras.truncated ?? false,
+    timestamp: new Date().toISOString(),
+  }
+}
+
+function validateToolInput(tool: ToolDef, input: CodingAgentToolInput): string[] {
+  return validateSchema(tool.schema, input)
+}
+
+async function authorizeToolCall(tool: ToolDef, ctx: ToolContext): Promise<ToolPermissionDecision> {
+  return ctx.permissions.checkTool(tool.id, ctx)
+}
+
+async function authorizePathIntents(tool: ToolDef, input: CodingAgentToolInput, ctx: ToolContext): Promise<{
+  permission: ToolPermissionDecision | null
+  normalizedPaths: string[]
+  filesRead: string[]
+  filesWritten: string[]
+}> {
+  const normalizedPaths: string[] = []
+  const filesRead: string[] = []
+  const filesWritten: string[] = []
+  const pathIntents = tool.getPathIntents ? await tool.getPathIntents(input, ctx) : []
+  for (const intent of pathIntents) {
+    const decision = await ctx.permissions.checkPath(intent.action, intent.path, ctx)
+    normalizedPaths.push(intent.path)
+    if (!decision.allowed) {
+      return { permission: decision, normalizedPaths, filesRead, filesWritten }
+    }
+    if (intent.action === "read" || intent.action === "list" || intent.action === "stat") {
+      filesRead.push(intent.path)
+    }
+    if (intent.action === "write" || intent.action === "delete") {
+      filesWritten.push(intent.path)
+    }
+  }
+  return { permission: null, normalizedPaths, filesRead, filesWritten }
+}
+
 async function executeWithLogging(
   tool: ToolDef,
   input: CodingAgentToolInput,
   ctx: ToolContext,
 ): Promise<CodingAgentToolResult> {
   const startedAt = Date.now()
-  const basePermission: ToolPermissionDecision = await ctx.permissions.checkTool(tool.id, ctx)
-  const normalizedPaths: string[] = []
-  const filesRead: string[] = []
-  const filesWritten: string[] = []
+  const basePermission = await authorizeToolCall(tool, ctx)
 
   if (!basePermission.allowed) {
     const durationMs = Date.now() - startedAt
-    await logAudit(ctx, {
-      toolId: tool.id,
-      arguments: redactArguments(input),
-      normalizedPaths,
-      permission: basePermission,
-      filesRead,
-      filesWritten,
-      durationMs,
-      truncated: false,
-      timestamp: new Date().toISOString(),
-    })
+    await logAudit(ctx, createAuditEntry(tool.id, input, basePermission, { durationMs }))
     return errorResult(tool.id, `Permission denied for ${tool.id}: ${basePermission.reason}`, { permission: basePermission })
   }
 
-  const validationErrors = validateSchema(tool.schema, input)
+  const validationErrors = validateToolInput(tool, input)
   if (validationErrors.length > 0) {
     const durationMs = Date.now() - startedAt
-    await logAudit(ctx, {
-      toolId: tool.id,
-      arguments: redactArguments(input),
-      normalizedPaths,
-      permission: basePermission,
-      filesRead,
-      filesWritten,
-      error: validationErrors.join("; "),
-      durationMs,
-      truncated: false,
-      timestamp: new Date().toISOString(),
-    })
+    await logAudit(ctx, createAuditEntry(tool.id, input, basePermission, { error: validationErrors.join("; "), durationMs }))
     return errorResult(tool.id, `Invalid arguments for ${tool.id}: ${validationErrors.join("; ")}`)
   }
 
   try {
-    const pathIntents = tool.getPathIntents ? await tool.getPathIntents(input, ctx) : []
-    for (const intent of pathIntents) {
-      const decision = await ctx.permissions.checkPath(intent.action, intent.path, ctx)
-      normalizedPaths.push(intent.path)
-      if (!decision.allowed) {
-        const durationMs = Date.now() - startedAt
-        await logAudit(ctx, {
-          toolId: tool.id,
-          arguments: redactArguments(input),
-          normalizedPaths,
-          permission: decision,
-          filesRead,
-          filesWritten,
-          durationMs,
-          truncated: false,
-          timestamp: new Date().toISOString(),
-        })
-        return errorResult(tool.id, `Permission denied for ${tool.id}: ${decision.reason}`, { permission: decision })
-      }
-      if (intent.action === "read" || intent.action === "list" || intent.action === "stat") {
-        filesRead.push(intent.path)
-      }
-      if (intent.action === "write" || intent.action === "delete") {
-        filesWritten.push(intent.path)
-      }
+    const pathAuthorization = await authorizePathIntents(tool, input, ctx)
+    if (pathAuthorization.permission) {
+      const durationMs = Date.now() - startedAt
+      await logAudit(ctx, createAuditEntry(tool.id, input, pathAuthorization.permission, {
+        normalizedPaths: pathAuthorization.normalizedPaths,
+        filesRead: pathAuthorization.filesRead,
+        filesWritten: pathAuthorization.filesWritten,
+        durationMs,
+      }))
+      return errorResult(tool.id, `Permission denied for ${tool.id}: ${pathAuthorization.permission.reason}`, { permission: pathAuthorization.permission })
     }
 
     const result = await tool.execute(input, ctx)
     const durationMs = Date.now() - startedAt
     const metadata = isRecord(result.metadata) ? result.metadata : {}
-    await logAudit(ctx, {
-      toolId: tool.id,
-      arguments: redactArguments(input),
-      normalizedPaths,
-      permission: basePermission,
-      filesRead,
-      filesWritten,
+    await logAudit(ctx, createAuditEntry(tool.id, input, basePermission, {
+      normalizedPaths: pathAuthorization.normalizedPaths,
+      filesRead: pathAuthorization.filesRead,
+      filesWritten: pathAuthorization.filesWritten,
       command: typeof metadata.command === "string" ? metadata.command : undefined,
       exitCode: typeof metadata.exitCode === "number" || metadata.exitCode === null ? (metadata.exitCode as number | null) : undefined,
       durationMs,
       truncated: Boolean(metadata.truncated),
-      timestamp: new Date().toISOString(),
-    })
+    }))
     return {
       toolName: tool.id,
       output: result.text,
@@ -206,18 +205,7 @@ async function executeWithLogging(
   } catch (error) {
     const durationMs = Date.now() - startedAt
     const message = error instanceof Error ? error.message : String(error)
-    await logAudit(ctx, {
-      toolId: tool.id,
-      arguments: redactArguments(input),
-      normalizedPaths,
-      permission: basePermission,
-      filesRead,
-      filesWritten,
-      error: message,
-      durationMs,
-      truncated: false,
-      timestamp: new Date().toISOString(),
-    })
+    await logAudit(ctx, createAuditEntry(tool.id, input, basePermission, { error: message, durationMs }))
     return errorResult(tool.id, `Tool ${tool.id} failed: ${message}`, { durationMs })
   }
 }

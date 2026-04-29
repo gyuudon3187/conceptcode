@@ -1,12 +1,8 @@
 import { relative, resolve } from "node:path"
 
 import type { CodingAgentToolInput, ToolContext, ToolDef, ToolResult } from "../types"
+import { discoverRipgrep, type RipgrepBinary } from "./binaries"
 import { displayWorkspacePath, normalizeWorkspacePath } from "./path-utils"
-
-type RipgrepBinary = {
-  path: string
-  source: "managed" | "system"
-}
 
 function globToRegExpSource(pattern: string): string {
   let source = ""
@@ -42,23 +38,6 @@ function globToRegExpSource(pattern: string): string {
 
 function matchesGlob(pattern: string, value: string): boolean {
   return new RegExp(globToRegExpSource(pattern)).test(value)
-}
-
-async function binaryExists(binary: string): Promise<boolean> {
-  const checker = process.platform === "win32" ? ["where", binary] : ["which", binary]
-  const proc = Bun.spawn(checker, { stdout: "ignore", stderr: "ignore" })
-  return (await proc.exited) === 0
-}
-
-async function discoverRipgrep(ctx: ToolContext): Promise<RipgrepBinary | null> {
-  const managed = ctx.environment.managedBinaries?.rg
-  if (managed && await binaryExists(managed)) {
-    return { path: managed, source: "managed" }
-  }
-  if (ctx.environment.allowSystemBinaries !== false && await binaryExists("rg")) {
-    return { path: "rg", source: "system" }
-  }
-  return null
 }
 
 async function walk(ctx: ToolContext, root: string, limit: number): Promise<string[]> {

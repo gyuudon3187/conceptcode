@@ -23,7 +23,7 @@ function allowedInMode(mode: ToolMode, toolId: string): boolean {
     return READ_ONLY_TOOLS.has(toolId)
   }
   if (mode === "build-edit") {
-    return toolId !== "shell" || true
+    return true
   }
   return false
 }
