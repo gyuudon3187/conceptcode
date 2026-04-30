@@ -58,6 +58,33 @@ const planMessages = applyPrimaryAgentToMessages([{ role: "user", content: "inve
 const graphMessages = applyPrimaryAgentToMessages([{ role: "user", content: "reshape the graph" }], conceptualize)
 ```
 
+### Scoped context files
+
+`coding-agent` can also resolve directory-scoped markdown context under `.coding-agent/contexts` when the host wants to inject local guidance into a run.
+
+- Discovery walks from an active directory upward to the workspace root.
+- Each matching `.coding-agent/contexts` directory contributes its markdown files in broad-to-narrow order.
+- Files without a `description` frontmatter field are loaded eagerly and their full body can be injected into the prompt.
+- Files with a `description` frontmatter field are treated as lazy references: only the description is injected up front, while the rest of the same file stays hidden until the host or agent chooses to read it later.
+
+Package helpers:
+
+- `resolveScopedContextFiles({ workspaceRoot, cwd, activePaths, fs })`
+- `renderScopedContextBlock(...)`
+- `parseMarkdownFrontmatter(...)`
+
+Example lazy context file:
+
+```md
+---
+description: Read this when changing API handlers or response schemas.
+---
+
+# API Guide
+
+Hidden body text here.
+```
+
 ### ReAct loop
 
 `runReactCodingAgent(options)` in `coding-agent/react-loop` currently:

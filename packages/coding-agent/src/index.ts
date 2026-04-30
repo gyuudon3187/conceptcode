@@ -13,6 +13,11 @@ export {
 } from "./host-adapter"
 export { createDummyStreamingCodingAgentModel } from "./model-adapter"
 export {
+  parseMarkdownFrontmatter,
+  renderScopedContextBlock,
+  resolveScopedContextFiles,
+} from "./context-files"
+export {
   applyPrimaryAgentToMessages,
   BUILD_PRIMARY_AGENT,
   definePrimaryAgent,
@@ -55,3 +60,4 @@ export type {
 } from "./types"
 export type { CodingAgentHostEnvironment, CodingAgentHostOs } from "./host-adapter"
 export type { CodingAgentPrimaryAgent, CodingAgentPrimaryAgentDefinition } from "./primary-agents"
+export type { ResolveScopedContextInput, ResolvedScopedContext, ScopedContextFile, ScopedContextReference } from "./context-files"
