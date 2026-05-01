@@ -42,6 +42,8 @@ type ActivePromptSuggestion = { prefix: "@" | "&" | "/"; query: string; start: n
 
 type PromptSuggestionViewModel = { full: PromptSuggestionEntry[]; visible: PromptSuggestionEntry[]; selectedEntry: PromptSuggestionEntry | null }
 
+type FileSuggestionQueryScope = { scopeDirectory: string | null; searchQuery: string }
+
 function allAliasSuggestions(state: AppState, query: string): string[] {
   const paths = [...state.nodes.keys()].sort((left, right) => left.localeCompare(right))
   const aliases = paths.map((path) => `@${path}`)
@@ -63,24 +65,46 @@ function allAliasSuggestions(state: AppState, query: string): string[] {
     .map((entry) => entry.alias)
 }
 
-function allFileSuggestions(state: AppState, query: string): string[] {
+function fileSuggestionQueryScope(projectDirectories: readonly string[], query: string): FileSuggestionQueryScope {
+  const slashIndex = query.lastIndexOf("/")
+  if (slashIndex < 0) return { scopeDirectory: null, searchQuery: query }
+  for (let index = slashIndex; index > 0; index = query.lastIndexOf("/", index - 1)) {
+    const candidate = query.slice(0, index)
+    if (projectDirectories.includes(candidate)) {
+      return { scopeDirectory: candidate, searchQuery: query.slice(index + 1) }
+    }
+  }
+  return { scopeDirectory: null, searchQuery: query }
+}
+
+function scoreFileSuggestion(path: string, normalizedQuery: string, scopeDirectory: string | null): number {
+  const scopedPath = scopeDirectory ? path.slice(scopeDirectory.length + 1) : path
+  const candidate = scopedPath.toLowerCase()
+  const lastSegment = candidate.split("/").filter(Boolean).at(-1) ?? candidate
+  const immediateChildBonus = scopeDirectory && !candidate.includes("/") ? 40 : 0
+  if (!normalizedQuery) {
+    return immediateChildBonus + (!candidate.includes("/") ? 400 : 220 - Math.min(candidate.length, 120))
+  }
+  if (candidate === normalizedQuery) return 540 + immediateChildBonus
+  if (path.toLowerCase() === normalizedQuery) return 500
+  if (lastSegment === normalizedQuery) return 470 + immediateChildBonus
+  if (candidate.startsWith(normalizedQuery)) return 390 - candidate.indexOf(normalizedQuery) + immediateChildBonus
+  if (lastSegment.startsWith(normalizedQuery)) return 340 - lastSegment.indexOf(normalizedQuery) + immediateChildBonus
+  if (candidate.includes(`/${normalizedQuery}`)) return 260 - candidate.indexOf(`/${normalizedQuery}`) + immediateChildBonus
+  if (candidate.includes(normalizedQuery)) return 180 - candidate.indexOf(normalizedQuery) + immediateChildBonus
+  if (path.toLowerCase().includes(normalizedQuery)) return 120 - path.toLowerCase().indexOf(normalizedQuery)
+  return 0
+}
+
+export function allFileSuggestions(state: AppState, query: string): string[] {
   const files = [...new Set([...(state.projectFiles ?? []), ...(state.projectDirectories ?? [])])].sort((left, right) => left.localeCompare(right))
   const references = files.map((path) => `&${path}`)
   if (!query) return references
-  const normalized = query.toLowerCase()
-  const score = (reference: string): number => {
-    const path = reference.slice(1).toLowerCase()
-    const lastSegment = path.split("/").filter(Boolean).at(-1) ?? path
-    if (lastSegment === normalized) return 500
-    if (path === normalized) return 460
-    if (lastSegment.startsWith(normalized)) return 360 - lastSegment.indexOf(normalized)
-    if (path.startsWith(normalized)) return 280 - path.indexOf(normalized)
-    if (path.includes(`/${normalized}`)) return 220 - path.indexOf(`/${normalized}`)
-    if (path.includes(normalized)) return 140 - path.indexOf(normalized)
-    return 0
-  }
+  const { scopeDirectory, searchQuery } = fileSuggestionQueryScope(state.projectDirectories ?? [], query)
+  const normalized = searchQuery.toLowerCase()
   return references
-    .map((reference) => ({ reference, score: score(reference) }))
+    .filter((reference) => !scopeDirectory || reference.slice(1).startsWith(`${scopeDirectory}/`))
+    .map((reference) => ({ reference, score: scoreFileSuggestion(reference.slice(1), normalized, scopeDirectory) }))
     .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score || left.reference.length - right.reference.length || left.reference.localeCompare(right.reference))
     .map((entry) => entry.reference)
@@ -205,10 +229,26 @@ function activePromptSuggestion(state: AppState, editor: EditorModalState): Acti
     }
   }
   const beforeCursor = text.slice(0, cursor)
-  const match = beforeCursor.match(/(?:^|\s)([@&/]([^\s@&/]*))$/)
+  const fileMatch = beforeCursor.match(/(?:^|\s)(&([^\s@&]*))$/)
+  if (fileMatch) {
+    const token = fileMatch[1]
+    const query = fileMatch[2] ?? ""
+    const start = cursor - token.length
+    const afterCursor = text.slice(cursor)
+    const suffixMatch = afterCursor.match(/^([^\s@&]*)/)
+    const end = cursor + (suffixMatch?.[1]?.length ?? 0)
+    return {
+      prefix: "&",
+      query,
+      start,
+      end,
+      suggestions: allFileSuggestions(state, query).map((value) => ({ value })),
+    }
+  }
+  const match = beforeCursor.match(/(?:^|\s)([@/]([^\s@&/]*))$/)
   if (!match) return null
   const token = match[1]
-  const prefix = token[0] as "@" | "&" | "/"
+  const prefix = token[0] as "@" | "/"
   const query = match[2] ?? ""
   const start = cursor - token.length
   const afterCursor = text.slice(cursor)
@@ -219,7 +259,7 @@ function activePromptSuggestion(state: AppState, editor: EditorModalState): Acti
     query,
     start,
     end,
-    suggestions: (prefix === "@" ? allAliasSuggestions(state, query) : prefix === "&" ? allFileSuggestions(state, query) : allSlashSuggestions(state, query)).map((value) => ({ value })),
+    suggestions: (prefix === "@" ? allAliasSuggestions(state, query) : allSlashSuggestions(state, query)).map((value) => ({ value })),
   }
 }
 
@@ -357,7 +397,11 @@ export function acceptPromptSuggestion(state: AppState, provider: PromptSuggesti
   editor.renderable.cursorOffset = editor.promptSuggestion.start + value.length + trailingText.length
   editor.renderable.focus()
   applyEditorText(state, editor)
-  editor.promptSuggestion = keepSuggestionOpen ? editor.promptSuggestion : null
+  if (keepSuggestionOpen) {
+    refreshPromptSuggestion(state, provider)
+  } else {
+    editor.promptSuggestion = null
+  }
   return true
 }
 
