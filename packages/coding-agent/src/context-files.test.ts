@@ -4,7 +4,14 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { createLocalFileSystemBackend } from "./host-adapter"
-import { buildScopedContextTree, parseMarkdownFrontmatter, renderScopedContextBlock, resolveScopedContextFiles } from "./context-files"
+import {
+  buildScopedContextTree,
+  parseMarkdownFrontmatter,
+  renderScopedContextBlock,
+  renderScopedContextDisplayLines,
+  resolveScopedContextFiles,
+  resolveScopedContextView,
+} from "./context-files"
 
 const workspaces: string[] = []
 
@@ -142,6 +149,60 @@ describe("scoped context files", () => {
           },
         ],
       },
+    ])
+  })
+
+  test("resolves a scoped context view from active paths", async () => {
+    const workspace = await createWorkspace()
+    await mkdir(join(workspace, ".coding-agent", "contexts"), { recursive: true })
+    await mkdir(join(workspace, "src", ".coding-agent", "contexts"), { recursive: true })
+    await mkdir(join(workspace, "src", "feature"), { recursive: true })
+    await writeFile(join(workspace, ".coding-agent", "contexts", "repo.md"), "# Repo\nRoot guidance\n")
+    await writeFile(join(workspace, "src", ".coding-agent", "contexts", "api.md"), [
+      "---",
+      "description: Read this when working on API handlers.",
+      "---",
+      "# API Guide",
+      "Internal details",
+      "",
+    ].join("\n"))
+
+    const view = await resolveScopedContextView({
+      workspaceRoot: workspace,
+      cwd: join(workspace, "src"),
+      activePaths: ["src/feature/file.ts"],
+      fs: createLocalFileSystemBackend(),
+    })
+
+    expect(view.activePaths).toEqual(["src/feature/file.ts"])
+    expect(view.scopedContext.contextDirectories).toEqual([
+      ".coding-agent/contexts",
+      "src/.coding-agent/contexts",
+    ])
+    expect(view.scopedContextTree).toEqual(buildScopedContextTree(view.scopedContext))
+  })
+
+  test("renders scoped context display lines with headers and tree", () => {
+    expect(renderScopedContextDisplayLines({
+      activePaths: ["src/feature/file.ts"],
+      contextDirectories: [".coding-agent/contexts", "src/.coding-agent/contexts"],
+      tree: buildScopedContextTree({
+        eagerFiles: [{ path: ".coding-agent/contexts/repo.md", scopeRoot: ".", content: "# Repo\nRoot guidance\n" }],
+        lazyFiles: [{ path: "src/.coding-agent/contexts/api.md", scopeRoot: "src", description: "Read this when working on API handlers." }],
+        contextDirectories: [".coding-agent/contexts", "src/.coding-agent/contexts"],
+      }),
+    })).toEqual([
+      "Active file references: src/feature/file.ts",
+      "Context directories: .coding-agent/contexts, src/.coding-agent/contexts",
+      "",
+      "Scoped context tree",
+      "+-- .coding-agent/",
+      "|   \\-- contexts/",
+      "|       \\-- repo.md [loaded]",
+      "\\-- src/",
+      "    \\-- .coding-agent/",
+      "        \\-- contexts/",
+      "            \\-- api.md [lazy] Read this when working on API handlers.",
     ])
   })
 })

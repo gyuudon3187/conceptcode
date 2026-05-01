@@ -47,6 +47,18 @@ export type ResolveScopedContextInput = {
   fs: Pick<FileSystemBackend, "exists" | "stat" | "readDir" | "readFile">
 }
 
+export type ResolvedScopedContextView = {
+  activePaths: string[]
+  scopedContext: ResolvedScopedContext
+  scopedContextTree: ScopedContextTreeDirectory[]
+}
+
+export type ScopedContextDisplay = {
+  activePaths: string[]
+  contextDirectories: string[]
+  tree: ScopedContextTreeDirectory[]
+}
+
 export function parseMarkdownFrontmatter(markdown: string): { description: string | null; body: string } {
   const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
   if (!match) {
@@ -172,6 +184,16 @@ export async function resolveScopedContextFiles(input: ResolveScopedContextInput
   }
 }
 
+export async function resolveScopedContextView(input: ResolveScopedContextInput): Promise<ResolvedScopedContextView> {
+  const activePaths = input.activePaths ?? []
+  const scopedContext = await resolveScopedContextFiles({ ...input, activePaths })
+  return {
+    activePaths,
+    scopedContext,
+    scopedContextTree: buildScopedContextTree(scopedContext),
+  }
+}
+
 export function buildScopedContextTree(context: ResolvedScopedContext): ScopedContextTreeDirectory[] {
   const roots: ScopedContextTreeDirectory[] = []
   const directories = new Map<string, ScopedContextTreeDirectory>()
@@ -270,4 +292,35 @@ export function renderScopedContextBlock(context: ResolvedScopedContext): string
   }
 
   return ["[SCOPED CONTEXT]", ...sections].join("\n\n").trim()
+}
+
+function appendScopedContextTreeLines(lines: string[], nodes: ScopedContextTreeNode[], prefix = ""): void {
+  nodes.forEach((node, index) => {
+    const isLast = index === nodes.length - 1
+    const branch = isLast ? "\\-- " : "+-- "
+    if (node.kind === "directory") {
+      lines.push(`${prefix}${branch}${node.name}/`)
+      appendScopedContextTreeLines(lines, node.children, `${prefix}${isLast ? "    " : "|   "}`)
+      return
+    }
+    const suffix = node.mode === "eager" ? " [loaded]" : node.description ? ` [lazy] ${node.description}` : " [lazy]"
+    lines.push(`${prefix}${branch}${node.name}${suffix}`)
+  })
+}
+
+function scopedContextTreeLines(tree: ScopedContextTreeDirectory[]): string[] {
+  const lines: string[] = []
+  appendScopedContextTreeLines(lines, tree)
+  return lines
+}
+
+export function renderScopedContextDisplayLines(display: ScopedContextDisplay): string[] {
+  const headerLines = [
+    display.activePaths.length > 0 ? `Active file references: ${display.activePaths.join(", ")}` : "Active file references: none",
+    display.contextDirectories.length > 0 ? `Context directories: ${display.contextDirectories.join(", ")}` : "Context directories: none",
+    "",
+    "Scoped context tree",
+  ]
+  const treeLines = display.tree.length > 0 ? scopedContextTreeLines(display.tree) : ["No scoped context files found."]
+  return [...headerLines, ...treeLines]
 }

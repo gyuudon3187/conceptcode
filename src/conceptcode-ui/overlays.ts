@@ -1,8 +1,8 @@
 import { Box, Text, TextAttributes, type Renderable, type VNode } from "@opentui/core"
+import { renderScopedContextDisplayLines } from "coding-agent"
 import { renderOverlayBackdrop, renderOverlayCard } from "agent-tui/render/overlay"
 import type { ShellInspectorViewModel } from "agent-tui/types"
 
-import { scopedContextOverlayLines } from "../coding-agent/overlay-view"
 import { currentNode } from "../core/state"
 import type { AppState } from "../core/types"
 import { COLORS } from "../ui/theme"
@@ -52,7 +52,7 @@ export function renderScopedContextOverlay(state: AppState): Array<Renderable | 
   const modal = state.scopedContextModal
   if (!modal) return []
 
-  const allLines = scopedContextOverlayLines(modal)
+  const allLines = renderScopedContextDisplayLines(modal)
   const viewportHeight = process.stdout.rows || 24
   const top = state.layoutMode === "wide" ? 4 : 2
   const height = Math.max(10, viewportHeight - top - top)

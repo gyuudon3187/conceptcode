@@ -1,11 +1,11 @@
 import { createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core"
 import { confirmOrCancelCommand, inspectorCommand, moveShellListSelection, sessionModalCommand, sessionModalVisibleRowCount, sharedFocusCommand } from "agent-tui/keybindings"
+import { renderScopedContextDisplayLines } from "coding-agent"
 
 import { currentPath, scrollMain } from "../core/state"
 import type { AppState, InspectorKind } from "../core/types"
 import { handleBrowserKey, handleCtrlCKey } from "./commands"
 import { closeScopedContextModal, openScopedContextModal } from "../coding-agent/overlay"
-import { scopedContextOverlayLines } from "../coding-agent/overlay-view"
 import { handleCreateConceptModalKey, removeDraftConcept } from "../concepts/drafts"
 import { acceptPromptSuggestion, applyEditorText, conceptCodePromptSuggestionProvider, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
 import { closeSessionModal, createAndSwitchSession, deleteSession, openSessionModal, promptToDeleteSession, sessionModalEntries, switchToSession } from "../sessions/commands"
@@ -153,7 +153,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
     }
     if (state.scopedContextModal) {
       const contentHeight = scopedContextContentHeight(state.layoutMode, process.stdout.rows || 24)
-      const maxScrollTop = Math.max(0, scopedContextOverlayLines(state.scopedContextModal).length - contentHeight)
+      const maxScrollTop = Math.max(0, renderScopedContextDisplayLines(state.scopedContextModal).length - contentHeight)
       if (key.name === "escape" || key.name === "q") {
         key.preventDefault()
         key.stopPropagation()
