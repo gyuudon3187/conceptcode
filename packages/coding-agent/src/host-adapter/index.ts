@@ -22,7 +22,7 @@ import { createNativeFileTools } from "./native-tools"
 import { DefaultPermissionPolicy } from "./permissions"
 import { createGlobTool, createGrepTool } from "./search"
 import { createShellTool } from "./shell"
-import { createCapabilitySummary, createHostStepModel, delay, latestUserPrompt } from "./shared"
+import { createCapabilitySummary, createHostStepModel, delay } from "./shared"
 
 export type CodingAgentHostOs = NodeJS.Platform
 
@@ -135,12 +135,14 @@ export async function createHostStreamingCodingAgentModel(environment: CodingAge
       const messageId = `msg_${crypto.randomUUID()}`
       yield { type: "response.created", responseId, messageId, provider: `coding-agent-host-${os}` }
       const text = (await runReactCodingAgent({
-        systemPrompt: [
-          "You are a local host-backed coding agent.",
-          capabilitySummary,
-          "Prefer native file and search tools. Use shell only for builds, tests, package managers, git, or project-specific commands.",
-        ].join("\n"),
-        userPrompt: latestUserPrompt(messages),
+        messages: [{
+          role: "system",
+          content: [
+            "You are a local host-backed coding agent.",
+            capabilitySummary,
+            "Prefer native file and search tools. Use shell only for builds, tests, package managers, git, or project-specific commands.",
+          ].join("\n"),
+        }, ...messages],
         model,
         toolExecutor,
         maxSteps: 2,

@@ -1,17 +1,4 @@
-import type {
-  CodingAgentMessage,
-  CodingAgentRunOptions,
-  CodingAgentRunResult,
-  CodingAgentStep,
-  CodingAgentToolCall,
-} from "./types"
-
-function initialMessages(options: Pick<CodingAgentRunOptions, "systemPrompt" | "userPrompt">): CodingAgentMessage[] {
-  return [
-    { role: "system", content: options.systemPrompt },
-    { role: "user", content: options.userPrompt },
-  ]
-}
+import type { CodingAgentMessage, CodingAgentRunOptions, CodingAgentRunResult, CodingAgentStep, CodingAgentToolCall } from "./types"
 
 async function runToolCalls(
   calls: CodingAgentToolCall[],
@@ -27,7 +14,7 @@ async function runToolCalls(
 }
 
 export async function runReactCodingAgent(options: CodingAgentRunOptions): Promise<CodingAgentRunResult> {
-  const messages = initialMessages(options)
+  const messages: CodingAgentMessage[] = [...options.messages]
   const steps: CodingAgentStep[] = []
   const maxSteps = Math.max(1, options.maxSteps ?? 8)
 

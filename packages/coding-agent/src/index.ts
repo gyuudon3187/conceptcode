@@ -1,4 +1,5 @@
 export { runReactCodingAgent } from "./react-loop"
+export { createAgentFactory, createCodingAgent } from "./coding-agent"
 export {
   createHostStreamingCodingAgentModel,
   createHostToolRegistry,
@@ -15,7 +16,9 @@ export { createDummyStreamingCodingAgentModel, streamTextResponse } from "./mode
 export {
   buildScopedContextTree,
   parseMarkdownFrontmatter,
+  renderScopedContextDisplayLines,
   renderScopedContextBlock,
+  resolveScopedContextView,
   resolveScopedContextFiles,
 } from "./context-files"
 export {
@@ -64,8 +67,23 @@ export type { CodingAgentHostEnvironment, CodingAgentHostOs } from "./host-adapt
 export type { CodingAgentPrimaryAgent, CodingAgentPrimaryAgentDefinition } from "./primary-agents"
 export type { UserAssistantTextMessage as CodingAgentChatMessage } from "./chat-messages"
 export type {
+  CodingAgentInstance,
+  CodingAgentFactory,
+  CodingAgentSessionMessage,
+  CreateAgentFactoryOptions,
+  CreateConfiguredCodingAgentOptions,
+  CreateCodingAgentOptions,
+  PrepareCodingAgentTurnInput,
+  PreparedCodingAgentTurn,
+  RunCodingAgentResult,
+  StreamCodingAgentInput,
+  StreamCodingAgentResult,
+} from "./coding-agent"
+export type {
   ResolveScopedContextInput,
   ResolvedScopedContext,
+  ResolvedScopedContextView,
+  ScopedContextDisplay,
   ScopedContextFile,
   ScopedContextReference,
   ScopedContextTreeDirectory,

@@ -6,6 +6,7 @@ Reusable coding-agent scaffolding extracted from `ConceptCode`.
 
 This package currently owns coding-agent primitives such as:
 
+- a host-level `createAgentFactory(...)` plus session-aware `createCodingAgent(...)` runner
 - shared message, tool, loop, and streaming types
 - a minimal non-streaming ReAct loop
 - a host-injected tool executor boundary
@@ -24,6 +25,44 @@ It does not yet own provider-specific integrations or a full streaming tool-exec
 - `coding-agent/model-adapter`
 - `coding-agent/tool-executor`
 - `coding-agent/host-adapter`
+
+## High-level runner
+
+`createAgentFactory(...)` owns stable host configuration such as workspace paths, model wiring, and host-defined primary-agent extensions.
+
+The factory exposes `createCodingAgent()`, whose instances provide two entry points:
+
+- `agent.stream({ ... })` for streaming integrations such as a chat UI
+- `agent.run(prompt, sessionId?)` for a simpler request/response API with default file-backed session persistence
+
+Example:
+
+```ts
+import { createAgentFactory, definePrimaryAgent } from "coding-agent"
+
+const conceptualize = definePrimaryAgent({
+  id: "conceptualize",
+  instructions: ["Focus on concept-graph structure and metadata updates."],
+})
+
+const agentFactory = createAgentFactory({
+  workspaceRoot: process.cwd(),
+  primaryAgents: [conceptualize],
+})
+
+const agent = agentFactory.createCodingAgent({
+  defaultPrimaryAgentId: "build",
+})
+
+const first = await agent.run("inspect src/index.ts and explain the startup flow")
+const second = await agent.run("now update the summary to mention session restore", first.sessionId)
+```
+
+Built-in primary agents `plan` and `build` are always available implicitly. Hosts can extend that registry with extra primary agents through `primaryAgents: [...]` and return `primaryAgentId` from `prepareTurn(...)` when they want the package to apply a different registered profile for a specific turn.
+
+Per-agent defaults such as `defaultPrimaryAgentId`, `sessionBucketKey`, and `systemPrompt` are configured on `agentFactory.createCodingAgent(...)`.
+
+When the host needs app-specific context injection, it can provide `prepareTurn(...)` to attach `primaryAgentId`, scoped context, or extra system prompt before each run.
 
 ## Current package surface
 

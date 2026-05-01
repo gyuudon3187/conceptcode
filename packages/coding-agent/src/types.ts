@@ -202,8 +202,7 @@ export type CodingAgentStreamingModel = {
 }
 
 export type CodingAgentRunOptions = {
-  systemPrompt: string
-  userPrompt: string
+  messages: CodingAgentMessage[]
   model: CodingAgentModel
   toolExecutor: CodingAgentToolExecutor
   maxSteps?: number
