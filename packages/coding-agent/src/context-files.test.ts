@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { createLocalFileSystemBackend } from "./host-adapter"
-import { parseMarkdownFrontmatter, renderScopedContextBlock, resolveScopedContextFiles } from "./context-files"
+import { buildScopedContextTree, parseMarkdownFrontmatter, renderScopedContextBlock, resolveScopedContextFiles } from "./context-files"
 
 const workspaces: string[] = []
 
@@ -81,5 +81,67 @@ describe("scoped context files", () => {
     expect(rendered).toContain("Root guidance")
     expect(rendered).toContain("`src/.coding-agent/contexts/api.md`: Read this when working on API handlers.")
     expect(rendered).not.toContain("Internal details")
+  })
+
+  test("builds a hierarchical tree for scoped context directories and files", () => {
+    const tree = buildScopedContextTree({
+      eagerFiles: [{ path: ".coding-agent/contexts/repo.md", scopeRoot: ".", content: "# Repo\nRoot guidance\n" }],
+      lazyFiles: [{ path: "src/.coding-agent/contexts/api.md", scopeRoot: "src", description: "Read this when working on API handlers." }],
+      contextDirectories: [".coding-agent/contexts", "src/.coding-agent/contexts"],
+    })
+
+    expect(tree).toEqual([
+      {
+        kind: "directory",
+        name: ".coding-agent",
+        path: ".coding-agent",
+        children: [
+          {
+            kind: "directory",
+            name: "contexts",
+            path: ".coding-agent/contexts",
+            children: [
+              {
+                kind: "file",
+                name: "repo.md",
+                path: ".coding-agent/contexts/repo.md",
+                scopeRoot: ".",
+                mode: "eager",
+                description: null,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        kind: "directory",
+        name: "src",
+        path: "src",
+        children: [
+          {
+            kind: "directory",
+            name: ".coding-agent",
+            path: "src/.coding-agent",
+            children: [
+              {
+                kind: "directory",
+                name: "contexts",
+                path: "src/.coding-agent/contexts",
+                children: [
+                  {
+                    kind: "file",
+                    name: "api.md",
+                    path: "src/.coding-agent/contexts/api.md",
+                    scopeRoot: "src",
+                    mode: "lazy",
+                    description: "Read this when working on API handlers.",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ])
   })
 })

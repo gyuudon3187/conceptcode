@@ -1,4 +1,4 @@
-import type { ChatStreamEvent, ChatTransport, ChatTurnRequest } from "../core/types"
+import { latestUserText, type ChatStreamEvent, type ChatTransport, type ChatTurnRequest } from "agent-chat"
 import { parseConceptCodePromptReferences } from "../prompt/references"
 
 type ParsedSseEvent = {
@@ -7,7 +7,7 @@ type ParsedSseEvent = {
 }
 
 function createDummyResponseText(request: ChatTurnRequest): string {
-  const latestUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.text.trim() ?? ""
+  const latestUserMessage = latestUserText(request.messages)
   const references = parseConceptCodePromptReferences(latestUserMessage)
   const referencedConcepts = references.filter((match) => match.kind === "concept").map((match) => match.raw)
   const referencedFiles = references.filter((match) => match.kind === "file").map((match) => match.raw)

@@ -1,20 +1,25 @@
 import {
+  buildScopedContextTree,
   createLocalFileSystemBackend,
   resolveScopedContextFiles,
   type ResolvedScopedContext,
+  type ScopedContextTreeDirectory,
 } from "coding-agent"
+import { latestUserText, type ChatTurnRequest } from "agent-chat"
 
-import type { ChatTurnRequest } from "../core/types"
 import { resolveConceptCodePromptReferences } from "../prompt/references"
 
 export type RequestScopedContext = {
   latestPrompt: string
   activePaths: string[]
   scopedContext: ResolvedScopedContext
+  scopedContextTree: ScopedContextTreeDirectory[]
 }
 
-export function latestUserText(messages: Array<{ role: "user" | "assistant"; text: string }>): string {
-  return [...messages].reverse().find((message) => message.role === "user")?.text.trim() ?? ""
+export type PromptScopedContext = {
+  activePaths: string[]
+  scopedContext: ResolvedScopedContext
+  scopedContextTree: ScopedContextTreeDirectory[]
 }
 
 async function activeFileReferencesForPrompt(prompt: string, workspaceRoot: string, cwd: string): Promise<string[]> {
@@ -29,48 +34,20 @@ async function activeFileReferencesForPrompt(prompt: string, workspaceRoot: stri
     .map((entry) => entry.path)
 }
 
-export async function resolveRequestScopedContext(request: ChatTurnRequest, workspaceRoot: string, cwd: string): Promise<RequestScopedContext> {
-  const latestPrompt = latestUserText(request.messages)
-  const activePaths = await activeFileReferencesForPrompt(latestPrompt, workspaceRoot, cwd)
+export async function resolvePromptScopedContext(prompt: string, workspaceRoot: string, cwd: string): Promise<PromptScopedContext> {
+  const activePaths = await activeFileReferencesForPrompt(prompt, workspaceRoot, cwd)
   const scopedContext = await resolveScopedContextFiles({
     workspaceRoot,
     cwd,
     activePaths,
     fs: createLocalFileSystemBackend(),
   })
-  return { latestPrompt, activePaths, scopedContext }
+  const scopedContextTree = buildScopedContextTree(scopedContext)
+  return { activePaths, scopedContext, scopedContextTree }
 }
 
-export function isMemoryCommand(text: string): boolean {
-  return /^\/memory(?:\s+.*)?$/i.test(text.trim())
-}
-
-export function renderMemoryResponse(context: RequestScopedContext, cwd: string, workspaceRoot: string): string {
-  const lines = [
-    "Scoped context memory for this coding-agent run.",
-    `Workspace root: ${workspaceRoot}`,
-    `Current working directory: ${cwd}`,
-  ]
-
-  lines.push(context.activePaths.length > 0 ? `Active file references: ${context.activePaths.join(", ")}` : "Active file references: none")
-
-  if (context.scopedContext.eagerFiles.length > 0) {
-    lines.push("", "Loaded context files:")
-    for (const file of context.scopedContext.eagerFiles) {
-      lines.push(`- ${file.path}`)
-    }
-  } else {
-    lines.push("", "Loaded context files: none")
-  }
-
-  if (context.scopedContext.lazyFiles.length > 0) {
-    lines.push("", "Available lazy context files:")
-    for (const file of context.scopedContext.lazyFiles) {
-      lines.push(`- ${file.path}: ${file.description}`)
-    }
-  } else {
-    lines.push("", "Available lazy context files: none")
-  }
-
-  return `${lines.join("\n").trim()}\n`
+export async function resolveRequestScopedContext(request: ChatTurnRequest, workspaceRoot: string, cwd: string): Promise<RequestScopedContext> {
+  const latestPrompt = latestUserText(request.messages)
+  const context = await resolvePromptScopedContext(latestPrompt, workspaceRoot, cwd)
+  return { latestPrompt, ...context }
 }

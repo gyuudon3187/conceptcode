@@ -4,6 +4,8 @@ import { confirmOrCancelCommand, inspectorCommand, moveShellListSelection, sessi
 import { currentPath, scrollMain } from "../core/state"
 import type { AppState, InspectorKind } from "../core/types"
 import { handleBrowserKey, handleCtrlCKey } from "./commands"
+import { closeScopedContextModal, openScopedContextModal } from "../coding-agent/overlay"
+import { scopedContextOverlayLines } from "../coding-agent/overlay-view"
 import { handleCreateConceptModalKey, removeDraftConcept } from "../concepts/drafts"
 import { acceptPromptSuggestion, applyEditorText, conceptCodePromptSuggestionProvider, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
 import { closeSessionModal, createAndSwitchSession, deleteSession, openSessionModal, promptToDeleteSession, sessionModalEntries, switchToSession } from "../sessions/commands"
@@ -27,6 +29,7 @@ type KeybindingDeps = {
   closeConfirmModal: () => void
   openInspector: (kind: InspectorKind) => void
   closeInspector: () => void
+  openScopedContextModal: () => Promise<void>
   refreshPromptScroll: () => void
   refreshPromptTokenBreakdown: () => void
   submitPromptMessage: () => void
@@ -37,6 +40,12 @@ type KeybindingDeps = {
     togglePaneFocus: () => void
   }
   remountRenderer: () => Promise<void>
+}
+
+function scopedContextContentHeight(layoutMode: AppState["layoutMode"], viewportHeight: number): number {
+  const topMargin = layoutMode === "wide" ? 4 : 2
+  const height = Math.max(10, viewportHeight - topMargin - topMargin)
+  return Math.max(1, height - 6)
 }
 
 export function handleConfirmModalKey(state: AppState, key: KeyEvent, deps: Pick<KeybindingDeps, "draw" | "closeConfirmModal">): boolean {
@@ -142,6 +151,46 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
       await handleSessionModalKey(state, key, deps)
       return
     }
+    if (state.scopedContextModal) {
+      const contentHeight = scopedContextContentHeight(state.layoutMode, process.stdout.rows || 24)
+      const maxScrollTop = Math.max(0, scopedContextOverlayLines(state.scopedContextModal).length - contentHeight)
+      if (key.name === "escape" || key.name === "q") {
+        key.preventDefault()
+        key.stopPropagation()
+        closeScopedContextModal(state)
+        deps.draw()
+        return
+      }
+      if (key.name === "down" || key.name === "j") {
+        key.preventDefault()
+        key.stopPropagation()
+        state.scopedContextModal.scrollTop = Math.min(maxScrollTop, state.scopedContextModal.scrollTop + 1)
+        deps.draw()
+        return
+      }
+      if (key.name === "up" || key.name === "k") {
+        key.preventDefault()
+        key.stopPropagation()
+        state.scopedContextModal.scrollTop = Math.max(0, state.scopedContextModal.scrollTop - 1)
+        deps.draw()
+        return
+      }
+      if (key.name === "pagedown") {
+        key.preventDefault()
+        key.stopPropagation()
+        state.scopedContextModal.scrollTop = Math.min(maxScrollTop, state.scopedContextModal.scrollTop + contentHeight)
+        deps.draw()
+        return
+      }
+      if (key.name === "pageup") {
+        key.preventDefault()
+        key.stopPropagation()
+        state.scopedContextModal.scrollTop = Math.max(0, state.scopedContextModal.scrollTop - contentHeight)
+        deps.draw()
+        return
+      }
+      return
+    }
     if (state.inspector) {
       const command = inspectorCommand(key, Math.max(1, state.mainViewportHeight - 2))
       if (command?.kind === "cancel") {
@@ -161,6 +210,13 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
       return
     }
     if (state.editorModal) {
+      if (state.editorModal.target.kind === "prompt" && key.ctrl && key.name === "m") {
+        key.preventDefault()
+        key.stopPropagation()
+        await deps.openScopedContextModal()
+        deps.draw()
+        return
+      }
       if (key.ctrl && key.name === "s") {
         key.preventDefault()
         key.stopPropagation()
@@ -272,14 +328,15 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
       deps.workspace.togglePaneFocus()
       return
     }
-    await handleBrowserKey(state, key, {
-      state,
-      renderer: deps.renderer,
-      draw: deps.draw,
-      clearCtrlCExitState: deps.clearCtrlCExitState,
-      copyWithStatus: deps.copyWithStatus,
-      openInspector: deps.openInspector,
-      buildPromptEditorDeps: deps.buildPromptEditorDeps,
-    })
+      await handleBrowserKey(state, key, {
+        state,
+        renderer: deps.renderer,
+        draw: deps.draw,
+        clearCtrlCExitState: deps.clearCtrlCExitState,
+        copyWithStatus: deps.copyWithStatus,
+        openInspector: deps.openInspector,
+        openScopedContextModal: deps.openScopedContextModal,
+        buildPromptEditorDeps: deps.buildPromptEditorDeps,
+      })
   })
 }

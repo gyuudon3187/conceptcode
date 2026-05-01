@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test"
 
-import type { ChatStreamEvent } from "./core/types"
+import type { ChatStreamEvent } from "agent-chat"
 import { createSseChatTransport, startDummyChatServer } from "./platform/chat"
 
 const dummyServer = await startDummyChatServer()

@@ -2,6 +2,7 @@ import { Box, Text, TextAttributes, type Renderable, type VNode } from "@opentui
 import { renderOverlayBackdrop, renderOverlayCard } from "agent-tui/render/overlay"
 import type { ShellInspectorViewModel } from "agent-tui/types"
 
+import { scopedContextOverlayLines } from "../coding-agent/overlay-view"
 import { currentNode } from "../core/state"
 import type { AppState } from "../core/types"
 import { COLORS } from "../ui/theme"
@@ -47,8 +48,46 @@ export function inspectorOverlayViewModel(state: AppState): ShellInspectorViewMo
   }
 }
 
+export function renderScopedContextOverlay(state: AppState): Array<Renderable | VNode<any, any[]>> {
+  const modal = state.scopedContextModal
+  if (!modal) return []
+
+  const allLines = scopedContextOverlayLines(modal)
+  const viewportHeight = process.stdout.rows || 24
+  const top = state.layoutMode === "wide" ? 4 : 2
+  const height = Math.max(10, viewportHeight - top - top)
+  const contentHeight = Math.max(1, height - 6)
+  const visibleLines = allLines.slice(modal.scrollTop, modal.scrollTop + contentHeight)
+
+  return [
+    renderOverlayBackdrop("66"),
+    renderOverlayCard(
+      {
+        top,
+        left: state.layoutMode === "wide" ? "50%" : 2,
+        width: state.layoutMode === "wide" ? 100 : "94%",
+        height,
+        marginLeft: state.layoutMode === "wide" ? -50 : undefined,
+      },
+      [
+        Box(
+          { width: "100%", flexDirection: "row", justifyContent: "space-between" },
+          Text({ content: "Scoped Context", fg: COLORS.accent, attributes: TextAttributes.BOLD }),
+          Text({ content: "Esc -> Close  Up/Down/PgUp/PgDn -> Scroll", fg: COLORS.muted }),
+        ),
+        Box(
+          { width: "100%", height: "100%", flexDirection: "column", gap: 0 },
+          ...visibleLines.map((line, index) => Text({ content: line, fg: modal.scrollTop + index < 4 ? COLORS.text : COLORS.muted })),
+        ),
+      ],
+      { gap: 1 },
+    ),
+  ]
+}
+
 export function renderAppOverlays(state: AppState): Array<Renderable | VNode<any, any[]>> {
   return [
     ...renderConceptSummaryEditorOverlay(state),
+    ...renderScopedContextOverlay(state),
   ]
 }

@@ -17,6 +17,12 @@
       "agent-tui/*": [
         "./packages/agent-tui/src/*"
       ],
+      "agent-chat": [
+        "./packages/agent-chat/src/index.ts"
+      ],
+      "agent-chat/*": [
+        "./packages/agent-chat/src/*"
+      ],
       "coding-agent": [
         "./packages/coding-agent/src/index.ts"
       ],

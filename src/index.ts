@@ -6,6 +6,7 @@ import { createInitialAppState, loadProjectPaths, parseArgs } from "./app/init"
 import { bindKeyHandler } from "./app/keybindings"
 import { clearCtrlCExitState } from "./app/platform"
 import { createWorkspaceController } from "./app/workspace"
+import { openScopedContextModal } from "./coding-agent/overlay"
 import { loadConceptGraph } from "./core/model"
 import { clampCursor, handleResize, workspaceUiState } from "./core/state"
 import type { AppState, InspectorKind } from "./core/types"
@@ -151,6 +152,7 @@ async function main(): Promise<void> {
       closeConfirmModal,
       openInspector: (kind: InspectorKind) => openInspector(state, kind),
       closeInspector: () => closeInspector(state),
+      openScopedContextModal: () => openScopedContextModal(state),
       refreshPromptScroll,
       refreshPromptTokenBreakdown,
       submitPromptMessage,

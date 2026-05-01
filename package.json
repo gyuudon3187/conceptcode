@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "agent-tui": "file:packages/agent-tui",
+    "agent-chat": "file:packages/agent-chat",
     "@opentui/core": "^0.1.96",
     "coding-agent": "file:packages/coding-agent",
     "js-tiktoken": "^1.0.21",

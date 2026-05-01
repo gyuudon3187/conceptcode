@@ -110,6 +110,7 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     confirmModal: null,
     editorModal: null,
     sessionModal: null,
+    scopedContextModal: null,
     pendingCtrlCExit: false,
     ctrlCExitTimeout: null,
     promptPaneAnimationTimeline: null,

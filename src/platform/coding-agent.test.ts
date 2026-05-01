@@ -30,16 +30,6 @@ function captureModel(calls: CodingAgentMessage[][]): CodingAgentStreamingModel 
   }
 }
 
-async function collectDeltaText(transport: ReturnType<typeof createCodingAgentChatTransport>, request: Parameters<ReturnType<typeof createCodingAgentChatTransport>["streamTurn"]>[0]): Promise<string> {
-  const deltas: string[] = []
-  for await (const event of transport.streamTurn(request)) {
-    if (event.type === "response.output_text.delta") {
-      deltas.push(event.delta)
-    }
-  }
-  return deltas.join("")
-}
-
 describe("coding-agent transport", () => {
   test("injects the plan primary agent into the latest user prompt", async () => {
     const calls: CodingAgentMessage[][] = []
@@ -133,7 +123,7 @@ describe("coding-agent transport", () => {
     expect(calls[0]?.[0]?.content).toContain("[USER REQUEST]")
   })
 
-  test("/memory reports loaded and lazy scoped context files without invoking the model", async () => {
+  test("treats /memory as a normal prompt while still injecting scoped context", async () => {
     const workspace = await createWorkspace()
     await mkdir(join(workspace, ".coding-agent", "contexts"), { recursive: true })
     await mkdir(join(workspace, "src", ".coding-agent", "contexts"), { recursive: true })
@@ -155,19 +145,18 @@ describe("coding-agent transport", () => {
       cwd: join(workspace, "src"),
     })
 
-    const text = await collectDeltaText(transport, {
+    for await (const _event of transport.streamTurn({
       primaryAgentId: "build",
       messages: [{ role: "user", text: "/memory &src/feature/file.ts" }],
-    })
+    })) {
+      // exhaust the stream
+    }
 
-    expect(calls).toHaveLength(0)
-    expect(text).toContain("Scoped context memory for this coding-agent run.")
-    expect(text).toContain(`Workspace root: ${workspace}`)
-    expect(text).toContain(`Current working directory: ${join(workspace, "src")}`)
-    expect(text).toContain("Loaded context files:")
-    expect(text).toContain("- .coding-agent/contexts/repo.md")
-    expect(text).toContain("Available lazy context files:")
-    expect(text).toContain("- src/.coding-agent/contexts/api.md: Read this when changing API handlers.")
-    expect(text).not.toContain("Hidden body")
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.[0]?.content).toContain("[SCOPED CONTEXT]")
+    expect(calls[0]?.[0]?.content).toContain("Keep patches small.")
+    expect(calls[0]?.[0]?.content).toContain("`src/.coding-agent/contexts/api.md`: Read this when changing API handlers.")
+    expect(calls[0]?.[0]?.content).toContain("[USER REQUEST]")
+    expect(calls[0]?.[0]?.content).toContain("/memory &src/feature/file.ts")
   })
 })

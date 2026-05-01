@@ -13,6 +13,7 @@ export {
 } from "./host-adapter"
 export { createDummyStreamingCodingAgentModel, streamTextResponse } from "./model-adapter"
 export {
+  buildScopedContextTree,
   parseMarkdownFrontmatter,
   renderScopedContextBlock,
   resolveScopedContextFiles,
@@ -24,6 +25,7 @@ export {
   parsePrimaryAgentPrompt,
   PLAN_PRIMARY_AGENT,
 } from "./primary-agents"
+export { toCodingAgentMessages } from "./chat-messages"
 export { ToolRegistry, createToolExecutor, createToolRegistry } from "./tool-executor"
 export type {
   CodingAgentMessage,
@@ -60,4 +62,13 @@ export type {
 } from "./types"
 export type { CodingAgentHostEnvironment, CodingAgentHostOs } from "./host-adapter"
 export type { CodingAgentPrimaryAgent, CodingAgentPrimaryAgentDefinition } from "./primary-agents"
-export type { ResolveScopedContextInput, ResolvedScopedContext, ScopedContextFile, ScopedContextReference } from "./context-files"
+export type { UserAssistantTextMessage as CodingAgentChatMessage } from "./chat-messages"
+export type {
+  ResolveScopedContextInput,
+  ResolvedScopedContext,
+  ScopedContextFile,
+  ScopedContextReference,
+  ScopedContextTreeDirectory,
+  ScopedContextTreeFile,
+  ScopedContextTreeNode,
+} from "./context-files"

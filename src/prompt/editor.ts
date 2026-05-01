@@ -14,19 +14,16 @@ type SlashSuggestion = { value: string; description: string }
 
 const SLASH_SUGGESTIONS_BY_MODE: Record<AppState["uiMode"], SlashSuggestion[]> = {
   plan: [
-    { value: "/memory", description: "Show which scoped context files are loaded or available for this run." },
     { value: "/explain", description: "Explain the selected code or concept." },
     { value: "/review", description: "Review changes for bugs, regressions, and gaps." },
     { value: "/skill-architecture", description: "Use an architecture-focused skill prompt." },
   ],
   build: [
-    { value: "/memory", description: "Show which scoped context files are loaded or available for this run." },
     { value: "/fix", description: "Investigate and fix the current problem." },
     { value: "/test", description: "Run relevant tests and summarize the results." },
     { value: "/command-commit", description: "Draft a commit-ready change summary." },
   ],
   conceptualize: [
-    { value: "/memory", description: "Show which scoped context files are loaded or available for this run." },
     { value: "/consolidate", description: "Inspect a required impl concept, enrich its graph metadata, and plan low-coverage child updates before applying them." },
     { value: "/elaborate", description: "Verify a user-provided concept explanation against the best available evidence and update summary confidence." },
     { value: "/create", description: "Create a new concept under an existing parent path through a TypeScript graph update script." },

@@ -1,0 +1,10 @@
+{
+  "name": "agent-chat",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./store": "./src/store.ts"
+  }
+}

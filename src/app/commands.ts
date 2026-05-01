@@ -22,6 +22,7 @@ export type AppCommandDeps = {
   clearCtrlCExitState: () => void
   copyWithStatus: (payload: string) => Promise<void>
   openInspector: (kind: InspectorKind) => void
+  openScopedContextModal: () => Promise<void>
   buildPromptEditorDeps: () => PromptEditorDeps
 }
 
@@ -78,6 +79,11 @@ export async function handleBrowserKey(state: AppState, key: KeyEvent, deps: App
   }
   if (key.name === "m") {
     deps.openInspector("metadata")
+    deps.draw()
+    return true
+  }
+  if (key.ctrl && key.name === "m") {
+    await deps.openScopedContextModal()
     deps.draw()
     return true
   }
@@ -180,7 +186,7 @@ export async function handleBrowserKey(state: AppState, key: KeyEvent, deps: App
     state.confirmModal = {
       kind: "remove-draft",
       title: "Help",
-      message: ["Browse: j/k move  h/l back/open  i prompt  Enter summary  Ctrl+S sessions  s/t/m inspect  y copy  p path  q quit"],
+      message: ["Browse: j/k move  h/l back/open  i prompt  Enter summary  Ctrl+S sessions  s/t/m inspect  Ctrl+M scoped context  y copy  p path  q quit"],
       confirmLabel: "dismisses help",
       path: currentPath(state),
     }

@@ -22,6 +22,24 @@ export type ResolvedScopedContext = {
   contextDirectories: string[]
 }
 
+export type ScopedContextTreeFile = {
+  kind: "file"
+  name: string
+  path: string
+  scopeRoot: string
+  mode: "eager" | "lazy"
+  description: string | null
+}
+
+export type ScopedContextTreeDirectory = {
+  kind: "directory"
+  name: string
+  path: string
+  children: ScopedContextTreeNode[]
+}
+
+export type ScopedContextTreeNode = ScopedContextTreeDirectory | ScopedContextTreeFile
+
 export type ResolveScopedContextInput = {
   workspaceRoot: string
   cwd: string
@@ -152,6 +170,81 @@ export async function resolveScopedContextFiles(input: ResolveScopedContextInput
     lazyFiles,
     contextDirectories: contextDirectories.map((directory) => toWorkspaceRelativePath(workspaceRoot, directory)),
   }
+}
+
+export function buildScopedContextTree(context: ResolvedScopedContext): ScopedContextTreeDirectory[] {
+  const roots: ScopedContextTreeDirectory[] = []
+  const directories = new Map<string, ScopedContextTreeDirectory>()
+
+  function ensureDirectory(path: string): ScopedContextTreeDirectory {
+    const normalizedPath = path === "." ? "." : path.replace(/\/+$/g, "")
+    const existing = directories.get(normalizedPath)
+    if (existing) return existing
+
+    const parts = normalizedPath === "." ? ["."] : normalizedPath.split("/").filter(Boolean)
+    const name = parts[parts.length - 1] ?? "."
+    const directory: ScopedContextTreeDirectory = {
+      kind: "directory",
+      name,
+      path: normalizedPath,
+      children: [],
+    }
+    directories.set(normalizedPath, directory)
+
+    if (parts.length <= 1) {
+      roots.push(directory)
+      return directory
+    }
+
+    const parentPath = parts.slice(0, -1).join("/") || "."
+    const parent = ensureDirectory(parentPath)
+    parent.children.push(directory)
+    return directory
+  }
+
+  for (const contextDirectory of [...context.contextDirectories].sort((left, right) => left.localeCompare(right))) {
+    ensureDirectory(contextDirectory)
+  }
+
+  const files = [
+    ...context.eagerFiles.map((file) => ({
+      kind: "file" as const,
+      name: file.path.split("/").at(-1) ?? file.path,
+      path: file.path,
+      scopeRoot: file.scopeRoot,
+      mode: "eager" as const,
+      description: null,
+    })),
+    ...context.lazyFiles.map((file) => ({
+      kind: "file" as const,
+      name: file.path.split("/").at(-1) ?? file.path,
+      path: file.path,
+      scopeRoot: file.scopeRoot,
+      mode: "lazy" as const,
+      description: file.description,
+    })),
+  ].sort((left, right) => left.path.localeCompare(right.path))
+
+  for (const file of files) {
+    const parentPath = file.path.split("/").slice(0, -1).join("/") || "."
+    const parent = ensureDirectory(parentPath)
+    parent.children.push(file)
+  }
+
+  function sortNodes(nodes: ScopedContextTreeNode[]): void {
+    nodes.sort((left, right) => {
+      if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1
+      return left.name.localeCompare(right.name)
+    })
+    for (const node of nodes) {
+      if (node.kind === "directory") {
+        sortNodes(node.children)
+      }
+    }
+  }
+
+  sortNodes(roots)
+  return roots
 }
 
 export function renderScopedContextBlock(context: ResolvedScopedContext): string {

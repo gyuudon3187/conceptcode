@@ -1,14 +1,15 @@
 import {
   createHostStreamingCodingAgentModel,
-  streamTextResponse,
+  toCodingAgentMessages,
   type CodingAgentResponseChunk,
   type CodingAgentStreamingModel,
 } from "coding-agent"
+import type { ChatStreamEvent, ChatTransport, ChatTurnRequest } from "agent-chat"
 import { resolve } from "node:path"
 
-import type { ChatStreamEvent, ChatTransport, ChatTurnRequest } from "../core/types"
-import { isMemoryCommand, renderMemoryResponse, resolveRequestScopedContext, type RequestScopedContext } from "../coding-agent/context"
-import { toCodingAgentMessages } from "../coding-agent/messages"
+import type { UiMode } from "../core/types"
+import { resolveRequestScopedContext, type RequestScopedContext } from "../coding-agent/context"
+import { primaryAgentForMode } from "../coding-agent/policy"
 
 type CodingAgentChatTransportOptions = {
   modelFactory?: () => Promise<CodingAgentStreamingModel>
@@ -29,27 +30,23 @@ async function* streamCodingAgentEvents(events: AsyncIterable<CodingAgentRespons
   }
 }
 
-async function* streamMemoryTurn(context: RequestScopedContext, cwd: string, workspaceRoot: string): AsyncIterable<ChatStreamEvent> {
-  yield *streamCodingAgentEvents(streamTextResponse(renderMemoryResponse(context, cwd, workspaceRoot), "coding-agent-memory"))
-}
-
-async function* streamModelTurn(request: ChatTurnRequest, context: RequestScopedContext, modelFactory: () => Promise<CodingAgentStreamingModel>): AsyncIterable<ChatStreamEvent> {
+async function* streamModelTurn(request: ChatTurnRequest<UiMode>, context: RequestScopedContext, modelFactory: () => Promise<CodingAgentStreamingModel>): AsyncIterable<ChatStreamEvent> {
   const model = await modelFactory()
-  yield *streamCodingAgentEvents(model.run(toCodingAgentMessages(request, context)))
+  yield *streamCodingAgentEvents(model.run(toCodingAgentMessages({
+    messages: request.messages,
+    scopedContext: context.scopedContext,
+    primaryAgent: primaryAgentForMode(request.primaryAgentId),
+  })))
 }
 
-export function createCodingAgentChatTransport(options: CodingAgentChatTransportOptions | (() => Promise<CodingAgentStreamingModel>) = {}): ChatTransport {
+export function createCodingAgentChatTransport(options: CodingAgentChatTransportOptions | (() => Promise<CodingAgentStreamingModel>) = {}): ChatTransport<UiMode> {
   const resolvedOptions = typeof options === "function" ? { modelFactory: options } : options
   const workspaceRoot = resolve(resolvedOptions.workspaceRoot ?? process.cwd())
   const cwd = resolve(resolvedOptions.cwd ?? workspaceRoot)
   const modelFactory = resolvedOptions.modelFactory ?? (() => createHostStreamingCodingAgentModel({ workspaceRoot, cwd }))
   return {
-    async *streamTurn(request: ChatTurnRequest): AsyncIterable<ChatStreamEvent> {
+    async *streamTurn(request: ChatTurnRequest<UiMode>): AsyncIterable<ChatStreamEvent> {
       const context = await resolveRequestScopedContext(request, workspaceRoot, cwd)
-      if (isMemoryCommand(context.latestPrompt)) {
-        yield *streamMemoryTurn(context, cwd, workspaceRoot)
-        return
-      }
       yield *streamModelTurn(request, context, modelFactory)
     },
   }

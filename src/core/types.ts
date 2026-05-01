@@ -1,4 +1,14 @@
 import type { TextareaRenderable } from "@opentui/core"
+import type { ScopedContextTreeDirectory } from "coding-agent"
+import type {
+  ChatSession as BaseChatSession,
+  ChatSessionSummary as BaseChatSessionSummary,
+  ChatStreamEvent,
+  ChatTransport as BaseChatTransport,
+  ChatTurnRequest as BaseChatTurnRequest,
+  PromptMessage as BasePromptMessage,
+  SessionStoreIndex as BaseSessionStoreIndex,
+} from "agent-chat"
 
 import type { Timeline } from "@opentui/core"
 import type { RGBA } from "@opentui/core"
@@ -110,56 +120,19 @@ export type EditorModalState = {
   promptDraftIndex?: number
 }
 
-export type PromptMessage = {
-  id?: string
-  text: string
-  role: "user" | "assistant"
-  createdAt?: string
-  mode?: UiMode
-  status?: "streaming" | "complete" | "error"
-  provider?: string
-}
+export type PromptMessage = BasePromptMessage<UiMode>
 
-export type ChatSession = {
-  id: string
-  title: string
-  createdAt: string
-  updatedAt: string
-  graphPath: string
-  draftPromptText: string
-  lastMode: UiMode
-  messages: PromptMessage[]
-}
+export type ChatSession = BaseChatSession<UiMode, PromptMessage, { graphPath: string }>
 
-export type ChatSessionSummary = {
-  id: string
-  title: string
-  updatedAt: string
-  messageCount: number
-  lastMode: UiMode
-}
+export type ChatSessionSummary = BaseChatSessionSummary<UiMode>
 
-export type SessionStoreIndex = {
-  schemaVersion: 1
-  graphPath: string
-  activeSessionId: string | null
-  sessions: ChatSessionSummary[]
-}
+export type SessionStoreIndex = BaseSessionStoreIndex<UiMode, {}, { graphPath: string }>
 
-export type ChatStreamEvent =
-  | { type: "response.created"; responseId: string; messageId: string; role: "assistant"; provider: string }
-  | { type: "response.output_text.delta"; responseId: string; messageId: string; delta: string }
-  | { type: "response.completed"; responseId: string; messageId: string }
-  | { type: "response.error"; responseId: string; messageId: string; error: string }
+export type ChatTurnRequest = BaseChatTurnRequest<UiMode>
 
-export type ChatTurnRequest = {
-  messages: Array<{ role: "user" | "assistant"; text: string }>
-  primaryAgentId: UiMode
-}
+export type ChatTransport = BaseChatTransport<UiMode>
 
-export type ChatTransport = {
-  streamTurn: (request: ChatTurnRequest) => AsyncIterable<ChatStreamEvent>
-}
+export type { ChatStreamEvent }
 
 export type KindDefinition = {
   kind: string
@@ -201,6 +174,13 @@ export type SessionModalState = {
   scrollTop: number
 }
 
+export type ScopedContextModalState = {
+  activePaths: string[]
+  contextDirectories: string[]
+  tree: ScopedContextTreeDirectory[]
+  scrollTop: number
+}
+
 // Internal ownership boundary after the local shell extraction:
 // - App-owned state keeps concept graph semantics, prompt semantics, sessions, and inspectors.
 // - Extracted shell contracts live in `agent-tui`, while app-local state keeps the runtime flat.
@@ -224,6 +204,7 @@ export type ModalTransientState = {
   confirmModal: ConfirmModalState | null
   editorModal: EditorModalState | null
   sessionModal: SessionModalState | null
+  scopedContextModal: ScopedContextModalState | null
   pendingCtrlCExit: boolean
   ctrlCExitTimeout: ReturnType<typeof setTimeout> | null
   promptPaneAnimationTimeline: Timeline | null
