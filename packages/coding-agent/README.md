@@ -17,6 +17,8 @@ This package currently owns coding-agent primitives such as:
 
 It does not yet own provider-specific integrations or a full streaming tool-execution loop.
 
+See `../../docs/coding_agent_functionality_gap.md` for a grounded assessment of what is still missing before this package reaches modern coding-agent parity.
+
 ## Main exports
 
 - `coding-agent`
