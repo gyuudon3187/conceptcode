@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./animation": "./src/animation.ts",
+    "./prompt": "./src/prompt.ts",
     "./types": "./src/types.ts",
     "./theme": "./src/theme.ts",
     "./text": "./src/text.ts",

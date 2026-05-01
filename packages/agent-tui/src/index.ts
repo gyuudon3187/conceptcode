@@ -1,5 +1,20 @@
 export { COLORS } from "./theme"
 export {
+  findPromptReferenceAt,
+  findPromptReferenceEndingAt,
+  findPromptReferenceStartingAt,
+  parsePromptReferences,
+  resolvePromptReferences,
+} from "./prompt"
+export type {
+  PromptReferenceMatch,
+  PromptReferenceResolver,
+  PromptReferenceResolverMap,
+  PromptReferenceSpec,
+  ResolvedPromptReference,
+  ResolvedPromptReferences,
+} from "./prompt"
+export {
   textNodesForChunks,
   truncateSingleLine,
   truncateFromStart,

@@ -18,11 +18,12 @@ This package owns shell concerns such as:
 - session modal rendering
 - generic key-routing helpers
 - shell-level theme and text helpers
+- generic prompt-reference parsing and pluggable resolution helpers for prompt-oriented shell apps
 
 This package does not own app or domain concerns such as:
 
 - concept-graph semantics
-- prompt token semantics like `@concept`, `&file`, or `/command`
+- ConceptCode-specific prompt token semantics like what `@concept`, `&file`, or `/command` should mean in a given app
 - graph-scoped session persistence
 - ConceptCode-specific pane body rendering
 - snippet, subtree, or metadata preview generation
@@ -45,4 +46,4 @@ This package does not own app or domain concerns such as:
 
 - `src/ui/workspace-transition.ts` remains app-local in `ConceptCode`; the package owns reusable stateless geometry and animation primitives, but not workspace-specific transition orchestration.
 - Some app modules still adapt local state into package view models; that adapter layer should stay outside this package.
-- Prompt-editor provider boundaries exist in the app, but prompt token parsing/highlighting is still app-local.
+- Prompt-editor provider boundaries exist in the app. Generic prompt-reference parsing and resolution may live here, while app-specific symbol meanings stay in the host app.

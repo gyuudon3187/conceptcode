@@ -2,11 +2,13 @@ import { RGBA, SyntaxStyle, TextareaRenderable, type Highlight, type CliRenderer
 
 import { currentNode } from "../core/state"
 import type { AppState, EditorModalState, PromptSuggestionEntry, PromptSuggestionProvider } from "../core/types"
+import {
+  findConceptCodePromptReferenceAt,
+  findConceptCodePromptReferenceEndingAt,
+  findConceptCodePromptReferenceStartingAt,
+  parseConceptCodePromptReferences,
+} from "./references"
 import { activeSession } from "../sessions/store"
-
-const FILE_REFERENCE_TOKEN = /&[^\s&]+/g
-const CONCEPT_REFERENCE_TOKEN = /@[a-zA-Z0-9_.-]+/g
-const SLASH_REFERENCE_TOKEN = /(?:^|\s)(\/[a-zA-Z0-9_.-]*)/g
 
 type SlashSuggestion = { value: string; description: string }
 
@@ -39,7 +41,6 @@ const SLASH_SUGGESTIONS_BY_MODE: Record<AppState["uiMode"], SlashSuggestion[]> =
   ],
 }
 
-type PromptReferenceToken = { token: string; start: number; end: number }
 type ActivePromptSuggestion = { prefix: "@" | "&" | "/"; query: string; start: number; end: number; suggestions: PromptSuggestionEntry[] }
 
 type PromptSuggestionViewModel = { full: PromptSuggestionEntry[]; visible: PromptSuggestionEntry[]; selectedEntry: PromptSuggestionEntry | null }
@@ -161,39 +162,6 @@ function editorCursorOffset(editor: EditorModalState): number {
   return typeof cursorOffset === "number" ? cursorOffset : editor.renderable.plainText.length
 }
 
-function tokenAtCursor(text: string, cursor: number, pattern: RegExp): PromptReferenceToken | null {
-  const matches = [...text.matchAll(pattern)]
-  for (const match of matches) {
-    const token = match[0]
-    const start = match.index ?? 0
-    const end = start + token.length
-    if (cursor >= start && cursor <= end) return { token, start, end }
-  }
-  return null
-}
-
-function tokenEndingAtCursor(text: string, cursor: number, pattern: RegExp): PromptReferenceToken | null {
-  const matches = [...text.matchAll(pattern)]
-  for (const match of matches) {
-    const token = match[0]
-    const start = match.index ?? 0
-    const end = start + token.length
-    if (cursor === end) return { token, start, end }
-  }
-  return null
-}
-
-function tokenStartingAtCursor(text: string, cursor: number, pattern: RegExp): PromptReferenceToken | null {
-  const matches = [...text.matchAll(pattern)]
-  for (const match of matches) {
-    const token = match[0]
-    const start = match.index ?? 0
-    const end = start + token.length
-    if (cursor === start) return { token, start, end }
-  }
-  return null
-}
-
 function promptAliasStyle(): SyntaxStyle {
   const style = SyntaxStyle.create()
   style.registerStyle("prompt.alias", { fg: RGBA.fromHex("#ebcb8b"), bold: true })
@@ -207,67 +175,36 @@ function applyPromptAliasHighlights(editor: TextareaRenderable): void {
   const styleId = editor.syntaxStyle?.getStyleId("prompt.alias")
   if (styleId == null) return
   const fileStyleId = editor.syntaxStyle?.getStyleId("prompt.file")
-  for (const match of editor.plainText.matchAll(CONCEPT_REFERENCE_TOKEN)) {
-    const token = match[0]
-    const start = match.index ?? 0
-    const highlight: Highlight = { start, end: start + token.length, styleId }
-    editor.addHighlightByCharRange(highlight)
-  }
-  if (fileStyleId == null) return
-  for (const match of editor.plainText.matchAll(FILE_REFERENCE_TOKEN)) {
-    const token = match[0]
-    const start = match.index ?? 0
-    const highlight: Highlight = { start, end: start + token.length, styleId: fileStyleId }
-    editor.addHighlightByCharRange(highlight)
-  }
   const slashStyleId = editor.syntaxStyle?.getStyleId("prompt.slash")
-  if (slashStyleId == null) return
-  for (const match of editor.plainText.matchAll(SLASH_REFERENCE_TOKEN)) {
-    const token = match[1]
-    if (!token) continue
-    const fullStart = match.index ?? 0
-    const start = fullStart + match[0].lastIndexOf(token)
-    const highlight: Highlight = { start, end: start + token.length, styleId: slashStyleId }
+  for (const match of parseConceptCodePromptReferences(editor.plainText)) {
+    const activeStyleId = match.kind === "concept" ? styleId : match.kind === "file" ? fileStyleId : slashStyleId
+    if (activeStyleId == null) continue
+    const highlight: Highlight = { start: match.start, end: match.end, styleId: activeStyleId }
     editor.addHighlightByCharRange(highlight)
   }
-}
-
-function slashTokenAtCursor(text: string, cursor: number): PromptReferenceToken | null {
-  const matches = [...text.matchAll(SLASH_REFERENCE_TOKEN)]
-  for (const match of matches) {
-    const token = match[1]
-    if (!token) continue
-    const fullStart = match.index ?? 0
-    const start = fullStart + match[0].lastIndexOf(token)
-    const end = start + token.length
-    if (cursor >= start && cursor <= end) return { token, start, end }
-  }
-  return null
 }
 
 function activePromptSuggestion(state: AppState, editor: EditorModalState): ActivePromptSuggestion | null {
   if (editor.target.kind !== "prompt") return null
   const text = editor.renderable.plainText
   const cursor = editorCursorOffset(editor)
-  const exactAliasToken = tokenAtCursor(text, cursor, CONCEPT_REFERENCE_TOKEN)
-  if (exactAliasToken) {
-    const exactPath = exactAliasToken.token.slice(1)
+  const exactToken = findConceptCodePromptReferenceAt(text, cursor)
+  if (exactToken?.kind === "concept") {
+    const exactPath = exactToken.value
     if (state.nodes.has(exactPath)) {
-      return { prefix: "@", query: exactPath, start: exactAliasToken.start, end: exactAliasToken.end, suggestions: [{ value: exactAliasToken.token }] }
+      return { prefix: "@", query: exactPath, start: exactToken.start, end: exactToken.end, suggestions: [{ value: exactToken.raw }] }
     }
   }
-  const exactFileToken = tokenAtCursor(text, cursor, FILE_REFERENCE_TOKEN)
-  if (exactFileToken) {
-    const exactPath = exactFileToken.token.slice(1)
+  if (exactToken?.kind === "file") {
+    const exactPath = exactToken.value
     if ((state.projectFiles ?? []).includes(exactPath) || (state.projectDirectories ?? []).includes(exactPath)) {
-      return { prefix: "&", query: exactPath, start: exactFileToken.start, end: exactFileToken.end, suggestions: [{ value: exactFileToken.token }] }
+      return { prefix: "&", query: exactPath, start: exactToken.start, end: exactToken.end, suggestions: [{ value: exactToken.raw }] }
     }
   }
-  const exactSlashToken = slashTokenAtCursor(text, cursor)
-  if (exactSlashToken) {
-    const exactValue = exactSlashToken.token
+  if (exactToken?.kind === "slash") {
+    const exactValue = exactToken.raw
     if (slashSuggestionsForMode(state.uiMode).some((entry) => entry.value === exactValue)) {
-      return { prefix: "/", query: exactValue.slice(1), start: exactSlashToken.start, end: exactSlashToken.end, suggestions: [{ value: exactValue }] }
+      return { prefix: "/", query: exactValue.slice(1), start: exactToken.start, end: exactToken.end, suggestions: [{ value: exactValue }] }
     }
   }
   const beforeCursor = text.slice(0, cursor)
@@ -435,8 +372,8 @@ export function handlePromptAliasBoundaryKey(state: AppState, key: KeyEvent, red
   const cursor = editorCursorOffset(editor)
 
   if (key.name === "backspace") {
-    const token = tokenEndingAtCursor(text, cursor, /[@&][^\s@&]+/g)
-    if (!token) return false
+    const token = findConceptCodePromptReferenceEndingAt(text, cursor)
+    if (!token || token.kind === "slash") return false
     key.preventDefault()
     key.stopPropagation()
     renderable.setText(`${text.slice(0, token.start)}${text.slice(token.end)}`)
@@ -446,8 +383,8 @@ export function handlePromptAliasBoundaryKey(state: AppState, key: KeyEvent, red
   }
 
   if (key.name === "left") {
-    const token = tokenEndingAtCursor(text, cursor, /[@&][^\s@&]+/g)
-    if (!token) return false
+    const token = findConceptCodePromptReferenceEndingAt(text, cursor)
+    if (!token || token.kind === "slash") return false
     key.preventDefault()
     key.stopPropagation()
     renderable.cursorOffset = token.start
@@ -456,8 +393,8 @@ export function handlePromptAliasBoundaryKey(state: AppState, key: KeyEvent, red
   }
 
   if (key.name === "right") {
-    const token = tokenStartingAtCursor(text, cursor, /[@&][^\s@&]+/g)
-    if (!token) return false
+    const token = findConceptCodePromptReferenceStartingAt(text, cursor)
+    if (!token || token.kind === "slash") return false
     key.preventDefault()
     key.stopPropagation()
     renderable.cursorOffset = token.end

@@ -7,6 +7,7 @@ import {
   PLAN_PRIMARY_AGENT,
   renderScopedContextBlock,
   resolveScopedContextFiles,
+  streamTextResponse,
   type CodingAgentMessage,
   type CodingAgentPrimaryAgent,
   type CodingAgentStreamingModel,
@@ -14,6 +15,7 @@ import {
 import { resolve } from "node:path"
 
 import type { ChatStreamEvent, ChatTransport, ChatTurnRequest } from "../core/types"
+import { resolveConceptCodePromptReferences } from "../prompt/references"
 
 const CONCEPTUALIZE_PRIMARY_AGENT = definePrimaryAgent({
   id: "conceptualize",
@@ -33,21 +35,29 @@ function latestUserText(messages: Array<{ role: "user" | "assistant"; text: stri
   return [...messages].reverse().find((message) => message.role === "user")?.text.trim() ?? ""
 }
 
-function referencedFilePaths(text: string): string[] {
-  return [...new Set([...text.matchAll(/&([^\s@&]+)/g)].map((match) => match[1]).filter(Boolean))]
-}
-
 type CodingAgentChatTransportOptions = {
   modelFactory?: () => Promise<CodingAgentStreamingModel>
   workspaceRoot?: string
   cwd?: string
 }
 
+async function activeFileReferencesForRequest(request: ChatTurnRequest, workspaceRoot: string, cwd: string): Promise<string[]> {
+  const resolvedReferences = await resolveConceptCodePromptReferences({
+    text: latestUserText(request.messages),
+    workspaceRoot,
+    cwd,
+  })
+  return resolvedReferences.resolved
+    .map((entry) => entry.result)
+    .filter((entry) => entry.kind === "file")
+    .map((entry) => entry.path)
+}
+
 async function scopedContextForRequest(request: ChatTurnRequest, workspaceRoot: string, cwd: string) {
   return resolveScopedContextFiles({
     workspaceRoot,
     cwd,
-    activePaths: referencedFilePaths(latestUserText(request.messages)),
+    activePaths: await activeFileReferencesForRequest(request, workspaceRoot, cwd),
     fs: createLocalFileSystemBackend(),
   })
 }
@@ -61,14 +71,13 @@ function isMemoryCommand(text: string): boolean {
   return /^\/memory(?:\s+.*)?$/i.test(text.trim())
 }
 
-function renderMemoryResponse(request: ChatTurnRequest, context: Awaited<ReturnType<typeof scopedContextForRequest>>, cwd: string, workspaceRoot: string): string {
+function renderMemoryResponse(context: Awaited<ReturnType<typeof scopedContextForRequest>>, activePaths: string[], cwd: string, workspaceRoot: string): string {
   const lines = [
     "Scoped context memory for this coding-agent run.",
     `Workspace root: ${workspaceRoot}`,
     `Current working directory: ${cwd}`,
   ]
 
-  const activePaths = referencedFilePaths(latestUserText(request.messages))
   lines.push(activePaths.length > 0 ? `Active file references: ${activePaths.join(", ")}` : "Active file references: none")
 
   if (context.eagerFiles.length > 0) {
@@ -90,17 +99,6 @@ function renderMemoryResponse(request: ChatTurnRequest, context: Awaited<ReturnT
   }
 
   return `${lines.join("\n").trim()}\n`
-}
-
-async function* streamSyntheticResponse(text: string, provider: string): AsyncIterable<ChatStreamEvent> {
-  const responseId = `resp_${crypto.randomUUID()}`
-  const messageId = `msg_${crypto.randomUUID()}`
-  yield { type: "response.created", responseId, messageId, role: "assistant", provider }
-  const chunks = text.match(/\S+\s*/g) ?? [text]
-  for (const chunk of chunks) {
-    yield { type: "response.output_text.delta", responseId, messageId, delta: chunk }
-  }
-  yield { type: "response.completed", responseId, messageId }
 }
 
 function injectScopedContext(messages: CodingAgentMessage[], contextBlock: string): CodingAgentMessage[] {
@@ -132,8 +130,17 @@ export function createCodingAgentChatTransport(options: CodingAgentChatTransport
     async *streamTurn(request: ChatTurnRequest): AsyncIterable<ChatStreamEvent> {
       const latestPrompt = latestUserText(request.messages)
       if (isMemoryCommand(latestPrompt)) {
-        const context = await scopedContextForRequest(request, workspaceRoot, cwd)
-        yield *streamSyntheticResponse(renderMemoryResponse(request, context, cwd, workspaceRoot), "coding-agent-memory")
+        const [context, activePaths] = await Promise.all([
+          scopedContextForRequest(request, workspaceRoot, cwd),
+          activeFileReferencesForRequest(request, workspaceRoot, cwd),
+        ])
+        for await (const event of streamTextResponse(renderMemoryResponse(context, activePaths, cwd, workspaceRoot), "coding-agent-memory")) {
+          if (event.type === "response.created") {
+            yield { ...event, role: "assistant" }
+            continue
+          }
+          yield event
+        }
         return
       }
       const messages = await toCodingAgentMessages(request, workspaceRoot, cwd)

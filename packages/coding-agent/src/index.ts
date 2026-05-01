@@ -11,7 +11,7 @@ export {
   NoopToolAuditSink,
   createLocalFileSystemBackend,
 } from "./host-adapter"
-export { createDummyStreamingCodingAgentModel } from "./model-adapter"
+export { createDummyStreamingCodingAgentModel, streamTextResponse } from "./model-adapter"
 export {
   parseMarkdownFrontmatter,
   renderScopedContextBlock,

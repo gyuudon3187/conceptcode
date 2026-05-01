@@ -24,20 +24,28 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+export async function* streamTextResponse(text: string, provider: string, options: { chunkDelayMs?: number; completionDelayMs?: number } = {}): AsyncIterable<CodingAgentResponseChunk> {
+  const responseId = `resp_${crypto.randomUUID()}`
+  const messageId = `msg_${crypto.randomUUID()}`
+  yield { type: "response.created", responseId, messageId, provider }
+  const chunks = text.match(/\S+\s*/g) ?? [text]
+  for (const chunk of chunks) {
+    if (options.chunkDelayMs && options.chunkDelayMs > 0) {
+      await delay(options.chunkDelayMs)
+    }
+    yield { type: "response.output_text.delta", responseId, messageId, delta: chunk }
+  }
+  if (options.completionDelayMs && options.completionDelayMs > 0) {
+    await delay(options.completionDelayMs)
+  }
+  yield { type: "response.completed", responseId, messageId }
+}
+
 export function createDummyStreamingCodingAgentModel(): CodingAgentStreamingModel {
   return {
     async *run(messages: CodingAgentMessage[]): AsyncIterable<CodingAgentResponseChunk> {
-      const responseId = `resp_${crypto.randomUUID()}`
-      const messageId = `msg_${crypto.randomUUID()}`
-      yield { type: "response.created", responseId, messageId, provider: "coding-agent-dummy" }
       const text = createDummyAgentResponse(messages)
-      const chunks = text.match(/\S+\s*/g) ?? [text]
-      for (const chunk of chunks) {
-        await delay(35)
-        yield { type: "response.output_text.delta", responseId, messageId, delta: chunk }
-      }
-      await delay(20)
-      yield { type: "response.completed", responseId, messageId }
+      yield *streamTextResponse(text, "coding-agent-dummy", { chunkDelayMs: 35, completionDelayMs: 20 })
     },
   }
 }
