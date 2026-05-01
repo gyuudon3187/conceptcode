@@ -1,39 +1,14 @@
 import {
-  applyPrimaryAgentToMessages,
-  BUILD_PRIMARY_AGENT,
-  createLocalFileSystemBackend,
   createHostStreamingCodingAgentModel,
-  definePrimaryAgent,
-  PLAN_PRIMARY_AGENT,
-  renderScopedContextBlock,
-  resolveScopedContextFiles,
   streamTextResponse,
-  type CodingAgentMessage,
-  type CodingAgentPrimaryAgent,
+  type CodingAgentResponseChunk,
   type CodingAgentStreamingModel,
 } from "coding-agent"
 import { resolve } from "node:path"
 
 import type { ChatStreamEvent, ChatTransport, ChatTurnRequest } from "../core/types"
-import { resolveConceptCodePromptReferences } from "../prompt/references"
-
-const CONCEPTUALIZE_PRIMARY_AGENT = definePrimaryAgent({
-  id: "conceptualize",
-  instructions: [
-    "Focus on concept-graph structure and metadata updates.",
-    "Prefer graph-oriented changes and avoid unrelated source-code edits unless the user explicitly asks for them.",
-  ],
-})
-
-function primaryAgentForId(primaryAgentId: ChatTurnRequest["primaryAgentId"]): CodingAgentPrimaryAgent {
-  if (primaryAgentId === "plan") return PLAN_PRIMARY_AGENT
-  if (primaryAgentId === "build") return BUILD_PRIMARY_AGENT
-  return CONCEPTUALIZE_PRIMARY_AGENT
-}
-
-function latestUserText(messages: Array<{ role: "user" | "assistant"; text: string }>): string {
-  return [...messages].reverse().find((message) => message.role === "user")?.text.trim() ?? ""
-}
+import { isMemoryCommand, renderMemoryResponse, resolveRequestScopedContext, type RequestScopedContext } from "../coding-agent/context"
+import { toCodingAgentMessages } from "../coding-agent/messages"
 
 type CodingAgentChatTransportOptions = {
   modelFactory?: () => Promise<CodingAgentStreamingModel>
@@ -41,84 +16,26 @@ type CodingAgentChatTransportOptions = {
   cwd?: string
 }
 
-async function activeFileReferencesForRequest(request: ChatTurnRequest, workspaceRoot: string, cwd: string): Promise<string[]> {
-  const resolvedReferences = await resolveConceptCodePromptReferences({
-    text: latestUserText(request.messages),
-    workspaceRoot,
-    cwd,
-  })
-  return resolvedReferences.resolved
-    .map((entry) => entry.result)
-    .filter((entry) => entry.kind === "file")
-    .map((entry) => entry.path)
-}
-
-async function scopedContextForRequest(request: ChatTurnRequest, workspaceRoot: string, cwd: string) {
-  return resolveScopedContextFiles({
-    workspaceRoot,
-    cwd,
-    activePaths: await activeFileReferencesForRequest(request, workspaceRoot, cwd),
-    fs: createLocalFileSystemBackend(),
-  })
-}
-
-async function scopedContextBlockForRequest(request: ChatTurnRequest, workspaceRoot: string, cwd: string): Promise<string> {
-  const context = await scopedContextForRequest(request, workspaceRoot, cwd)
-  return renderScopedContextBlock(context)
-}
-
-function isMemoryCommand(text: string): boolean {
-  return /^\/memory(?:\s+.*)?$/i.test(text.trim())
-}
-
-function renderMemoryResponse(context: Awaited<ReturnType<typeof scopedContextForRequest>>, activePaths: string[], cwd: string, workspaceRoot: string): string {
-  const lines = [
-    "Scoped context memory for this coding-agent run.",
-    `Workspace root: ${workspaceRoot}`,
-    `Current working directory: ${cwd}`,
-  ]
-
-  lines.push(activePaths.length > 0 ? `Active file references: ${activePaths.join(", ")}` : "Active file references: none")
-
-  if (context.eagerFiles.length > 0) {
-    lines.push("", "Loaded context files:")
-    for (const file of context.eagerFiles) {
-      lines.push(`- ${file.path}`)
-    }
-  } else {
-    lines.push("", "Loaded context files: none")
+function toChatStreamEvent(event: CodingAgentResponseChunk): ChatStreamEvent {
+  if (event.type === "response.created") {
+    return { ...event, role: "assistant" }
   }
+  return event
+}
 
-  if (context.lazyFiles.length > 0) {
-    lines.push("", "Available lazy context files:")
-    for (const file of context.lazyFiles) {
-      lines.push(`- ${file.path}: ${file.description}`)
-    }
-  } else {
-    lines.push("", "Available lazy context files: none")
+async function* streamCodingAgentEvents(events: AsyncIterable<CodingAgentResponseChunk>): AsyncIterable<ChatStreamEvent> {
+  for await (const event of events) {
+    yield toChatStreamEvent(event)
   }
-
-  return `${lines.join("\n").trim()}\n`
 }
 
-function injectScopedContext(messages: CodingAgentMessage[], contextBlock: string): CodingAgentMessage[] {
-  if (!contextBlock) return messages
-  const latestUserIndex = messages.map((message) => message.role).lastIndexOf("user")
-  return messages.map((message, index) => ({
-    role: message.role,
-    content: message.role === "user" && index === latestUserIndex
-      ? `${contextBlock}\n\n[USER REQUEST]\n\n${message.content}`
-      : message.content,
-  }))
+async function* streamMemoryTurn(context: RequestScopedContext, cwd: string, workspaceRoot: string): AsyncIterable<ChatStreamEvent> {
+  yield *streamCodingAgentEvents(streamTextResponse(renderMemoryResponse(context, cwd, workspaceRoot), "coding-agent-memory"))
 }
 
-async function toCodingAgentMessages(request: ChatTurnRequest, workspaceRoot: string, cwd: string): Promise<CodingAgentMessage[]> {
-  const messages = request.messages.map((message) => ({
-    role: message.role,
-    content: message.text,
-  }))
-  const contextBlock = await scopedContextBlockForRequest(request, workspaceRoot, cwd)
-  return applyPrimaryAgentToMessages(injectScopedContext(messages, contextBlock), primaryAgentForId(request.primaryAgentId))
+async function* streamModelTurn(request: ChatTurnRequest, context: RequestScopedContext, modelFactory: () => Promise<CodingAgentStreamingModel>): AsyncIterable<ChatStreamEvent> {
+  const model = await modelFactory()
+  yield *streamCodingAgentEvents(model.run(toCodingAgentMessages(request, context)))
 }
 
 export function createCodingAgentChatTransport(options: CodingAgentChatTransportOptions | (() => Promise<CodingAgentStreamingModel>) = {}): ChatTransport {
@@ -128,38 +45,12 @@ export function createCodingAgentChatTransport(options: CodingAgentChatTransport
   const modelFactory = resolvedOptions.modelFactory ?? (() => createHostStreamingCodingAgentModel({ workspaceRoot, cwd }))
   return {
     async *streamTurn(request: ChatTurnRequest): AsyncIterable<ChatStreamEvent> {
-      const latestPrompt = latestUserText(request.messages)
-      if (isMemoryCommand(latestPrompt)) {
-        const [context, activePaths] = await Promise.all([
-          scopedContextForRequest(request, workspaceRoot, cwd),
-          activeFileReferencesForRequest(request, workspaceRoot, cwd),
-        ])
-        for await (const event of streamTextResponse(renderMemoryResponse(context, activePaths, cwd, workspaceRoot), "coding-agent-memory")) {
-          if (event.type === "response.created") {
-            yield { ...event, role: "assistant" }
-            continue
-          }
-          yield event
-        }
+      const context = await resolveRequestScopedContext(request, workspaceRoot, cwd)
+      if (isMemoryCommand(context.latestPrompt)) {
+        yield *streamMemoryTurn(context, cwd, workspaceRoot)
         return
       }
-      const messages = await toCodingAgentMessages(request, workspaceRoot, cwd)
-      const model = await modelFactory()
-      for await (const event of model.run(messages)) {
-        if (event.type === "response.created") {
-          yield { type: event.type, responseId: event.responseId, messageId: event.messageId, role: "assistant", provider: event.provider }
-          continue
-        }
-        if (event.type === "response.output_text.delta") {
-          yield event
-          continue
-        }
-        if (event.type === "response.completed") {
-          yield event
-          continue
-        }
-        yield event
-      }
+      yield *streamModelTurn(request, context, modelFactory)
     },
   }
 }
