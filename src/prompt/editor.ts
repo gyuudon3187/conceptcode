@@ -3,164 +3,19 @@ import { RGBA, SyntaxStyle, TextareaRenderable, type Highlight, type CliRenderer
 import { currentNode } from "../core/state"
 import type { AppState, EditorModalState, PromptSuggestionEntry, PromptSuggestionProvider } from "../core/types"
 import {
-  findConceptCodePromptReferenceAt,
-  findConceptCodePromptReferenceEndingAt,
-  findConceptCodePromptReferenceStartingAt,
-  parseConceptCodePromptReferences,
+  findAppPromptReferenceAt,
+  findAppPromptReferenceEndingAt,
+  findAppPromptReferenceStartingAt,
+  parseAppPromptReferences,
 } from "./references"
+import { appPromptSuggestionProvider, allFileSuggestions } from "./provider"
 import { activeSession } from "../sessions/store"
 
-type SlashSuggestion = { value: string; description: string }
-
-const SLASH_SUGGESTIONS_BY_MODE: Record<AppState["uiMode"], SlashSuggestion[]> = {
-  plan: [
-    { value: "/explain", description: "Explain the selected code or concept." },
-    { value: "/review", description: "Review changes for bugs, regressions, and gaps." },
-    { value: "/skill-architecture", description: "Use an architecture-focused skill prompt." },
-  ],
-  build: [
-    { value: "/fix", description: "Investigate and fix the current problem." },
-    { value: "/test", description: "Run relevant tests and summarize the results." },
-    { value: "/command-commit", description: "Draft a commit-ready change summary." },
-  ],
-  conceptualize: [
-    { value: "/consolidate", description: "Inspect a required impl concept, enrich its graph metadata, and plan low-coverage child updates before applying them." },
-    { value: "/elaborate", description: "Verify a user-provided concept explanation against the best available evidence and update summary confidence." },
-    { value: "/create", description: "Create a new concept under an existing parent path through a TypeScript graph update script." },
-    { value: "/delete", description: "Preflight and confirm deletion of an existing concept, including related-path cleanup." },
-    { value: "/rename", description: "Preflight and confirm a concept key rename, including descendant and related-path rewrites." },
-    { value: "/move", description: "Preflight and confirm moving a concept subtree, including descendant and related-path rewrites." },
-    { value: "/merge", description: "Preflight and confirm merging two concepts into an explicit survivor, including conflict reporting and path rewrites." },
-    { value: "/split", description: "Preflight and confirm splitting an overloaded concept into explicit child groupings while preserving the original umbrella parent." },
-    { value: "/link", description: "Add, remove, or normalize sparse related_paths links between existing concepts." },
-    { value: "/anchor", description: "Add or refine an impl concept source anchor, exploration coverage, and narrowly warranted summary updates." },
-    { value: "/validate", description: "Run a read-only concept-graph audit and recommend follow-up skills for findings." },
-  ],
-}
+export { allFileSuggestions } from "./provider"
 
 type ActivePromptSuggestion = { prefix: "@" | "&" | "/"; query: string; start: number; end: number; suggestions: PromptSuggestionEntry[] }
 
 type PromptSuggestionViewModel = { full: PromptSuggestionEntry[]; visible: PromptSuggestionEntry[]; selectedEntry: PromptSuggestionEntry | null }
-
-type FileSuggestionQueryScope = { scopeDirectory: string | null; searchQuery: string }
-
-function allAliasSuggestions(state: AppState, query: string): string[] {
-  const paths = [...state.nodes.keys()].sort((left, right) => left.localeCompare(right))
-  const aliases = paths.map((path) => `@${path}`)
-  if (!query) return aliases
-  const normalized = query.toLowerCase()
-  const score = (alias: string): number => {
-    const path = alias.slice(1).toLowerCase()
-    const lastSegment = path.split(".").at(-1) ?? path
-    if (lastSegment === normalized) return 400
-    if (lastSegment.startsWith(normalized)) return 300 - lastSegment.indexOf(normalized)
-    if (path.startsWith(normalized)) return 220 - path.indexOf(normalized)
-    if (path.includes(normalized)) return 120 - path.indexOf(normalized)
-    return 0
-  }
-  return aliases
-    .map((alias) => ({ alias, score: score(alias) }))
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.alias.length - right.alias.length || left.alias.localeCompare(right.alias))
-    .map((entry) => entry.alias)
-}
-
-function fileSuggestionQueryScope(projectDirectories: readonly string[], query: string): FileSuggestionQueryScope {
-  const slashIndex = query.lastIndexOf("/")
-  if (slashIndex < 0) return { scopeDirectory: null, searchQuery: query }
-  for (let index = slashIndex; index > 0; index = query.lastIndexOf("/", index - 1)) {
-    const candidate = query.slice(0, index)
-    if (projectDirectories.includes(candidate)) {
-      return { scopeDirectory: candidate, searchQuery: query.slice(index + 1) }
-    }
-  }
-  return { scopeDirectory: null, searchQuery: query }
-}
-
-function scoreFileSuggestion(path: string, normalizedQuery: string, scopeDirectory: string | null): number {
-  const scopedPath = scopeDirectory ? path.slice(scopeDirectory.length + 1) : path
-  const candidate = scopedPath.toLowerCase()
-  const lastSegment = candidate.split("/").filter(Boolean).at(-1) ?? candidate
-  const immediateChildBonus = scopeDirectory && !candidate.includes("/") ? 40 : 0
-  if (!normalizedQuery) {
-    return immediateChildBonus + (!candidate.includes("/") ? 400 : 220 - Math.min(candidate.length, 120))
-  }
-  if (candidate === normalizedQuery) return 540 + immediateChildBonus
-  if (path.toLowerCase() === normalizedQuery) return 500
-  if (lastSegment === normalizedQuery) return 470 + immediateChildBonus
-  if (candidate.startsWith(normalizedQuery)) return 390 - candidate.indexOf(normalizedQuery) + immediateChildBonus
-  if (lastSegment.startsWith(normalizedQuery)) return 340 - lastSegment.indexOf(normalizedQuery) + immediateChildBonus
-  if (candidate.includes(`/${normalizedQuery}`)) return 260 - candidate.indexOf(`/${normalizedQuery}`) + immediateChildBonus
-  if (candidate.includes(normalizedQuery)) return 180 - candidate.indexOf(normalizedQuery) + immediateChildBonus
-  if (path.toLowerCase().includes(normalizedQuery)) return 120 - path.toLowerCase().indexOf(normalizedQuery)
-  return 0
-}
-
-export function allFileSuggestions(state: AppState, query: string): string[] {
-  const files = [...new Set([...(state.projectFiles ?? []), ...(state.projectDirectories ?? [])])].sort((left, right) => left.localeCompare(right))
-  const references = files.map((path) => `&${path}`)
-  if (!query) return references
-  const { scopeDirectory, searchQuery } = fileSuggestionQueryScope(state.projectDirectories ?? [], query)
-  const normalized = searchQuery.toLowerCase()
-  return references
-    .filter((reference) => !scopeDirectory || reference.slice(1).startsWith(`${scopeDirectory}/`))
-    .map((reference) => ({ reference, score: scoreFileSuggestion(reference.slice(1), normalized, scopeDirectory) }))
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.reference.length - right.reference.length || left.reference.localeCompare(right.reference))
-    .map((entry) => entry.reference)
-}
-
-function slashSuggestionsForMode(mode: AppState["uiMode"]): SlashSuggestion[] {
-  return SLASH_SUGGESTIONS_BY_MODE[mode]
-}
-
-function allSlashSuggestions(state: AppState, query: string): string[] {
-  const slashSuggestions = slashSuggestionsForMode(state.uiMode)
-  if (!query) return slashSuggestions.map((entry) => entry.value)
-  const normalized = query.toLowerCase()
-  const score = (value: string): number => {
-    const command = value.slice(1).toLowerCase()
-    const lastSegment = command.split(/[-_.]/).at(-1) ?? command
-    if (command === normalized) return 500
-    if (lastSegment === normalized) return 430
-    if (command.startsWith(normalized)) return 360 - command.indexOf(normalized)
-    if (lastSegment.startsWith(normalized)) return 300 - lastSegment.indexOf(normalized)
-    if (command.includes(normalized)) return 180 - command.indexOf(normalized)
-    return 0
-  }
-  return slashSuggestions
-    .map((entry) => ({ value: entry.value, score: score(entry.value) }))
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.value.length - right.value.length || left.value.localeCompare(right.value))
-    .map((entry) => entry.value)
-}
-
-export function slashSuggestionDescription(state: AppState, value: string): string {
-  return slashSuggestionsForMode(state.uiMode).find((entry) => entry.value === value)?.description ?? "Command or skill"
-}
-
-export function conceptCodePromptSuggestionProvider(state: AppState): PromptSuggestionProvider {
-  return {
-    suggestions: ({ prefix, query, mode }) => {
-      if (mode === "resolved") return [{ value: `${prefix}${query}` }]
-      if (prefix === "@") return allAliasSuggestions(state, query).map((value) => ({ value, description: state.nodes.get(value.slice(1))?.summary ?? "" }))
-      if (prefix === "&") {
-        return allFileSuggestions(state, query).map((value) => {
-          const path = value.slice(1)
-          const isDirectory = state.projectDirectories.includes(path)
-          return { value, description: isDirectory ? "Directory reference" : "File reference" }
-        })
-      }
-      return allSlashSuggestions(state, query).map((value) => ({ value, description: slashSuggestionDescription(state, value) }))
-    },
-    isResolvedValue: ({ prefix, query, value }) => value === `${prefix}${query}`,
-    acceptTrailingText: ({ prefix, value, suffix }) => {
-      const isDirectoryReference = prefix === "&" && state.projectDirectories.includes(value.slice(1))
-      if (isDirectoryReference) return "/"
-      return suffix.length === 0 || !/^[\s.,;:!?)}\]]/.test(suffix) ? " " : ""
-    },
-  }
-}
 
 function suggestionEntries(provider: PromptSuggestionProvider, suggestion: NonNullable<EditorModalState["promptSuggestion"]>): PromptSuggestionEntry[] {
   return provider.suggestions({ prefix: suggestion.prefix, query: suggestion.query, mode: suggestion.mode })
@@ -197,35 +52,26 @@ function applyPromptAliasHighlights(editor: TextareaRenderable): void {
   if (styleId == null) return
   const fileStyleId = editor.syntaxStyle?.getStyleId("prompt.file")
   const slashStyleId = editor.syntaxStyle?.getStyleId("prompt.slash")
-  for (const match of parseConceptCodePromptReferences(editor.plainText)) {
-    const activeStyleId = match.kind === "concept" ? styleId : match.kind === "file" ? fileStyleId : slashStyleId
+  for (const match of parseAppPromptReferences(editor.plainText)) {
+    const activeStyleId = match.symbol === "@" ? styleId : match.symbol === "&" ? fileStyleId : slashStyleId
     if (activeStyleId == null) continue
     const highlight: Highlight = { start: match.start, end: match.end, styleId: activeStyleId }
     editor.addHighlightByCharRange(highlight)
   }
 }
 
-function activePromptSuggestion(state: AppState, editor: EditorModalState): ActivePromptSuggestion | null {
+function activePromptSuggestion(state: AppState, editor: EditorModalState, provider: PromptSuggestionProvider): ActivePromptSuggestion | null {
   if (editor.target.kind !== "prompt") return null
   const text = editor.renderable.plainText
   const cursor = editorCursorOffset(editor)
-  const exactToken = findConceptCodePromptReferenceAt(text, cursor)
-  if (exactToken?.kind === "concept") {
-    const exactPath = exactToken.value
-    if (state.nodes.has(exactPath)) {
-      return { prefix: "@", query: exactPath, start: exactToken.start, end: exactToken.end, suggestions: [{ value: exactToken.raw }] }
-    }
-  }
-  if (exactToken?.kind === "file") {
-    const exactPath = exactToken.value
-    if ((state.projectFiles ?? []).includes(exactPath) || (state.projectDirectories ?? []).includes(exactPath)) {
-      return { prefix: "&", query: exactPath, start: exactToken.start, end: exactToken.end, suggestions: [{ value: exactToken.raw }] }
-    }
-  }
-  if (exactToken?.kind === "slash") {
-    const exactValue = exactToken.raw
-    if (slashSuggestionsForMode(state.uiMode).some((entry) => entry.value === exactValue)) {
-      return { prefix: "/", query: exactValue.slice(1), start: exactToken.start, end: exactToken.end, suggestions: [{ value: exactValue }] }
+  const exactToken = findAppPromptReferenceAt(text, cursor)
+  if (exactToken && (exactToken.symbol === "@" || exactToken.symbol === "&" || exactToken.symbol === "/")) {
+    const prefix = exactToken.symbol
+    const suggestions = provider.suggestions({ prefix, query: exactToken.value, mode: "resolved" })
+    const resolvedValue = exactToken.raw
+    const isResolved = provider.isResolvedValue?.({ prefix, query: exactToken.value, value: resolvedValue }) ?? resolvedValue === `${prefix}${exactToken.value}`
+    if (isResolved && suggestions.length > 0) {
+      return { prefix, query: exactToken.value, start: exactToken.start, end: exactToken.end, suggestions }
     }
   }
   const beforeCursor = text.slice(0, cursor)
@@ -259,14 +105,14 @@ function activePromptSuggestion(state: AppState, editor: EditorModalState): Acti
     query,
     start,
     end,
-    suggestions: (prefix === "@" ? allAliasSuggestions(state, query) : allSlashSuggestions(state, query)).map((value) => ({ value })),
+    suggestions: provider.suggestions({ prefix, query, mode: "search" }),
   }
 }
 
-export function refreshPromptSuggestion(state: AppState, provider: PromptSuggestionProvider = conceptCodePromptSuggestionProvider(state)): void {
+export function refreshPromptSuggestion(state: AppState, provider: PromptSuggestionProvider = appPromptSuggestionProvider(state)): void {
   const editor = state.editorModal
   if (!editor) return
-  const next = activePromptSuggestion(state, editor)
+  const next = activePromptSuggestion(state, editor, provider)
   const suggestionList = next ? provider.suggestions({ prefix: next.prefix, query: next.query, mode: "search" }) : []
   if (!next || suggestionList.length === 0) {
     editor.promptSuggestion = null
@@ -312,7 +158,7 @@ type PromptEditorDeps = {
   refreshPromptPaneTarget: () => void
 }
 
-export function refreshPromptSuggestionSoon(state: AppState, redraw: () => void, provider: PromptSuggestionProvider = conceptCodePromptSuggestionProvider(state)): void {
+export function refreshPromptSuggestionSoon(state: AppState, redraw: () => void, provider: PromptSuggestionProvider = appPromptSuggestionProvider(state)): void {
   setTimeout(() => {
     const editor = state.editorModal
     if (!editor) return
@@ -322,7 +168,7 @@ export function refreshPromptSuggestionSoon(state: AppState, redraw: () => void,
   }, 0)
 }
 
-export function movePromptSuggestionSelection(state: AppState, delta: number, provider: PromptSuggestionProvider = conceptCodePromptSuggestionProvider(state)): boolean {
+export function movePromptSuggestionSelection(state: AppState, delta: number, provider: PromptSuggestionProvider = appPromptSuggestionProvider(state)): boolean {
   const editor = state.editorModal
   if (!editor?.promptSuggestion) return false
   const suggestions = suggestionEntries(provider, editor.promptSuggestion)
@@ -378,7 +224,7 @@ function syncPromptEditorAfterProgrammaticChange(state: AppState, deps: Pick<Pro
   deps.redraw()
 }
 
-export function acceptPromptSuggestion(state: AppState, provider: PromptSuggestionProvider = conceptCodePromptSuggestionProvider(state)): boolean {
+export function acceptPromptSuggestion(state: AppState, provider: PromptSuggestionProvider = appPromptSuggestionProvider(state)): boolean {
   const editor = state.editorModal
   if (!editor?.promptSuggestion) return false
   const suggestions = suggestionEntries(provider, editor.promptSuggestion)
@@ -413,7 +259,7 @@ export function handlePromptAliasBoundaryKey(state: AppState, key: KeyEvent, red
   const cursor = editorCursorOffset(editor)
 
   if (key.name === "backspace") {
-    const token = findConceptCodePromptReferenceEndingAt(text, cursor)
+    const token = findAppPromptReferenceEndingAt(text, cursor)
     if (!token || token.kind === "slash") return false
     key.preventDefault()
     key.stopPropagation()
@@ -424,7 +270,7 @@ export function handlePromptAliasBoundaryKey(state: AppState, key: KeyEvent, red
   }
 
   if (key.name === "left") {
-    const token = findConceptCodePromptReferenceEndingAt(text, cursor)
+    const token = findAppPromptReferenceEndingAt(text, cursor)
     if (!token || token.kind === "slash") return false
     key.preventDefault()
     key.stopPropagation()
@@ -434,7 +280,7 @@ export function handlePromptAliasBoundaryKey(state: AppState, key: KeyEvent, red
   }
 
   if (key.name === "right") {
-    const token = findConceptCodePromptReferenceStartingAt(text, cursor)
+    const token = findAppPromptReferenceStartingAt(text, cursor)
     if (!token || token.kind === "slash") return false
     key.preventDefault()
     key.stopPropagation()

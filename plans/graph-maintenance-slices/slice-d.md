@@ -40,9 +40,11 @@ Add focused graph-maintenance workflows for navigational linking and implementat
 ## Likely Files
 - `.opencode/skills/link/SKILL.md`
 - `.opencode/skills/anchor/SKILL.md`
-- new `src/graph/link-related-paths.ts`
-- new `src/graph/anchor-concept.ts`
-- `src/graph/analyze.ts`
+- primary implementation now lives under `packages/conceptcode/src/graph/`
+- `packages/conceptcode/src/graph/link-related-paths.ts`
+- `packages/conceptcode/src/graph/anchor-concept.ts`
+- `packages/conceptcode/src/graph/analyze.ts`
+- root `src/graph/*` paths may still exist as compatibility wrappers
 - `docs/json_schema.md`
 - `src/prompt/editor.ts`
 

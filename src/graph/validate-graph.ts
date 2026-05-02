@@ -1,21 +1,13 @@
-import { readGraph } from "./mutate"
-import { validateGraph, type ValidateGraphResult } from "./analyze"
+export * from "conceptcode/graph/validate-graph"
 
-type ValidateGraphInput = {
-  graphPath: string
-}
-
-export async function validateConceptGraph(input: ValidateGraphInput): Promise<ValidateGraphResult> {
-  const graph = await readGraph(input.graphPath)
-  return validateGraph(graph, input.graphPath)
-}
+import { validateConceptGraph } from "conceptcode/graph/validate-graph"
 
 async function main(): Promise<void> {
   const raw = process.argv[2]
   if (!raw) {
     throw new Error("Expected a JSON payload argument")
   }
-  const result = await validateConceptGraph(JSON.parse(raw) as ValidateGraphInput)
+  const result = await validateConceptGraph(JSON.parse(raw) as Parameters<typeof validateConceptGraph>[0])
   console.log(JSON.stringify(result, null, 2))
 }
 

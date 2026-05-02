@@ -261,12 +261,16 @@ The remaining work is now mostly internal cohesion work rather than directory la
 
 ### Recommended Order For Tomorrow
 
+Historical note: several tasks below have since been superseded by the later `packages/conceptcode` extraction. Treat this section as historical handoff context, not as the current boundary plan.
+
 1. Split `src/prompt/payload.ts`
 2. Split the remaining non-transition rendering code in `src/ui/view.ts`
 3. Run broader verification with `bun run check`
 4. Update docs only if the resulting module names materially change the architecture descriptions
 
 ### Task 1: Split `src/prompt/payload.ts`
+
+Status note: this work has effectively been overtaken by the package-backed implementation in `packages/conceptcode/src/payload.ts`, with `src/prompt/payload.ts` now acting as a root adapter layer.
 
 Goal: separate prompt reference parsing, prompt assembly, and token accounting.
 

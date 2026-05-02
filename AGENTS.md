@@ -39,11 +39,19 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 
 ## Repository conventions
 
-- Package code lives in `src/`.
+- Root orchestration code lives in `src/`.
+- `packages/conceptcode/` is the primary implementation location for ConceptCode-specific runtime behavior and concept-graph maintenance logic.
+- Reusable package code also lives under `packages/`.
 - Example concept graphs live in `examples/`.
 - User and developer documentation lives in `docs/`.
 - Reusable prompt material for concept-graph creation lives in `prompts/`.
 - Command wrappers and reusable invocation text live in `commands/`.
+
+## Current boundary note
+
+- Treat the root `src/` tree as the orchestration shell, not as the primary home of ConceptCode feature logic.
+- Prefer implementing ConceptCode-specific changes in `packages/conceptcode/` unless the work is clearly about shell orchestration, session hosting, prompt hosting, or cross-feature coordination.
+- Some root modules remain as compatibility wrappers around `packages/conceptcode`; preserve those wrappers unless there is a concrete migration reason to remove them.
 
 ## Session storage note
 

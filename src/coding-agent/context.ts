@@ -6,19 +6,19 @@ import {
   type ScopedContextTreeDirectory,
 } from "coding-agent"
 
-import { resolveConceptCodePromptReferences } from "../prompt/references"
+import { resolveAppPromptReferences } from "../prompt/references"
 
 export type PromptScopedContext = ResolvedScopedContextView
 
 async function activeFileReferencesForPrompt(prompt: string, workspaceRoot: string, cwd: string): Promise<string[]> {
-  const resolvedReferences = await resolveConceptCodePromptReferences({
+  const resolvedReferences = await resolveAppPromptReferences({
     text: prompt,
     workspaceRoot,
     cwd,
   })
   return resolvedReferences.resolved
     .map((entry) => entry.result)
-    .filter((entry) => entry.kind === "file")
+    .filter((entry): entry is Extract<(typeof resolvedReferences.resolved)[number]["result"], { kind: "file" }> => entry.kind === "file" && "path" in entry)
     .map((entry) => entry.path)
 }
 

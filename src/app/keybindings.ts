@@ -7,7 +7,8 @@ import type { AppState, InspectorKind } from "../core/types"
 import { handleBrowserKey, handleCtrlCKey } from "./commands"
 import { closeScopedContextModal, openScopedContextModal } from "../coding-agent/overlay"
 import { handleCreateConceptModalKey, removeDraftConcept } from "../concepts/drafts"
-import { acceptPromptSuggestion, applyEditorText, conceptCodePromptSuggestionProvider, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
+import { acceptPromptSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
+import { appPromptSuggestionProvider } from "../prompt/provider"
 import { closeSessionModal, createAndSwitchSession, deleteSession, openSessionModal, promptToDeleteSession, sessionModalEntries, switchToSession } from "../sessions/commands"
 
 type PromptEditorDeps = {
@@ -125,7 +126,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
   deps.renderer().keyInput.on("keypress", async (key: KeyEvent) => {
     const { state } = deps
     const renderer = deps.renderer()
-    const promptSuggestionProvider = conceptCodePromptSuggestionProvider(state)
+    const promptSuggestionProvider = appPromptSuggestionProvider(state)
 
     if (key.ctrl && key.name === "c") {
       if (state.editorModal) {

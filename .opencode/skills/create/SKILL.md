@@ -29,7 +29,8 @@ Use this skill in conceptualize mode to add a new concept to the concept graph.
 
 ## Validation and execution
 
-- Validate the requested path with the TypeScript script at `src/graph/create-concept.ts`.
+- Validate the requested path with the TypeScript script at `packages/conceptcode/src/graph/create-concept.ts`.
+- Root `src/graph/create-concept.ts` may still exist as a compatibility wrapper, but the package path is the primary implementation location.
 - That script verifies that the full target path does not exist yet and that the parent path does exist.
 - Parse the user-provided fields into concept-graph metadata and pass them to that script as JSON.
 - Always create new `impl` concepts with `implemented: false` unless the user explicitly provides `implemented`.

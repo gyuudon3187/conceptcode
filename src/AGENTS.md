@@ -17,11 +17,10 @@ These instructions apply when working in this directory and its subdirectories.
 
 - `src/index.ts` boots the OpenTUI app and wires keyboard input to state transitions.
 - `src/platform/chat.ts` is the provider-facing streaming transport boundary and the current home of the disposable local dummy SSE chat server.
-- `src/core/model.ts` loads and normalizes concept graphs.
-- `src/core/state.ts` manages navigation, status, layout mode, and scroll state.
-- `src/ui/view.ts` renders the prompt-first interface, concept summary surfaces, and inspector overlays.
-- `src/prompt/payload.ts` builds the effective prompt payload from prompt-referenced concept aliases, while `src/platform/clipboard.ts` integrates with `wl-copy`.
-- `src/core/types.ts` defines shared application and schema types.
+- `src/core/model.ts`, `src/core/state.ts`, and `src/core/types.ts` are now mostly root adapters around package-owned ConceptCode graph logic plus shell-owned app state.
+- `src/ui/view.ts` renders the prompt-first interface shell and delegates ConceptCode-specific pane bodies and inspector previews through package-backed adapters.
+- `src/prompt/payload.ts` is now a root adapter over package-owned ConceptCode payload building, while `src/platform/clipboard.ts` integrates with `wl-copy`.
+- `packages/conceptcode/src/` is the primary home for ConceptCode-specific graph, pane, payload, prompt-semantic, and inspector logic.
 - `src/app/` is the thin orchestration layer for app init, keybindings, workspace transitions, and app-state wrappers around platform adapters.
 
 ## Workspace terminology

@@ -2,7 +2,7 @@ import type { AppState } from "../core/types"
 import { RGBA, TextAttributes, type TextChunk } from "@opentui/core"
 import { promptPreviewLines, textNodesForChunks, truncateFromStart, truncateSingleLine } from "agent-tui/text"
 
-import { parseConceptCodePromptReferences } from "../prompt/references"
+import { parseAppPromptReferences } from "../prompt/references"
 import { COLORS } from "agent-tui/theme"
 
 export { promptPreviewLines, textNodesForChunks, truncateFromStart, truncateSingleLine }
@@ -21,7 +21,7 @@ export function promptPreviewWidth(state: AppState): number {
 }
 
 export function promptPreviewChunks(line: string): TextChunk[] {
-  const references = parseConceptCodePromptReferences(line).filter((match) => match.kind === "concept")
+  const references = parseAppPromptReferences(line).filter((match) => match.symbol === "@")
   const chunks: TextChunk[] = []
   let lastIndex = 0
 

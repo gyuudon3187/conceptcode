@@ -1,0 +1,109 @@
+import { Box, ScrollBoxRenderable, Text, TextAttributes, type Renderable, type VNode } from "@opentui/core"
+
+import { namespaceRootPath, visiblePaths } from "./state"
+import type { ConceptGraphState } from "./types"
+
+export type ListLine = {
+  title: string
+  kindLabel: string
+  explorationCoverage: number | null
+  summaryConfidence: number | null
+  leftMarker: string
+  rightMarker: string
+  selected: boolean
+  tone?: "draft"
+  empty?: boolean
+}
+
+type ConceptsListState = Pick<ConceptGraphState, "nodes" | "conceptNamespaceMode" | "currentParentPath" | "cursor"> & {
+  layoutMode: "wide" | "narrow"
+}
+
+type ConceptsListDeps = {
+  colors: {
+    selectedBg: string
+    selectedFg: string
+    panel: string
+    muted: string
+    warning: string
+    text: string
+    border: string
+  }
+  truncateSingleLine: (text: string, maxWidth: number) => string
+}
+
+export function listLines(state: ConceptsListState): ListLine[] {
+  const visible = visiblePaths(state)
+  if (visible.length === 0) {
+    const rootPath = namespaceRootPath(state.conceptNamespaceMode)
+    const message = state.nodes.has(rootPath)
+      ? `(no child concepts under ${state.currentParentPath})`
+      : `(no ${state.conceptNamespaceMode} concepts in this graph)`
+    return [{ title: message, kindLabel: "", explorationCoverage: null, summaryConfidence: null, leftMarker: "", rightMarker: "", selected: false, empty: true }]
+  }
+  return visible.map((path, index) => {
+    const node = state.nodes.get(path)!
+    return {
+      title: node.title,
+      kindLabel: node.kind ?? "(no kind)",
+      explorationCoverage: node.explorationCoverage,
+      summaryConfidence: node.summaryConfidence,
+      leftMarker: node.parentPath && node.parentPath !== namespaceRootPath(state.conceptNamespaceMode) ? "<-" : "",
+      rightMarker: node.childPaths.length > 0 ? "->" : "",
+      selected: index === state.cursor,
+      tone: node.isDraft ? "draft" : undefined,
+    }
+  })
+}
+
+function formatPercent(score: number | null): string {
+  if (score === null) return "--"
+  return `${Math.round(score * 100)}%`
+}
+
+function conceptRowColors(item: ListLine, deps: ConceptsListDeps): { background: string; title: string; kind: string; badge: string } {
+  if (item.selected) {
+    return { background: deps.colors.selectedBg, title: deps.colors.selectedFg, kind: deps.colors.selectedFg, badge: deps.colors.selectedFg }
+  }
+  if (item.empty) {
+    return { background: deps.colors.panel, title: deps.colors.muted, kind: deps.colors.muted, badge: deps.colors.muted }
+  }
+  return {
+    background: deps.colors.panel,
+    title: item.tone === "draft" ? deps.colors.warning : deps.colors.text,
+    kind: deps.colors.muted,
+    badge: item.tone === "draft" ? deps.colors.warning : deps.colors.border,
+  }
+}
+
+export function renderConceptList(state: ConceptsListState, deps: ConceptsListDeps): Renderable | VNode<any, any[]> {
+  const items = listLines(state)
+  return Box(
+    { width: "100%", flexDirection: "column", gap: 0 },
+    ...items.map((item) => {
+      const colors = conceptRowColors(item, deps)
+      const titleWidth = state.layoutMode === "wide" ? 18 : 14
+      const kindWidth = state.layoutMode === "wide" ? 10 : 8
+      return Box(
+        { width: "100%", paddingX: 1, backgroundColor: colors.background, flexDirection: "row", justifyContent: "space-between" },
+        Box(
+          { flexDirection: "row", gap: 1, flexGrow: 1 },
+          Text({ content: item.leftMarker ? item.leftMarker.padEnd(3, " ") : "   ", fg: colors.badge, attributes: item.selected || Boolean(item.leftMarker) ? TextAttributes.BOLD : 0 }),
+          Text({ content: deps.truncateSingleLine(item.title, titleWidth), fg: colors.title, attributes: item.selected ? TextAttributes.BOLD : 0 }),
+        ),
+        Box(
+          { flexDirection: "row", gap: 1, flexShrink: 0 },
+          Text({ content: item.kindLabel ? deps.truncateSingleLine(item.kindLabel, kindWidth) : "", fg: colors.kind, attributes: item.selected ? TextAttributes.BOLD : 0 }),
+          Text({ content: formatPercent(item.explorationCoverage).padStart(4, " "), fg: colors.kind, attributes: item.selected ? TextAttributes.BOLD : 0 }),
+          Text({ content: formatPercent(item.summaryConfidence).padStart(4, " "), fg: colors.kind, attributes: item.selected ? TextAttributes.BOLD : 0 }),
+          Text({ content: item.rightMarker ? item.rightMarker.padEnd(2, " ") : "  ", fg: colors.badge, attributes: item.selected || Boolean(item.rightMarker) ? TextAttributes.BOLD : 0 }),
+        ),
+      )
+    }),
+  )
+}
+
+export function scrollListForCursor(state: Pick<ConceptsListState, "cursor">, listScroll: ScrollBoxRenderable): void {
+  const halfViewport = Math.max(2, Math.floor((listScroll.viewport.height || 10) / 2))
+  listScroll.scrollTo({ x: 0, y: Math.max(0, state.cursor - halfViewport) })
+}

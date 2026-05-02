@@ -25,7 +25,8 @@ Use this skill in conceptualize mode to remove an existing concept from the conc
 
 ## Validation and execution
 
-- Use the TypeScript script at `src/graph/delete-concept.ts`.
+- Use the TypeScript script at `packages/conceptcode/src/graph/delete-concept.ts`.
+- Root `src/graph/delete-concept.ts` may still exist as a compatibility wrapper, but the package path is the primary implementation location.
 - Run delete preflight before mutation and report the impact.
 - The preflight must report whether the concept exists, direct child count, descendant count, inbound `related_paths` reference count, referencing paths, referencing namespaces, and whether subtree deletion will occur.
 - Destructive graph operations always require explicit confirmation after preflight.

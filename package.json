@@ -15,6 +15,7 @@
     "agent-chat": "file:packages/agent-chat",
     "@opentui/core": "^0.1.96",
     "coding-agent": "file:packages/coding-agent",
+    "conceptcode": "file:packages/conceptcode",
     "js-tiktoken": "^1.0.21",
     "shiki": "^3.2.1"
   },

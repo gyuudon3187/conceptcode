@@ -1,6 +1,11 @@
 # ConceptCode
 
-`ConceptCode` is a concept-aware interface for working with hierarchical concept graphs while composing prompts for coding agents.
+`ConceptCode` is now organized as an orchestrator-first repository with a package-backed ConceptCode feature implementation.
+
+- Root `src/` owns the orchestration shell: workspace composition, prompt hosting, session persistence, external editor integration, and multi-feature registration.
+- `packages/conceptcode` owns the ConceptCode feature implementation: concept-graph semantics, prompt semantics such as `@...`, graph operations, Concepts-pane content, clipboard export formatting, and concept-specific inspectors.
+
+`ConceptCode` itself remains a concept-aware interface for working with hierarchical concept graphs while composing prompts for coding agents.
 
 The current application is an OpenTUI workspace for concept-aware prompt composition. It reads a JSON concept graph, lets you navigate by stable concept path, edit concept summaries, mention concepts directly in a prompt with explicit namespaced aliases such as `@impl...` and `@domain...`, and currently exports compact LLM-ready context plus interpretation guidance through the clipboard for use with external coding agents.
 
@@ -79,16 +84,23 @@ Example options file:
 - `bun run typecheck` - run TypeScript checks
 - `bun run check` - run the project validation command set
 
+## Package layout
+
+- `src/` is the root orchestration shell.
+- `packages/conceptcode/` is the primary implementation location for ConceptCode-specific behavior.
+- `packages/agent-tui/`, `packages/agent-chat/`, and `packages/coding-agent/` hold reusable package surfaces extracted from the app.
+- Some root modules still exist as compatibility wrappers around `packages/conceptcode` so existing skills, docs, and commands continue to work while the extraction settles.
+
 ## Architecture
 
 - `src/index.ts` boots the OpenTUI app and wires keyboard input to state transitions
-- `src/core/model.ts`, `src/core/state.ts`, and `src/core/types.ts` define the shared concept graph and state foundations
+- `src/core/types.ts` and `src/core/state.ts` define the root shell state plus adapters around package-owned ConceptCode graph types and navigation helpers
 - `src/platform/chat.ts` defines the minimal streaming transport boundary and the disposable local dummy SSE server
-- `src/prompt/` groups prompt editing, prompt-thread coordination, and effective prompt payload construction
+- `src/prompt/` groups root prompt hosting, feature aggregation, and editor coordination
 - `src/sessions/` groups session persistence and app-facing session workflows
-- `src/concepts/drafts.ts` holds draft concept creation and removal flows
-- `src/ui/view.ts` and `src/ui/snippet.ts` render the prompt-first TUI and inspector previews
+- `src/ui/view.ts` renders the prompt-first TUI shell and delegates ConceptCode-specific pane and inspector content to package-backed adapters
 - `src/app/` is the thin application orchestration layer for init, keybindings, workspace transitions, and app-state clipboard status handling
+- `packages/conceptcode/src/` is the primary ConceptCode feature implementation surface for graph types, graph mutation scripts, prompt semantics, Concepts-side pane content, clipboard payload building, and snippet/subtree/metadata previews
 
 See `docs/src_architecture_proposal.md` for a proposed target `src/` directory layout and the rationale for where files should live.
 
@@ -128,7 +140,7 @@ See `docs/src_architecture_proposal.md` for a proposed target `src/` directory l
 - `?`: show key help in the status bar
 - `q`: quit
 
-Current clipboard exports include a short instruction preamble loaded from `prompts/clipboard_preamble.md`, compact overview sections for the top-level `impl` and `domain` concepts when present, a clearly labeled `# Main Instructions` section when prompt text is present, and concept blocks for the concepts explicitly referenced in the prompt by alias. If no concept alias is referenced, the highlighted concept is used as the fallback context. The preamble explains that stable paths come from `children` keys, that the graph models conceptual structure first, that fields such as `summary`, `related_paths`, `why_it_exists`, `aliases`, and `loc` are optional and should be used opportunistically, that missing anchors are preferable to guessed ones, and that if the agent's work changes the represented system it should update the concept graph only as its very last step.
+Current clipboard exports include a short instruction preamble loaded from `packages/conceptcode/prompts/clipboard_preamble.md`, compact overview sections for the top-level `impl` and `domain` concepts when present, a clearly labeled `# Main Instructions` section when prompt text is present, and concept blocks for the concepts explicitly referenced in the prompt by alias. If no concept alias is referenced, the highlighted concept is used as the fallback context. The preamble explains that stable paths come from `children` keys, that the graph models conceptual structure first, that fields such as `summary`, `related_paths`, `why_it_exists`, `aliases`, and `loc` are optional and should be used opportunistically, that missing anchors are preferable to guessed ones, and that if the agent's work changes the represented system it should update the concept graph only as its very last step.
 
 ## Included example
 

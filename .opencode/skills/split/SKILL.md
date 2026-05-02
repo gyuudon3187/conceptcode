@@ -27,7 +27,8 @@ Use this skill in conceptualize mode to decompose an overloaded concept into cle
 
 ## Validation and execution
 
-- Use the TypeScript scripts at `src/graph/split-concept-preflight.ts` and `src/graph/split-concept.ts`.
+- Use the TypeScript scripts at `packages/conceptcode/src/graph/split-concept-preflight.ts` and `packages/conceptcode/src/graph/split-concept.ts`.
+- Root `src/graph/split-concept-preflight.ts` and `src/graph/split-concept.ts` may still exist as compatibility wrappers, but the package paths are the primary implementation locations.
 - Run split preflight before mutation and report the redistribution plan.
 - The preflight must report whether the concept exists, the requested target count, the requested moved-child count, untouched child keys, target-by-target subtree rewrites, and `related_paths` rewrites across both namespaces.
 - Splits always require explicit confirmation after preflight.

@@ -1,5 +1,5 @@
 import { latestUserText, type ChatStreamEvent, type ChatTransport, type ChatTurnRequest } from "agent-chat"
-import { parseConceptCodePromptReferences } from "../prompt/references"
+import { parseAppPromptReferences } from "../prompt/references"
 
 type ParsedSseEvent = {
   event: string
@@ -8,9 +8,9 @@ type ParsedSseEvent = {
 
 function createDummyResponseText(request: ChatTurnRequest): string {
   const latestUserMessage = latestUserText(request.messages)
-  const references = parseConceptCodePromptReferences(latestUserMessage)
-  const referencedConcepts = references.filter((match) => match.kind === "concept").map((match) => match.raw)
-  const referencedFiles = references.filter((match) => match.kind === "file").map((match) => match.raw)
+  const references = parseAppPromptReferences(latestUserMessage)
+  const referencedConcepts = references.filter((match) => match.symbol === "@").map((match) => match.raw)
+  const referencedFiles = references.filter((match) => match.symbol === "&").map((match) => match.raw)
   const modeLabel = request.primaryAgentId === "plan" ? "plan" : request.primaryAgentId === "build" ? "build" : "conceptualize"
   const focusLine = referencedConcepts.length > 0
     ? `I am focusing on ${referencedConcepts.join(", ")}.`

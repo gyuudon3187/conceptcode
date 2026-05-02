@@ -3,6 +3,7 @@
  Goal: route concept-graph work to the right prompt flow for the given file, directory, or subsystem, then write the result beside the target using the target basename with `_concepts.json` replacing the original extension.
 
  Instructions for the LLM:
+ - Primary implementation note: the ConceptCode graph-maintenance implementation now lives under `packages/conceptcode/src/graph/`. Root `src/graph/` files may remain as compatibility wrappers, so prefer the package path when you need to inspect or mention the implementation location.
  - Prefer a concept hierarchy that a non-programmer product collaborator can browse and discuss without needing source-level implementation categories.
  - During graph generation, prefer user-meaningful views, domain concepts, major subsystems, and independently meaningful processes over buckets that mainly mirror code organization.
 - The graph may contain top-level `impl` and `domain` namespaces, and must include at least one of them.

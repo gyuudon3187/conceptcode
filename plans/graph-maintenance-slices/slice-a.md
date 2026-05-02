@@ -60,10 +60,12 @@ Align the current concept-graph contracts with intended behavior, add shared gra
 - `.opencode/skills/delete/SKILL.md`
 - `.opencode/skills/consolidate/SKILL.md`
 - `.opencode/skills/elaborate/SKILL.md`
-- `src/graph/create-concept.ts`
-- `src/graph/delete-concept.ts`
-- `src/graph/mutate.ts`
-- or new `src/graph/analyze.ts`
+- primary implementation now lives under `packages/conceptcode/src/graph/`
+- `packages/conceptcode/src/graph/create-concept.ts`
+- `packages/conceptcode/src/graph/delete-concept.ts`
+- `packages/conceptcode/src/graph/mutate.ts`
+- `packages/conceptcode/src/graph/analyze.ts`
+- root `src/graph/*` paths may still exist as compatibility wrappers
 - `src/prompt/editor.ts`
 
 ## Acceptance Criteria

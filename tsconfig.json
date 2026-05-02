@@ -28,6 +28,12 @@
       ],
       "coding-agent/*": [
         "./packages/coding-agent/src/*"
+      ],
+      "conceptcode": [
+        "./packages/conceptcode/src/index.ts"
+      ],
+      "conceptcode/*": [
+        "./packages/conceptcode/src/*"
       ]
     }
   },

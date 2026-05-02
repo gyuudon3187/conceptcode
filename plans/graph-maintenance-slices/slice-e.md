@@ -50,10 +50,12 @@ Add advanced restructuring workflows for consolidating or decomposing concepts, 
 ## Likely Files
 - `.opencode/skills/merge/SKILL.md`
 - `.opencode/skills/split/SKILL.md`
-- new `src/graph/merge-concepts.ts`
-- new `src/graph/merge-concepts-preflight.ts`
-- new `src/graph/split-concept.ts`
-- new `src/graph/split-concept-preflight.ts`
+- primary implementation now lives under `packages/conceptcode/src/graph/`
+- `packages/conceptcode/src/graph/merge-concepts.ts`
+- `packages/conceptcode/src/graph/merge-concepts-preflight.ts`
+- `packages/conceptcode/src/graph/split-concept.ts`
+- `packages/conceptcode/src/graph/split-concept-preflight.ts`
+- root `src/graph/*` paths may still exist as compatibility wrappers
 - `docs/json_schema.md`
 - examples under `examples/`
 - `src/prompt/editor.ts`

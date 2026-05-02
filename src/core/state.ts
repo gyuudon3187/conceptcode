@@ -1,4 +1,14 @@
 import type { LayoutMode } from "agent-tui/types"
+import {
+  clampCursor as clampConceptCursor,
+  currentNode as currentConceptNode,
+  currentPath as currentConceptPath,
+  cycleConceptNamespaceMode as cycleConceptNamespaceModeBase,
+  moveCursor as moveConceptCursor,
+  namespaceRootPath as conceptNamespaceRootPath,
+  setConceptNamespaceMode as setConceptNamespaceModeBase,
+  visiblePaths as visibleConceptPaths,
+} from "conceptcode/state"
 
 import type {
   AppState,
@@ -42,41 +52,35 @@ export function sessionModalHostState(state: AppState): SessionModalHostState {
 }
 
 export function namespaceRootPath(mode: ConceptNamespaceMode): "impl" | "domain" {
-  return mode === "implementation" ? "impl" : "domain"
+  return conceptNamespaceRootPath(mode)
 }
 
 export function setConceptNamespaceMode(state: AppState, mode: ConceptNamespaceMode): void {
-  state.conceptNamespaceMode = mode
-  state.currentParentPath = namespaceRootPath(mode)
-  state.cursor = 0
+  setConceptNamespaceModeBase(state, mode)
   applySelectionChange(state)
   clampCursor(state)
 }
 
 export function cycleConceptNamespaceMode(state: AppState): void {
-  setConceptNamespaceMode(state, state.conceptNamespaceMode === "implementation" ? "domain" : "implementation")
+  cycleConceptNamespaceModeBase(state)
+  applySelectionChange(state)
+  clampCursor(state)
 }
 
 export function visiblePaths(state: AppState): string[] {
-  return state.nodes.get(state.currentParentPath)?.childPaths ?? []
+  return visibleConceptPaths(state)
 }
 
 export function currentPath(state: AppState): string {
-  const visible = visiblePaths(state)
-  return visible[state.cursor] ?? state.currentParentPath
+  return currentConceptPath(state)
 }
 
 export function currentNode(state: AppState): ConceptNode {
-  const node = state.nodes.get(currentPath(state))
-  if (!node) {
-    throw new Error("Current concept not found")
-  }
-  return node
+  return currentConceptNode(state)
 }
 
 export function clampCursor(state: AppState): void {
-  const visible = visiblePaths(state)
-  state.cursor = visible.length === 0 ? 0 : Math.max(0, Math.min(state.cursor, visible.length - 1))
+  clampConceptCursor(state)
 }
 
 export function applySelectionChange(state: AppState): void {
@@ -92,13 +96,7 @@ export function handleResize(state: AppState, width: number): void {
 }
 
 export function moveCursor(state: AppState, delta: number): boolean {
-  const visible = visiblePaths(state)
-  if (visible.length === 0 || delta === 0) {
-    return false
-  }
-  const previous = state.cursor
-  state.cursor = (state.cursor + delta % visible.length + visible.length) % visible.length
-  const changed = state.cursor !== previous
+  const changed = moveConceptCursor(state, delta)
   if (changed) {
     applySelectionChange(state)
   }

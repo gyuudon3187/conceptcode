@@ -49,10 +49,12 @@ Add a read-only graph audit workflow and shared kind validation so graph quality
 ## Likely Files
 - `docs/json_schema.md`
 - `.opencode/skills/validate/SKILL.md`
-- `src/graph/analyze.ts`
-- or `src/graph/mutate.ts`
-- new `src/graph/validate-graph.ts`
-- possibly shared kind helper under `src/graph/` or `src/core/`
+- primary implementation now lives under `packages/conceptcode/src/graph/`
+- `packages/conceptcode/src/graph/analyze.ts`
+- `packages/conceptcode/src/graph/mutate.ts`
+- `packages/conceptcode/src/graph/validate-graph.ts`
+- `packages/conceptcode/src/graph/kinds.ts`
+- root `src/graph/*` paths may still exist as compatibility wrappers
 - `src/prompt/editor.ts`
 
 ## Acceptance Criteria

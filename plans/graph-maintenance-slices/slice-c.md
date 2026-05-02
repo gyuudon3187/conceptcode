@@ -48,12 +48,14 @@ Add a shared path-rewrite engine and use it to implement safe `rename` and `move
 ## Likely Files
 - `.opencode/skills/rename/SKILL.md`
 - `.opencode/skills/move/SKILL.md`
-- new `src/graph/rewrite-paths.ts`
-- new `src/graph/rename-concept.ts`
-- new `src/graph/rename-concept-preflight.ts`
-- new `src/graph/move-concept.ts`
-- new `src/graph/move-concept-preflight.ts`
-- `src/graph/analyze.ts`
+- primary implementation now lives under `packages/conceptcode/src/graph/`
+- `packages/conceptcode/src/graph/rewrite-paths.ts`
+- `packages/conceptcode/src/graph/rename-concept.ts`
+- `packages/conceptcode/src/graph/rename-concept-preflight.ts`
+- `packages/conceptcode/src/graph/move-concept.ts`
+- `packages/conceptcode/src/graph/move-concept-preflight.ts`
+- `packages/conceptcode/src/graph/analyze.ts`
+- root `src/graph/*` paths may still exist as compatibility wrappers
 - `src/prompt/editor.ts`
 
 ## Acceptance Criteria

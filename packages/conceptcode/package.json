@@ -1,0 +1,18 @@
+{
+  "name": "conceptcode",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./prompt": "./src/prompt.ts",
+    "./model": "./src/model.ts",
+    "./panes": "./src/panes.ts",
+    "./payload": "./src/payload.ts",
+    "./snippet": "./src/snippet.ts",
+    "./types": "./src/types.ts",
+    "./state": "./src/state.ts",
+    "./drafts": "./src/drafts.ts",
+    "./concepts-list": "./src/concepts-list.ts",
+    "./graph/*": "./src/graph/*.ts"
+  }
+}

@@ -27,7 +27,8 @@ Use this skill in conceptualize mode to move an existing concept under a differe
 
 ## Validation and execution
 
-- Use the TypeScript scripts at `src/graph/move-concept-preflight.ts` and `src/graph/move-concept.ts`.
+- Use the TypeScript scripts at `packages/conceptcode/src/graph/move-concept-preflight.ts` and `packages/conceptcode/src/graph/move-concept.ts`.
+- Root `src/graph/move-concept-preflight.ts` and `src/graph/move-concept.ts` may still exist as compatibility wrappers, but the package paths are the primary implementation locations.
 - Run move preflight before mutation and report the impact.
 - The preflight must report whether the concept exists, direct child count, descendant count, subtree path rewrites, and `related_paths` rewrites across both namespaces.
 - Moves always require explicit confirmation after preflight.

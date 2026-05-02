@@ -24,7 +24,8 @@ Use this skill in conceptualize mode to audit a concept graph without changing i
 
 ## Validation scope
 
-- Use the TypeScript script at `src/graph/validate-graph.ts`.
+- Use the TypeScript script at `packages/conceptcode/src/graph/validate-graph.ts`.
+- Root `src/graph/validate-graph.ts` may still exist as a compatibility wrapper, but the package path is the primary implementation location.
 - The script must report findings for:
   - broken `related_paths`
   - forbidden domain-only metadata violations

@@ -13,6 +13,18 @@ import type {
 import type { Timeline } from "@opentui/core"
 import type { RGBA } from "@opentui/core"
 import type {
+  ConceptGraphState as BaseConceptGraphState,
+  ConceptNamespace,
+  ConceptNamespaceMode,
+  ConceptNode,
+  CreateConceptDraft,
+  GraphPayload,
+  JsonPrimitive,
+  JsonValue,
+  KindDefinition,
+  SourceLoc,
+} from "conceptcode/types"
+import type {
   LayoutMode,
   ShellWorkspaceState,
   UiLayoutConfig,
@@ -20,38 +32,7 @@ import type {
 } from "agent-tui/types"
 import type { EffectivePromptTokenBreakdown } from "../prompt/payload"
 
-export type JsonPrimitive = null | boolean | number | string
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
-
-export type ConceptNode = {
-  path: string
-  namespace: "impl" | "domain"
-  title: string
-  kind: string | null
-  summary: string
-  explorationCoverage: number | null
-  summaryConfidence: number | null
-  parentPath: string | null
-  metadata: Record<string, JsonValue>
-  loc: SourceLoc | null
-  childPaths: string[]
-  isDraft?: boolean
-}
-
-export type SourceLoc = {
-  file: string
-  startLine: number
-  endLine: number
-}
-
-export type GraphPayload = {
-  interpretation_hint?: Record<string, JsonValue>
-  impl?: Record<string, JsonValue>
-  domain?: Record<string, JsonValue>
-}
-
-export type ConceptNamespace = "impl" | "domain"
-export type ConceptNamespaceMode = "implementation" | "domain"
+export type { ConceptNamespace, ConceptNamespaceMode, ConceptNode, CreateConceptDraft, GraphPayload, JsonPrimitive, JsonValue, KindDefinition, SourceLoc }
 
 export type UiMode = "plan" | "build" | "conceptualize"
 
@@ -134,17 +115,6 @@ export type ChatTransport = BaseChatTransport<UiMode>
 
 export type { ChatStreamEvent }
 
-export type KindDefinition = {
-  kind: string
-  description: string
-  source: "graph" | "options"
-}
-
-export type CreateConceptDraft = {
-  title: string
-  summary: string
-}
-
 export type CreateConceptModalState = {
   draft: CreateConceptDraft
   fieldIndex: number
@@ -186,18 +156,7 @@ export type ScopedContextModalState = {
 // - Extracted shell contracts live in `agent-tui`, while app-local state keeps the runtime flat.
 // This keeps the runtime `AppState` flat, but names the slices explicitly so new
 // code can depend on narrower contracts instead of the full state object.
-export type ConceptGraphState = {
-  jsonPath: string
-  graphPayload: GraphPayload
-  nodes: Map<string, ConceptNode>
-  projectFiles: string[]
-  projectDirectories: string[]
-  sourceFileCache: Map<string, string[]>
-  conceptNamespaceMode: ConceptNamespaceMode
-  currentParentPath: string
-  cursor: number
-  kindDefinitions: KindDefinition[]
-}
+export type ConceptGraphState = BaseConceptGraphState
 
 export type ModalTransientState = {
   createConceptModal: CreateConceptModalState | null

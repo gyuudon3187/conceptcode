@@ -27,7 +27,8 @@ Use this skill in conceptualize mode to consolidate two overlapping concepts int
 
 ## Validation and execution
 
-- Use the TypeScript scripts at `src/graph/merge-concepts-preflight.ts` and `src/graph/merge-concepts.ts`.
+- Use the TypeScript scripts at `packages/conceptcode/src/graph/merge-concepts-preflight.ts` and `packages/conceptcode/src/graph/merge-concepts.ts`.
+- Root `src/graph/merge-concepts-preflight.ts` and `src/graph/merge-concepts.ts` may still exist as compatibility wrappers, but the package paths are the primary implementation locations.
 - Run merge preflight before mutation and report the impact.
 - The preflight must report the survivor path, removed path, field conflicts, child collisions, subtree rewrite count, and `related_paths` rewrites across both namespaces.
 - Merges always require explicit confirmation after preflight.

@@ -26,7 +26,8 @@ Use this skill in conceptualize mode to rename an existing concept by changing i
 
 ## Validation and execution
 
-- Use the TypeScript scripts at `src/graph/rename-concept-preflight.ts` and `src/graph/rename-concept.ts`.
+- Use the TypeScript scripts at `packages/conceptcode/src/graph/rename-concept-preflight.ts` and `packages/conceptcode/src/graph/rename-concept.ts`.
+- Root `src/graph/rename-concept-preflight.ts` and `src/graph/rename-concept.ts` may still exist as compatibility wrappers, but the package paths are the primary implementation locations.
 - Run rename preflight before mutation and report the impact.
 - The preflight must report whether the concept exists, direct child count, descendant count, subtree path rewrites, and `related_paths` rewrites across both namespaces.
 - Renames always require explicit confirmation after preflight.

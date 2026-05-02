@@ -40,10 +40,12 @@ Add a safe, explicit `merge` workflow for consolidating overlapping concepts int
 
 ## Likely Files
 - `.opencode/skills/merge/SKILL.md`
-- new `src/graph/merge-concepts.ts`
-- new `src/graph/merge-concepts-preflight.ts`
-- `src/graph/analyze.ts`
-- `src/graph/rewrite-paths.ts`
+- primary implementation now lives under `packages/conceptcode/src/graph/`
+- `packages/conceptcode/src/graph/merge-concepts.ts`
+- `packages/conceptcode/src/graph/merge-concepts-preflight.ts`
+- `packages/conceptcode/src/graph/analyze.ts`
+- `packages/conceptcode/src/graph/rewrite-paths.ts`
+- root `src/graph/*` paths may still exist as compatibility wrappers
 - test files for graph operations
 - `src/prompt/editor.ts`
 
