@@ -86,8 +86,11 @@ describe("createCodingAgent", () => {
   })
 
   test("agent-level system prompt is prepended to every run", async () => {
+    const storageNamespace = `coding-agent-system-prompt-test-${basename(await mkdtemp(join(tmpdir(), "coding-agent-system-prompt-storage-")))}`
+    cleanupPaths.push(join(process.cwd(), `.${storageNamespace}`))
     const calls: CodingAgentMessage[][] = []
     const factory = createAgentFactory<"build">({
+      storageNamespace,
       modelFactory: async (): Promise<CodingAgentStreamingModel> => ({
         async *run(messages: CodingAgentMessage[]) {
           calls.push(messages)
