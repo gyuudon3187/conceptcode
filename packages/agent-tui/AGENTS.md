@@ -41,6 +41,8 @@ This package does not own app or domain concerns such as:
 - When adding types, distinguish clearly between package-owned shell contracts and host-app state wrappers.
 - Keep docs and tests in sync when changing exported package behavior.
 - Add or extend package-local tests for geometry, animation, routing, or renderer behavior when modifying those surfaces.
+- When debugging wide-layout pane width drift between feature views, inspect shared flex sizing in `src/render/frame.ts` before changing feature code; feature switches should swap content, not change the pane split.
+- In this shell, `minWidth: 0` on wide-layout row participants and an explicit `width: "100%"` basis on the shared main pane are important guards against intrinsic content width shifting the divider.
 
 ## Current known boundaries
 
