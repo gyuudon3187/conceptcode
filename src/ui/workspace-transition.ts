@@ -95,11 +95,19 @@ function renderAnimatedPane(rect: PaneRect, child: Renderable | VNode<any, any[]
   )
 }
 
+function renderAnimatedContentPane(rect: PaneRect, child: Renderable | VNode<any, any[]>): Renderable | VNode<any, any[]> {
+  return Box(
+    { position: "absolute", left: rect.left, top: rect.top, width: rect.width, height: rect.height, flexDirection: "column" },
+    child,
+  )
+}
+
 type TransitionWorkspacePaneContent = {
   sessionNode: Renderable | VNode<any, any[]>
   contextNode: Renderable | VNode<any, any[]>
   detailsNode: Renderable | VNode<any, any[]>
   conceptsNode: Renderable | VNode<any, any[]>
+  conceptsTitle: string
 }
 
 type TransitionPaneRenderer = (state: AppState, focus: WorkspaceFocus, rects: WorkspaceRects, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null) => TransitionWorkspacePaneContent | null
@@ -151,6 +159,7 @@ function renderTransitionOverlayFrame(
     Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
     Box(
       { position: "absolute", top: frame.frameTop, left: frame.frameLeft, width: frame.frameWidth, height: frame.frameHeight },
+      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: COLORS.bg }),
       ...children,
     ),
   ]
@@ -227,9 +236,9 @@ function renderConceptsToSessionOverlay(context: TransitionOverlayContext): Arra
 
   return renderTransitionOverlayFrame(fromWorkspaceRects, [
     renderAnimatedPane(sessionRectWithSoloGrowth, fromWorkspacePaneContent.sessionNode, COLORS.borderActive, progress > 0.35 ? "Session" : undefined),
-    ...(showDetailsPane ? [renderAnimatedPane(detailsRect, fromWorkspacePaneContent.detailsNode, COLORS.border, progress > 0.7 ? undefined : "Details")] : []),
-    renderAnimatedPane(conceptsRectWithSharedGap, fromWorkspacePaneContent.conceptsNode, COLORS.borderActive, "Concepts"),
-    ...(showContextPane ? [renderAnimatedPane(contextRect, toWorkspacePaneContent.contextNode, COLORS.border, progress > 0.45 ? "Context" : undefined)] : []),
+    ...(showDetailsPane ? [renderAnimatedContentPane(detailsRect, fromWorkspacePaneContent.detailsNode)] : []),
+    renderAnimatedPane(conceptsRectWithSharedGap, fromWorkspacePaneContent.conceptsNode, COLORS.borderActive, fromWorkspacePaneContent.conceptsTitle),
+    ...(showContextPane ? [renderAnimatedContentPane(contextRect, toWorkspacePaneContent.contextNode)] : []),
   ])
 }
 
@@ -307,16 +316,16 @@ function planSessionToConceptsRightStack(context: TransitionOverlayContext): Ses
 }
 
 function renderSessionToConceptsOverlay(context: TransitionOverlayContext): Array<Renderable | VNode<any, any[]>> {
-  const { transition, fromWorkspaceRects, fromWorkspacePaneContent, toWorkspacePaneContent } = context
+  const { transition, fromWorkspaceRects, toWorkspaceRects, fromWorkspacePaneContent, toWorkspacePaneContent } = context
   const progress = transition.progress
   const leftStack = planSessionToConceptsLeftStack(context)
   const rightStack = planSessionToConceptsRightStack(context)
 
   return renderTransitionOverlayFrame(fromWorkspaceRects, [
     renderAnimatedPane(rightStack.sessionRectWithSharedGap, fromWorkspacePaneContent.sessionNode, COLORS.borderActive, "Session"),
-    ...(leftStack.showContextPane ? [renderAnimatedPane(leftStack.contextRect, fromWorkspacePaneContent.contextNode, COLORS.border, progress > 0.7 ? undefined : "Context")] : []),
-    renderAnimatedPane(leftStack.conceptRectWithSoloGrowth, toWorkspacePaneContent.conceptsNode, transition.to === "concepts" ? COLORS.borderActive : COLORS.border, progress > 0.35 ? "Concepts" : undefined),
-    ...(rightStack.showDetailsPane ? [renderAnimatedPane(rightStack.detailsRect, toWorkspacePaneContent.detailsNode, COLORS.border, progress > 0.45 ? "Details" : undefined)] : []),
+    ...(leftStack.showContextPane ? [renderAnimatedContentPane(leftStack.contextRect, fromWorkspacePaneContent.contextNode)] : []),
+    renderAnimatedPane(leftStack.conceptRectWithSoloGrowth, toWorkspacePaneContent.conceptsNode, transition.to === "concepts" ? COLORS.borderActive : COLORS.border, progress > 0.35 ? toWorkspacePaneContent.conceptsTitle : undefined),
+    ...(rightStack.showDetailsPane ? [renderAnimatedContentPane(rightStack.detailsRect, toWorkspacePaneContent.detailsNode)] : []),
   ])
 }
 

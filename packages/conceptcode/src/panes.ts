@@ -82,17 +82,24 @@ function promptModePresentation(mode: ConceptCodePaneState["uiMode"], colors: Re
   return { label: "CONCEPTUALIZE", color: colors.conceptualize, tone: "Graph editing mode" }
 }
 
+function renderSupportSection(title: string, colors: Record<string, string>, children: Array<Renderable | VNode<any, any[]>>): Renderable | VNode<any, any[]> {
+  return Box(
+    { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
+    Text({ content: title, fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
+    Box({ width: "100%", flexGrow: 1, minHeight: 0, flexDirection: "column", gap: 1 }, ...children),
+  )
+}
+
 export function renderDetailsPane<TState extends ConceptCodePaneState>(state: TState, deps: PaneDeps<TState>): Renderable | VNode<any, any[]> {
   const node = deps.currentNode(state)
   const body = node.summary.trim() || "No summary for this concept yet."
   const metricText = (label: string, value: number | null): string => `${label} ${value === null ? "--" : `${Math.round(value * 100)}%`}`
   const showImplementationMetrics = node.namespace === "impl"
-  return Box(
-    { width: "100%", height: "100%", borderStyle: "rounded", borderColor: deps.colors.border, title: "Details", padding: 1, backgroundColor: deps.colors.panel, flexDirection: "column", gap: 1 },
+  return renderSupportSection("Details", deps.colors, [
     Box({ width: "100%", flexDirection: "row", justifyContent: "space-between" }, Text({ content: deps.truncateSingleLine(node.title, state.layoutMode === "wide" ? 24 : 18), fg: deps.colors.text, attributes: TextAttributes.BOLD }), Text({ content: node.kind ?? "(no kind)", fg: deps.colors.accentSoft })),
     ...(showImplementationMetrics ? [Box({ width: "100%", flexDirection: "row", gap: 2 }, Text({ content: metricText("Explored", node.explorationCoverage), fg: deps.colors.muted }), Text({ content: metricText("Summary", node.summaryConfidence), fg: deps.colors.muted }))] : []),
     Text({ content: body, fg: node.summary.trim() ? deps.colors.text : deps.colors.muted }),
-  )
+  ])
 }
 
 export function renderPromptPreviewPane<TState extends ConceptCodePaneState>(state: TState, deps: PaneDeps<TState>): Renderable | VNode<any, any[]> {
@@ -126,7 +133,10 @@ export function renderSessionTransitionBody<TState extends ConceptCodePaneState>
 export function renderDetailsTransitionBody<TState extends ConceptCodePaneState>(state: TState, deps: PaneDeps<TState>): Renderable | VNode<any, any[]> {
   const node = deps.currentNode(state)
   const body = deps.truncateSingleLine(node.summary.trim() || "No summary for this concept yet.", 42)
-  return Box({ width: "100%", height: "100%", flexDirection: "column", gap: 1 }, Box({ width: "100%", flexDirection: "row", justifyContent: "space-between" }, Text({ content: deps.truncateSingleLine(node.title, 22), fg: deps.colors.text, attributes: TextAttributes.BOLD }), Text({ content: node.kind ?? "(no kind)", fg: deps.colors.accentSoft })), Text({ content: body, fg: node.summary.trim() ? deps.colors.text : deps.colors.muted }))
+  return renderSupportSection("Details", deps.colors, [
+    Box({ width: "100%", flexDirection: "row", justifyContent: "space-between" }, Text({ content: deps.truncateSingleLine(node.title, 22), fg: deps.colors.text, attributes: TextAttributes.BOLD }), Text({ content: node.kind ?? "(no kind)", fg: deps.colors.accentSoft })),
+    Text({ content: body, fg: node.summary.trim() ? deps.colors.text : deps.colors.muted }),
+  ])
 }
 
 export function renderPromptPane<TState extends ConceptCodePaneState>(state: TState, promptScroll: ScrollBoxRenderable | null, deps: PaneDeps<TState>): Renderable | VNode<any, any[]> {

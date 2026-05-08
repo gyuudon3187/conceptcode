@@ -27,6 +27,22 @@ function currentViewport() {
 let contextRenderVersion = 0
 let contextPreviewKey: string | null = null
 
+function featureTabLabel(featureId: string): string {
+  if (featureId === "conceptcode") return "Concepts"
+  if (featureId === "symphony") return "Symphony"
+  return featureId
+}
+
+function renderFeatureTabTitle(state: Pick<AppState, "enabledPrimaryFeatureIds" | "activePrimaryFeatureId">): string {
+  const features = enabledPrimaryPaneFeatures(state)
+  if (features.length <= 1) {
+    return featureTabLabel(activePrimaryPaneFeature(state).id)
+  }
+  return features
+    .map((feature) => feature.id === state.activePrimaryFeatureId ? `[ ${featureTabLabel(feature.id)} ]` : featureTabLabel(feature.id))
+    .join("  ")
+}
+
 function contextKeyForNode(path: string, loc: { file: string; startLine: number; endLine: number } | null, summary: string): string {
   if (!loc) return `${path}::no-loc::${summary}`
   return `${path}::${loc.file}:${loc.startLine}-${loc.endLine}::${summary}`
@@ -96,14 +112,23 @@ function renderConceptsPaneContent(state: AppState, listScroll: ScrollBoxRendera
   return feature.renderPrimaryPaneContent(state, listScroll)
 }
 
-function renderTransitionPaneContentWithRects(state: AppState, focus: WorkspaceFocus, rects: WorkspaceRects, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): WorkspaceRects & { sessionNode: Renderable | VNode<any, any[]>; contextNode: Renderable | VNode<any, any[]>; detailsNode: Renderable | VNode<any, any[]>; conceptsNode: Renderable | VNode<any, any[]> } | null {
+function renderContextSupportPane(state: AppState): Renderable | VNode<any, any[]> {
+  return Box(
+    { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
+    Text({ content: "Context", fg: COLORS.accentSoft, attributes: TextAttributes.BOLD }),
+    Box({ width: "100%", flexGrow: 1, minHeight: 0 }, renderPromptBudgetPane(state)),
+  )
+}
+
+function renderTransitionPaneContentWithRects(state: AppState, focus: WorkspaceFocus, rects: WorkspaceRects, listScroll: ScrollBoxRenderable, mainScroll: ScrollBoxRenderable, promptScroll: ScrollBoxRenderable | null): WorkspaceRects & { sessionNode: Renderable | VNode<any, any[]>; contextNode: Renderable | VNode<any, any[]>; detailsNode: Renderable | VNode<any, any[]>; conceptsNode: Renderable | VNode<any, any[]>; conceptsTitle: string } | null {
   if (!rects) return null
   return {
     ...rects,
     sessionNode: renderSessionTransitionBody(state),
-    contextNode: renderPromptBudgetPane(state),
+    contextNode: renderContextSupportPane(state),
     detailsNode: renderDetailsTransitionBody(state),
     conceptsNode: focus === "concepts" ? Box({ width: "100%", height: "100%" }, listScroll) : Box({ width: "100%", height: "100%" }, mainScroll),
+    conceptsTitle: renderFeatureTabTitle(state),
   }
 }
 
@@ -127,11 +152,11 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   const conceptNamespace = conceptNamespacePresentation(state.conceptNamespaceMode)
   const activeFeature = activePrimaryPaneFeature(state)
   const enabledFeatureCount = enabledPrimaryPaneFeatures(state).length
-  const mainPaneTitle = activeFeature.primaryPaneTitle?.(state) ?? "Concepts"
+  const mainPaneTitle = renderFeatureTabTitle(state)
   const conceptsWorkspaceSupportTop = activeFeature.renderConceptsWorkspaceSupportTop?.(state) ?? renderDetailsPane(state)
   const mainPaneFooterStart = activeFeature.id === "conceptcode"
     ? Text({ content: conceptNamespace.label, fg: conceptNamespace.color, attributes: TextAttributes.BOLD })
-    : Text({ content: activeFeature.id.toUpperCase(), fg: COLORS.accent, attributes: TextAttributes.BOLD })
+    : Text({ content: featureTabLabel(activeFeature.id).toUpperCase(), fg: COLORS.accent, attributes: TextAttributes.BOLD })
   const mainPaneFooterEnd = Text({ content: enabledFeatureCount > 1 ? "[ / ] feature" : (state.conceptNavigationFocused ? "Tab namespace, Shift+Tab focus" : "Tab focus"), fg: COLORS.border })
   const overlays: Array<Renderable | VNode<any, any[]>> = []
   overlays.push(...renderAppOverlays(state))
@@ -165,7 +190,7 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
       },
       supportTop: state.conceptNavigationFocused
         ? { key: "details", content: conceptsWorkspaceSupportTop }
-        : { key: "context", title: "Context", shellFrame: true, content: renderPromptBudgetPane(state) },
+        : { key: "context", content: renderContextSupportPane(state) },
       supportBottom: state.conceptNavigationFocused
         ? { key: "session-preview", content: renderPromptPreviewPane(state) }
         : { key: "concept-preview", content: renderConceptPreviewPane(state) },
