@@ -84,6 +84,8 @@ type CreateInitialAppStateInput = {
   graphPayload: AppState["graphPayload"]
   nodes: AppState["nodes"]
   kindDefinitions: KindDefinition[]
+  enabledPrimaryFeatureIds: string[]
+  initialPrimaryFeatureId: string
   uiLayoutConfig?: Partial<UiLayoutConfig>
   projectFiles: string[]
   projectDirectories: string[]
@@ -126,6 +128,8 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
   const workspaceUiState: WorkspaceUiState = {
     layoutMode: "wide",
     uiLayoutConfig: resolvedUiLayoutConfig,
+    enabledPrimaryFeatureIds: input.enabledPrimaryFeatureIds,
+    activePrimaryFeatureId: input.initialPrimaryFeatureId,
     conceptNavigationFocused: false,
     startupDrawComplete: false,
     mainViewportHeight: 18,

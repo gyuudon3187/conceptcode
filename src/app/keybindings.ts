@@ -4,7 +4,7 @@ import { renderScopedContextDisplayLines } from "coding-agent"
 
 import { currentPath, scrollMain } from "../core/state"
 import type { AppState, InspectorKind } from "../core/types"
-import { handleBrowserKey, handleCtrlCKey } from "./commands"
+import { cyclePrimaryFeature, handleBrowserKey, handleCtrlCKey } from "./commands"
 import { closeScopedContextModal, openScopedContextModal } from "../coding-agent/overlay"
 import { handleCreateConceptModalKey, removeDraftConcept } from "../concepts/drafts"
 import { acceptPromptSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
@@ -140,6 +140,10 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
 
     if (state.pendingCtrlCExit) {
       state.pendingCtrlCExit = false
+    }
+
+    if (cyclePrimaryFeature(state, key, deps)) {
+      return
     }
 
     if (state.confirmModal) {

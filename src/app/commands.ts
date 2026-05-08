@@ -3,6 +3,7 @@ import type { CliRenderer, KeyEvent } from "@opentui/core"
 import { applySelectionChange, currentNode, currentPath, cycleConceptNamespaceMode, moveCursor, pageSize, scrollMain, visiblePaths } from "../core/state"
 import type { AppState, InspectorKind } from "../core/types"
 import { isDraftConcept, openCreateConceptModal, promptToRemoveDraft } from "../concepts/drafts"
+import { nextPrimaryFeatureId } from "../features"
 import { buildClipboardPayload } from "../prompt/payload"
 import { openSummaryEditor, syncPromptDraft } from "../prompt/editor"
 import { flushActiveSession, openSessionModal } from "../sessions/commands"
@@ -13,6 +14,39 @@ type PromptEditorDeps = {
   refreshPromptScroll: () => void
   schedulePromptScrollSync: (reason: string) => void
   refreshPromptPaneTarget: () => void
+}
+
+function matchesFeatureCycleKey(key: KeyEvent, direction: "next" | "previous"): boolean {
+  const names = direction === "next"
+    ? new Set(["]", "close_bracket", "right_bracket", "bracketright"])
+    : new Set(["[", "open_bracket", "left_bracket", "bracketleft"])
+  const sequences = direction === "next" ? new Set(["]"]) : new Set(["["])
+  return (typeof key.name === "string" && names.has(key.name)) || (typeof key.sequence === "string" && sequences.has(key.sequence))
+}
+
+export function cyclePrimaryFeature(state: AppState, key: KeyEvent, deps: Pick<AppCommandDeps, "draw">): boolean {
+  if (!state.conceptNavigationFocused || state.editorModal) {
+    return false
+  }
+  if (matchesFeatureCycleKey(key, "next")) {
+    const nextId = nextPrimaryFeatureId(state, 1)
+    if (!nextId) return false
+    key.preventDefault()
+    key.stopPropagation()
+    state.activePrimaryFeatureId = nextId
+    deps.draw()
+    return true
+  }
+  if (matchesFeatureCycleKey(key, "previous")) {
+    const nextId = nextPrimaryFeatureId(state, -1)
+    if (!nextId) return false
+    key.preventDefault()
+    key.stopPropagation()
+    state.activePrimaryFeatureId = nextId
+    deps.draw()
+    return true
+  }
+  return false
 }
 
 export type AppCommandDeps = {
@@ -55,6 +89,7 @@ export async function handleCtrlCKey(key: KeyEvent, deps: Pick<AppCommandDeps, "
 }
 
 export async function handleBrowserKey(state: AppState, key: KeyEvent, deps: AppCommandDeps): Promise<boolean> {
+  if (cyclePrimaryFeature(state, key, deps)) return true
   if (key.name === "tab") {
     key.preventDefault()
     key.stopPropagation()
@@ -186,7 +221,7 @@ export async function handleBrowserKey(state: AppState, key: KeyEvent, deps: App
     state.confirmModal = {
       kind: "remove-draft",
       title: "Help",
-      message: ["Browse: j/k move  h/l back/open  i prompt  Enter summary  Ctrl+S sessions  s/t/m inspect  Ctrl+M scoped context  y copy  p path  q quit"],
+      message: ["Browse: j/k move  h/l back/open  [/] feature  i prompt  Enter summary  Ctrl+S sessions  s/t/m inspect  Ctrl+M scoped context  y copy  p path  q quit"],
       confirmLabel: "dismisses help",
       path: currentPath(state),
     }

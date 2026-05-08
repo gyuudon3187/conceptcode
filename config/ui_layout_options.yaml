@@ -1,6 +1,12 @@
 kind_definitions:
   region: "Broad grouping or screen region"
 
+features:
+  enabled_primary_features:
+    - conceptcode
+    - symphony
+  initial_primary_feature: conceptcode
+
 ui_layout:
   # Main-pane width ratio when Concepts is the dominant workspace.
   # Increasing this makes the large Concepts pane wider and the right column narrower.

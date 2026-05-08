@@ -1,4 +1,5 @@
 import type { PromptReferenceMatch, PromptReferenceSpec } from "agent-tui/prompt"
+import type { Renderable, VNode, ScrollBoxRenderable } from "@opentui/core"
 
 import type { AppState, PromptSuggestionProvider } from "../core/types"
 
@@ -22,6 +23,9 @@ export type FeaturePromptResolver = (
 
 export type AppFeature = {
   id: string
+  primaryPaneTitle?: (state: AppState) => string
+  renderPrimaryPaneContent?: (state: AppState, listScroll: ScrollBoxRenderable) => Renderable | VNode<any, any[]>
+  renderConceptsWorkspaceSupportTop?: (state: AppState) => Renderable | VNode<any, any[]>
   promptReferenceSpecs?: PromptReferenceSpec<string>[]
   createPromptSuggestionProvider?: (state: AppState) => PromptSuggestionProvider
   createPromptResolvers?: (context: FeaturePromptResolverContext) => Record<string, FeaturePromptResolver>

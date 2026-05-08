@@ -34,6 +34,12 @@
       ],
       "conceptcode/*": [
         "./packages/conceptcode/src/*"
+      ],
+      "symphony": [
+        "./packages/symphony/src/index.ts"
+      ],
+      "symphony/*": [
+        "./packages/symphony/src/*"
       ]
     }
   },

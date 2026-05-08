@@ -16,6 +16,7 @@
     "@opentui/core": "^0.1.96",
     "coding-agent": "file:packages/coding-agent",
     "conceptcode": "file:packages/conceptcode",
+    "symphony": "file:packages/symphony",
     "js-tiktoken": "^1.0.21",
     "shiki": "^3.2.1"
   },

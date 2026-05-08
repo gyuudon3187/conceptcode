@@ -42,13 +42,15 @@ function closeInspector(state: AppState): void {
 
 async function main(): Promise<void> {
   const { conceptsPath, optionsPath } = parseArgs(process.argv.slice(2))
-  const { graphPayload, nodes, kindDefinitions, uiLayoutConfig } = loadConceptGraph(conceptsPath, optionsPath)
+  const { graphPayload, nodes, kindDefinitions, uiLayoutConfig, primaryFeatureConfig } = loadConceptGraph(conceptsPath, optionsPath)
   const { projectFiles, projectDirectories } = await loadProjectPaths(process.cwd())
   const state: AppState = await createInitialAppState({
     conceptsPath,
     graphPayload,
     nodes,
     kindDefinitions,
+    enabledPrimaryFeatureIds: primaryFeatureConfig.enabledPrimaryFeatureIds,
+    initialPrimaryFeatureId: primaryFeatureConfig.initialPrimaryFeatureId,
     uiLayoutConfig,
     projectFiles,
     projectDirectories,

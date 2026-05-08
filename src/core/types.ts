@@ -181,6 +181,8 @@ export type PromptEditorUiState = {
 export type WorkspaceUiState = {
   layoutMode: LayoutMode
   uiLayoutConfig: UiLayoutConfig
+  enabledPrimaryFeatureIds: string[]
+  activePrimaryFeatureId: string
   conceptNavigationFocused: boolean
   startupDrawComplete: boolean
   mainViewportHeight: number
