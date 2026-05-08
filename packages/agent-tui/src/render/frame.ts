@@ -50,16 +50,16 @@ export function renderWorkspaceFrame(
   overlays: Array<Renderable | VNode<any, any[]>>,
 ): Renderable | VNode<any, any[]> {
   const sidebarOptions = viewModel.layoutMode === "wide" && viewModel.sidebarWidth !== null
-    ? { width: viewModel.sidebarWidth, flexBasis: viewModel.sidebarWidth, minWidth: 24, flexGrow: 1, flexShrink: 1, flexDirection: "column" as const, gap: 1 }
+    ? { width: viewModel.sidebarWidth, flexBasis: viewModel.sidebarWidth, minWidth: 0, flexGrow: 1, flexShrink: 1, flexDirection: "column" as const, gap: 1 }
     : { width: "100%" as const, flexGrow: 0, flexShrink: 0, flexDirection: "column" as const, gap: 1 }
   const supportColumn = Box(
     { ...sidebarOptions, height: "100%" },
-    renderSupportPane(panes.supportTop, { width: "100%", minHeight: viewModel.supportHeight, maxHeight: viewModel.supportHeight, flexDirection: "column" }),
-    renderSupportPane(panes.supportBottom, { width: "100%", flexGrow: 1, minHeight: viewModel.previewHeight, flexDirection: "column" }),
+    renderSupportPane(panes.supportTop, { width: "100%", minWidth: 0, minHeight: viewModel.supportHeight, maxHeight: viewModel.supportHeight, flexDirection: "column" }),
+    renderSupportPane(panes.supportBottom, { width: "100%", minWidth: 0, flexGrow: 1, minHeight: viewModel.previewHeight, flexDirection: "column" }),
   )
-  const mainPane = renderPane(panes.main, { flexGrow: 1 })
+  const mainPane = renderPane(panes.main, { width: "100%", flexGrow: 1, flexShrink: 1, minWidth: 0 })
   const sessionOptions = viewModel.layoutMode === "wide" && viewModel.promptPaneWidth !== null
-    ? { width: viewModel.promptPaneWidth, flexBasis: viewModel.promptPaneWidth, minWidth: 24, flexGrow: 0, flexShrink: 0 }
+    ? { width: viewModel.promptPaneWidth, flexBasis: viewModel.promptPaneWidth, minWidth: 0, flexGrow: 0, flexShrink: 0 }
     : { width: "100%" as const, flexGrow: 0, flexShrink: 0 }
   const sessionPane = renderPane(panes.session, { ...sessionOptions, gap: 1 })
 
