@@ -29,7 +29,7 @@ let contextPreviewKey: string | null = null
 
 function featureTabLabel(featureId: string): string {
   if (featureId === "conceptcode") return "Concepts"
-  if (featureId === "symphony") return "Symphony"
+  if (featureId === "symphony") return "Tasks"
   return featureId
 }
 

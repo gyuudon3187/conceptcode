@@ -36,7 +36,7 @@ export const ACTIVE_FEATURES: AppFeature[] = [
   },
   {
     id: "symphony",
-    primaryPaneTitle: () => "Symphony",
+    primaryPaneTitle: () => "Tasks",
     renderPrimaryPaneContent: (state) => renderSymphonyPrimaryPane(state),
     renderConceptsWorkspaceSupportTop: () => renderSymphonySupportTopPane(),
   },

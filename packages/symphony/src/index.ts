@@ -36,7 +36,7 @@ export function renderSymphonyPrimaryPane(state: SymphonyState): Renderable | VN
 export function renderSymphonySupportTopPane(): Renderable | VNode<any, any[]> {
   return Box(
     { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
-    Text({ content: "Symphony", fg: "#b48ead", attributes: TextAttributes.BOLD }),
+    Text({ content: "Tasks", fg: "#b48ead", attributes: TextAttributes.BOLD }),
     Text({ content: "No feature-specific details panel is defined yet.", fg: "#a7b1bf" }),
   )
 }
