@@ -103,6 +103,8 @@ const graphMessages = applyPrimaryAgentToMessages([{ role: "user", content: "res
 
 `coding-agent` can also resolve directory-scoped markdown context under `.coding-agent/contexts` when the host wants to inject local guidance into a run.
 
+This directory is runtime workspace input for the agent host to read during a run, not a general place to store maintainer guidance for the `coding-agent` package itself.
+
 - Discovery walks from an active directory upward to the workspace root.
 - Each matching `.coding-agent/contexts` directory contributes its markdown files in broad-to-narrow order.
 - Files without a `description` frontmatter field are loaded eagerly and their full body can be injected into the prompt.
