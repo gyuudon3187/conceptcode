@@ -9,6 +9,9 @@ import { COLORS } from "../ui/theme"
 
 export function renderConceptSummaryEditorOverlay(state: AppState): Array<Renderable | VNode<any, any[]>> {
   if (!(state.editorModal && state.editorModal.target.kind !== "prompt")) return []
+  const title = state.editorModal.target.kind === "feature-buffer"
+    ? `Edit Command Body: ${state.editorModal.target.path}`
+    : `Edit Summary: ${state.editorModal.target.path}`
   return [
     renderOverlayBackdrop("66"),
     renderOverlayCard(
@@ -19,7 +22,7 @@ export function renderConceptSummaryEditorOverlay(state: AppState): Array<Render
         marginLeft: state.layoutMode === "wide" ? -42 : undefined,
       },
       [
-        Text({ content: `Edit Summary: ${state.editorModal.target.path}`, fg: COLORS.accent, attributes: TextAttributes.BOLD }),
+        Text({ content: title, fg: COLORS.accent, attributes: TextAttributes.BOLD }),
         Box({ width: "100%", minHeight: state.editorModal.visibleLineCount + 2, maxHeight: state.editorModal.visibleLineCount + 2, backgroundColor: COLORS.panelSoft, flexDirection: "column" }, state.editorModal.renderable),
       ],
     ),

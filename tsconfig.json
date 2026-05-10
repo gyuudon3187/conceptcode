@@ -23,6 +23,12 @@
       "agent-chat/*": [
         "./packages/agent-chat/src/*"
       ],
+      "archon": [
+        "./packages/archon/src/index.ts"
+      ],
+      "archon/*": [
+        "./packages/archon/src/*"
+      ],
       "coding-agent": [
         "./packages/coding-agent/src/index.ts"
       ],

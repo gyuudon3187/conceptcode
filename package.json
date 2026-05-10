@@ -14,6 +14,7 @@
     "agent-tui": "file:packages/agent-tui",
     "agent-chat": "file:packages/agent-chat",
     "@opentui/core": "^0.1.96",
+    "archon": "file:packages/archon",
     "coding-agent": "file:packages/coding-agent",
     "conceptcode": "file:packages/conceptcode",
     "symphony": "file:packages/symphony",

@@ -10,11 +10,10 @@ export async function copyWithStatus(state: AppState, payload: string, deps: Cop
   const result = await copyToClipboard(payload)
   if (!result.ok) {
     state.confirmModal = {
-      kind: "remove-draft",
+      kind: "message",
       title: "Clipboard Error",
       message: [result.message],
       confirmLabel: "dismisses this message",
-      path: currentPath(state),
     }
     deps.draw()
   }

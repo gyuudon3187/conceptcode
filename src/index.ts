@@ -9,9 +9,9 @@ import { createWorkspaceController } from "./app/workspace"
 import { openScopedContextModal } from "./coding-agent/overlay"
 import { loadConceptGraph } from "./core/model"
 import { clampCursor, handleResize, workspaceUiState } from "./core/state"
-import type { AppState, InspectorKind } from "./core/types"
+import type { AppState, BufferModalTarget, InspectorKind } from "./core/types"
 import { openExternalEditor } from "./platform/editor"
-import { applyEditorText, openPromptEditor, syncPromptDraft } from "./prompt/editor"
+import { applyEditorText, openEditor, openPromptEditor, syncPromptDraft } from "./prompt/editor"
 import { createPromptThreadController } from "./prompt/thread"
 import { activeSession } from "./sessions/store"
 import { scrollListForCursor } from "./ui/concepts-list"
@@ -52,6 +52,7 @@ async function main(): Promise<void> {
     enabledPrimaryFeatureIds: primaryFeatureConfig.enabledPrimaryFeatureIds,
     initialPrimaryFeatureId: primaryFeatureConfig.initialPrimaryFeatureId,
     uiLayoutConfig,
+    workspaceRoot: process.cwd(),
     projectFiles,
     projectDirectories,
   })
@@ -150,6 +151,7 @@ async function main(): Promise<void> {
       openExternalEditor,
       clearCtrlCExitState: clearExitState,
       copyWithStatus: (payload: string) => copyWithStatus(state, payload, { draw }),
+      openBufferEditor: (target: Exclude<BufferModalTarget, { kind: "prompt" }>, initialText: string) => openEditor(state, renderer, target, initialText, createPromptEditorDeps()),
       updateCreateDraftText,
       closeConfirmModal,
       openInspector: (kind: InspectorKind) => openInspector(state, kind),

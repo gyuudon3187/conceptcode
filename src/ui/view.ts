@@ -7,7 +7,7 @@ import { currentNode } from "../core/state"
 import type { AppState } from "../core/types"
 import { workspaceUiState } from "../core/state"
 import { inspectorOverlayViewModel, renderAppOverlays } from "../conceptcode-ui/overlays"
-import { activePrimaryPaneFeature, enabledPrimaryPaneFeatures } from "../features"
+import { activePrimaryPaneFeature, enabledPrimaryPaneFeatures, featureById } from "../features"
 import { activeSession } from "../sessions/store"
 import { renderConceptPreviewPane, renderDetailsPane, renderDetailsTransitionBody, renderPromptBudgetPane, renderPromptPane, renderPromptPreviewPane, renderPromptSuggestionOverlay, renderSessionTransitionBody } from "../conceptcode-ui/panes"
 import { renderConceptList } from "./concepts-list"
@@ -28,9 +28,7 @@ let contextRenderVersion = 0
 let contextPreviewKey: string | null = null
 
 function featureTabLabel(featureId: string): string {
-  if (featureId === "conceptcode") return "Concepts"
-  if (featureId === "symphony") return "Tasks"
-  return featureId
+  return featureById(featureId)?.tabLabel ?? featureId
 }
 
 function renderFeatureTabTitle(state: Pick<AppState, "enabledPrimaryFeatureIds" | "activePrimaryFeatureId">): string {
@@ -112,6 +110,11 @@ function renderConceptsPaneContent(state: AppState, listScroll: ScrollBoxRendera
   return feature.renderPrimaryPaneContent(state, listScroll)
 }
 
+function renderPrimaryPaneListContent(state: AppState): Renderable | VNode<any, any[]> {
+  const feature = activePrimaryPaneFeature(state)
+  return feature.renderPrimaryPaneList?.(state) ?? renderConceptList(state)
+}
+
 function renderContextSupportPane(state: AppState): Renderable | VNode<any, any[]> {
   return Box(
     { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
@@ -157,7 +160,8 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   const mainPaneFooterStart = activeFeature.id === "conceptcode"
     ? Text({ content: conceptNamespace.label, fg: conceptNamespace.color, attributes: TextAttributes.BOLD })
     : Text({ content: featureTabLabel(activeFeature.id).toUpperCase(), fg: COLORS.accent, attributes: TextAttributes.BOLD })
-  const mainPaneFooterEnd = Text({ content: enabledFeatureCount > 1 ? "[ / ] feature" : (state.conceptNavigationFocused ? "Tab namespace, Shift+Tab focus" : "Tab focus"), fg: COLORS.border })
+  const featureFooterHint = activeFeature.browseFooterHint?.(state) ?? (state.conceptNavigationFocused ? "Tab namespace, Shift+Tab focus" : "Tab focus")
+  const mainPaneFooterEnd = Text({ content: enabledFeatureCount > 1 ? `[ / ] feature  ${featureFooterHint}` : featureFooterHint, fg: COLORS.border })
   const overlays: Array<Renderable | VNode<any, any[]>> = []
   overlays.push(...renderAppOverlays(state))
   overlays.push(...renderInspectorOverlay(inspectorOverlayViewModel(state), mainScroll))
@@ -166,6 +170,7 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   if (state.createConceptModal) {
     overlays.push(...renderCreateConceptModal(state, state.createConceptModal))
   }
+  overlays.push(...(activeFeature.renderFeatureOverlays?.(state) ?? []))
   overlays.push(...renderSessionModal(state))
   overlays.push(...renderConfirmModal(state))
   overlays.push(...renderWorkspaceTransitionOverlay(state, {
@@ -221,7 +226,7 @@ export function repaint(state: AppState, listScroll: ScrollBoxRenderable, mainSc
 
   replaceChildren(
     listScroll,
-    renderConceptList(state),
+    renderPrimaryPaneListContent(state),
   )
 
   if (shouldRefreshContext) {

@@ -52,6 +52,7 @@ The core idea is that a human or LLM can refer to a concept by a stable derived 
 - Treat the root `src/` tree as the orchestration shell, not as the primary home of ConceptCode feature logic.
 - Prefer implementing ConceptCode-specific changes in `packages/conceptcode/` unless the work is clearly about shell orchestration, session hosting, prompt hosting, or cross-feature coordination.
 - Some root modules remain as compatibility wrappers around `packages/conceptcode`; preserve those wrappers unless there is a concrete migration reason to remove them.
+- The root shell now has generic feature-owned seams for overlays, modal key handling, confirm handling, and feature-buffer editor application; prefer using those seams before adding new feature-specific branches in `src/app/`, `src/ui/`, or `src/prompt/`.
 
 ## Session storage note
 

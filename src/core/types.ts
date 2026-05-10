@@ -12,6 +12,7 @@ import type {
 
 import type { Timeline } from "@opentui/core"
 import type { RGBA } from "@opentui/core"
+import type { ArchonState } from "archon"
 import type {
   ConceptGraphState as BaseConceptGraphState,
   ConceptNamespace,
@@ -56,8 +57,10 @@ export type ListLine = {
 }
 
 export type BufferModalTarget = {
-  kind: "prompt" | "concept-summary"
+  kind: "prompt" | "concept-summary" | "feature-buffer"
   path?: string
+  featureId?: string
+  targetId?: string
 }
 
 export type InspectorState = {
@@ -125,6 +128,12 @@ export type CreateConceptModalState = {
 
 export type ConfirmModalState =
   | {
+      kind: "message"
+      title: string
+      message: string[]
+      confirmLabel: string
+    }
+  | {
       kind: "remove-draft"
       title: string
       message: string[]
@@ -137,6 +146,15 @@ export type ConfirmModalState =
       message: string[]
       confirmLabel: string
       sessionId: string
+    }
+  | {
+      kind: "archon-delete"
+      title: string
+      message: string[]
+      confirmLabel: string
+      targetPath: string
+      targetType: "workflow" | "command" | "workflow-node"
+      targetNodeId?: string
     }
 
 export type SessionModalState = {
@@ -213,6 +231,7 @@ export type PromptEditorHostState = Pick<
 export type SessionModalHostState = Pick<WorkspaceUiState, "layoutMode"> & Pick<SessionChatState, "sessions" | "activeSessionId"> & Pick<ModalTransientState, "sessionModal">
 
 export type AppState = ConceptGraphState &
+  { archon: ArchonState } &
   ModalTransientState &
   PromptEditorUiState &
   WorkspaceUiState &

@@ -97,6 +97,7 @@ export function renderCreateConceptModal(state: AppState, modal: CreateConceptMo
 
 export function renderConfirmModal(state: AppState): Array<Renderable | VNode<any, any[]>> {
   if (!state.confirmModal) return []
+  const confirmHint = state.confirmModal.kind === "message" ? "Enter -> Close  Esc -> Close" : "Enter -> Confirm  Esc -> Close"
   return [
     renderOverlayBackdrop(),
     renderOverlayCard(
@@ -109,7 +110,7 @@ export function renderConfirmModal(state: AppState): Array<Renderable | VNode<an
       [
         Text({ content: state.confirmModal.title, fg: COLORS.accent, attributes: TextAttributes.BOLD }),
         ...state.confirmModal.message.map((line) => Text({ content: line, fg: COLORS.text })),
-        Text({ content: "Enter -> Remove  Esc -> Close", fg: COLORS.muted }),
+        Text({ content: confirmHint, fg: COLORS.muted }),
       ],
       { backgroundColor: COLORS.panelSoft },
     ),

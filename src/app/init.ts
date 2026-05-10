@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises"
 
 import type { UiLayoutConfig } from "agent-tui/types"
+import type { ArchonState } from "archon"
 
 import type {
   AppState,
@@ -14,6 +15,7 @@ import type {
 import { createCodingAgentChatTransport } from "../platform/coding-agent"
 import { EMPTY_PROMPT_TOKEN_BREAKDOWN } from "../prompt/payload"
 import { loadSessions } from "../sessions/store"
+import { discoverArchonCatalog } from "archon"
 
 export const DEFAULT_UI_LAYOUT_CONFIG: UiLayoutConfig = {
   collapsedPromptRatio: 0.34,
@@ -87,12 +89,14 @@ type CreateInitialAppStateInput = {
   enabledPrimaryFeatureIds: string[]
   initialPrimaryFeatureId: string
   uiLayoutConfig?: Partial<UiLayoutConfig>
+  workspaceRoot: string
   projectFiles: string[]
   projectDirectories: string[]
 }
 
 export async function createInitialAppState(input: CreateInitialAppStateInput): Promise<AppState> {
   const { sessions, activeSessionId } = await loadSessions(input.conceptsPath, "plan")
+  const archonCatalog = await discoverArchonCatalog(input.workspaceRoot)
   const resolvedUiLayoutConfig: UiLayoutConfig = { ...DEFAULT_UI_LAYOUT_CONFIG, ...input.uiLayoutConfig }
   const initialNamespaceMode = input.nodes.has("impl") ? "implementation" : "domain"
   const conceptGraphState: ConceptGraphState = {
@@ -148,8 +152,21 @@ export async function createInitialAppState(input: CreateInitialAppStateInput): 
     activeResponseId: null,
     activeAssistantMessageId: null,
   }
+  const archonState: ArchonState = {
+    workspaceRoot: input.workspaceRoot,
+    catalog: archonCatalog,
+    submode: "workflows",
+    selectedWorkflowPath: archonCatalog.workflows[0]?.path ?? null,
+    selectedCommandPath: archonCatalog.commands[0]?.path ?? null,
+    selectedWorkflowNodeId: archonCatalog.workflows[0]?.workflow?.nodes[0]?.id ?? null,
+    dirtyPaths: [],
+    pendingDeletePaths: [],
+    metadataModal: null,
+    nodeModal: null,
+  }
   const state: AppState = {
     ...conceptGraphState,
+    archon: archonState,
     ...modalTransientState,
     ...promptEditorUiState,
     ...workspaceUiState,

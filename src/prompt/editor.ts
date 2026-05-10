@@ -2,6 +2,7 @@ import { RGBA, SyntaxStyle, TextareaRenderable, type Highlight, type CliRenderer
 
 import { currentNode } from "../core/state"
 import type { AppState, EditorModalState, PromptSuggestionEntry, PromptSuggestionProvider } from "../core/types"
+import { featureById } from "../features"
 import {
   findAppPromptReferenceAt,
   findAppPromptReferenceEndingAt,
@@ -205,6 +206,12 @@ export function applyEditorText(state: AppState, editor: EditorModalState): void
   if (editor.target.kind === "prompt") {
     syncPromptDraft(state, editor)
     return
+  }
+  if (editor.target.kind === "feature-buffer") {
+    if (editor.target.featureId) {
+      const handled = featureById(editor.target.featureId)?.applyEditorText?.(state, editor) ?? false
+      if (handled) return
+    }
   }
   if (editor.target.path) {
     const node = state.nodes.get(editor.target.path)

@@ -3,10 +3,11 @@ import { confirmOrCancelCommand, inspectorCommand, moveShellListSelection, sessi
 import { renderScopedContextDisplayLines } from "coding-agent"
 
 import { currentPath, scrollMain } from "../core/state"
-import type { AppState, InspectorKind } from "../core/types"
+import type { AppState, BufferModalTarget, InspectorKind } from "../core/types"
 import { cyclePrimaryFeature, handleBrowserKey, handleCtrlCKey } from "./commands"
 import { closeScopedContextModal, openScopedContextModal } from "../coding-agent/overlay"
 import { handleCreateConceptModalKey, removeDraftConcept } from "../concepts/drafts"
+import { activePrimaryPaneFeature } from "../features"
 import { acceptPromptSuggestion, applyEditorText, cyclePromptMode, handlePromptAliasBoundaryKey, movePromptSuggestionSelection, refreshPromptSuggestion, refreshPromptSuggestionSoon, refreshEditorModalHeight, syncPromptDraft } from "../prompt/editor"
 import { appPromptSuggestionProvider } from "../prompt/provider"
 import { closeSessionModal, createAndSwitchSession, deleteSession, openSessionModal, promptToDeleteSession, sessionModalEntries, switchToSession } from "../sessions/commands"
@@ -26,6 +27,7 @@ type KeybindingDeps = {
   openExternalEditor: (initialText: string) => Promise<string>
   clearCtrlCExitState: () => void
   copyWithStatus: (payload: string) => Promise<void>
+  openBufferEditor: (target: Exclude<BufferModalTarget, { kind: "prompt" }>, initialText: string) => void
   updateCreateDraftText: (key: KeyEvent) => boolean
   closeConfirmModal: () => void
   openInspector: (kind: InspectorKind) => void
@@ -49,7 +51,7 @@ function scopedContextContentHeight(layoutMode: AppState["layoutMode"], viewport
   return Math.max(1, height - 6)
 }
 
-export function handleConfirmModalKey(state: AppState, key: KeyEvent, deps: Pick<KeybindingDeps, "draw" | "closeConfirmModal">): boolean {
+export async function handleConfirmModalKey(state: AppState, key: KeyEvent, deps: Pick<KeybindingDeps, "draw" | "closeConfirmModal">): Promise<boolean> {
   const modal = state.confirmModal
   if (!modal) return false
   const command = confirmOrCancelCommand(key)
@@ -59,12 +61,18 @@ export function handleConfirmModalKey(state: AppState, key: KeyEvent, deps: Pick
     return true
   }
   if (command?.kind === "confirm") {
+    if (modal.kind === "message") {
+      deps.closeConfirmModal()
+      deps.draw()
+      return true
+    }
     if (modal.kind === "remove-draft") {
       removeDraftConcept(state, modal.path)
     }
     if (modal.kind === "delete-session") {
       void deleteSession(state, modal.sessionId)
     }
+    if (await activePrimaryPaneFeature(state).handleConfirmModal?.(state, modal, deps)) return true
     deps.closeConfirmModal()
     deps.draw()
     return true
@@ -147,7 +155,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
     }
 
     if (state.confirmModal) {
-      handleConfirmModalKey(state, key, deps)
+      await handleConfirmModalKey(state, key, deps)
       return
     }
     if (state.sessionModal) {
@@ -212,6 +220,9 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
     }
     if (state.createConceptModal) {
       handleCreateConceptModalKey(state, key, { draw: deps.draw, updateCreateDraftText: deps.updateCreateDraftText })
+      return
+    }
+    if (await activePrimaryPaneFeature(state).handleModalKey?.(state, key, { draw: deps.draw })) {
       return
     }
     if (state.editorModal) {
@@ -293,11 +304,10 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
             await deps.remountRenderer()
           }
           state.confirmModal = {
-            kind: "remove-draft",
+            kind: "message",
             title: "Editor Error",
             message: [message],
             confirmLabel: "dismisses this message",
-            path: currentPath(state),
           }
         }
         deps.draw()
@@ -339,6 +349,7 @@ export function bindKeyHandler(deps: KeybindingDeps): void {
         draw: deps.draw,
         clearCtrlCExitState: deps.clearCtrlCExitState,
         copyWithStatus: deps.copyWithStatus,
+        openBufferEditor: deps.openBufferEditor,
         openInspector: deps.openInspector,
         openScopedContextModal: deps.openScopedContextModal,
         buildPromptEditorDeps: deps.buildPromptEditorDeps,
