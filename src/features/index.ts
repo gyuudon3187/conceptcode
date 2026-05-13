@@ -27,7 +27,7 @@ export const ACTIVE_FEATURES: AppFeature[] = [
     renderPrimaryPaneContent: (state, listScroll) => (state.conceptNavigationFocused ? listScroll : renderPromptBudgetPane(state)),
     renderConceptsWorkspaceSupportTop: (state) => renderDetailsPane(state),
     browseHelpText: "Browse: j/k move  h/l back/open  [/] feature  i prompt  Enter summary  Ctrl+S sessions  s/t/m inspect  Ctrl+M scoped context  y copy  p path  q quit",
-    browseFooterHint: (state) => state.conceptNavigationFocused ? "Tab namespace, Shift+Tab focus" : "Tab focus",
+    browseFooterHint: (state) => state.conceptNavigationFocused ? "Tab namespace" : "",
     handleBrowserKey: handleConceptCodeBrowserKey,
     promptReferenceSpecs: CONCEPT_CODE_PROMPT_REFERENCE_SPECS,
     createPromptSuggestionProvider: (state) => {
@@ -55,7 +55,14 @@ export const ACTIVE_FEATURES: AppFeature[] = [
     renderConceptsWorkspaceSupportTop: (state) => renderArchonSupportTopPane(archonState(state), COLORS),
     renderFeatureOverlays: (state) => renderFeatureOverlays(state.archon, state.layoutMode, COLORS),
     browseHelpText: "Browse: j/k move  l enter workflow nodes  h back  n create item or node  e edit item or node  Enter edit command body or workflow node  Shift+J/K move node  d delete  s save  [/] feature  Shift+Tab focus  q quit",
-    browseFooterHint: (state) => `${state.archon.dirtyPaths.length > 0 ? `${state.archon.dirtyPaths.length} dirty  ` : ""}Tab workflows/commands, Shift+Tab focus`,
+    browseFooterHint: (state) => {
+      const createHint = state.archon.submode === "commands"
+        ? "n new command"
+        : state.archon.selectedWorkflowNodeId
+          ? "n new node"
+          : "n new workflow"
+      return `${createHint}  Tab workflows/commands`
+    },
     handleBrowserKey: handleArchonBrowserKey,
     handleModalKey: (state, key, deps) => {
       const handled = handleArchonModalKey(state.archon, key)
@@ -82,7 +89,7 @@ export const ACTIVE_FEATURES: AppFeature[] = [
     renderPrimaryPaneContent: (state) => renderSymphonyPrimaryPane(state),
     renderConceptsWorkspaceSupportTop: () => renderSymphonySupportTopPane(),
     browseHelpText: "Browse: [/] feature  Shift+Tab focus  q quit",
-    browseFooterHint: () => "Shift+Tab focus",
+    browseFooterHint: () => "",
   },
 ]
 

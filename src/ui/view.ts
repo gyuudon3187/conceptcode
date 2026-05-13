@@ -154,14 +154,13 @@ export function renderFrame(state: AppState, listScroll: ScrollBoxRenderable, ma
   const conceptsContent = renderConceptsPaneContent(state, listScroll)
   const conceptNamespace = conceptNamespacePresentation(state.conceptNamespaceMode)
   const activeFeature = activePrimaryPaneFeature(state)
-  const enabledFeatureCount = enabledPrimaryPaneFeatures(state).length
   const mainPaneTitle = renderFeatureTabTitle(state)
   const conceptsWorkspaceSupportTop = activeFeature.renderConceptsWorkspaceSupportTop?.(state) ?? renderDetailsPane(state)
   const mainPaneFooterStart = activeFeature.id === "conceptcode"
     ? Text({ content: conceptNamespace.label, fg: conceptNamespace.color, attributes: TextAttributes.BOLD })
     : Text({ content: featureTabLabel(activeFeature.id).toUpperCase(), fg: COLORS.accent, attributes: TextAttributes.BOLD })
   const featureFooterHint = activeFeature.browseFooterHint?.(state) ?? (state.conceptNavigationFocused ? "Tab namespace, Shift+Tab focus" : "Tab focus")
-  const mainPaneFooterEnd = Text({ content: enabledFeatureCount > 1 ? `[ / ] feature  ${featureFooterHint}` : featureFooterHint, fg: COLORS.border })
+  const mainPaneFooterEnd = Text({ content: featureFooterHint, fg: COLORS.border })
   const overlays: Array<Renderable | VNode<any, any[]>> = []
   overlays.push(...renderAppOverlays(state))
   overlays.push(...renderInspectorOverlay(inspectorOverlayViewModel(state), mainScroll))

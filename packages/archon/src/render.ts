@@ -39,7 +39,14 @@ function badgeText(entry: { path: string; findings: Array<{ severity: "error" | 
   return badges
 }
 
-function renderCatalogRow(label: string, subtitle: string, selected: boolean, badges: { text: string; color: string }[], colors: RenderColors): Renderable | VNode<any, any[]> {
+function renderCatalogRow(
+  label: string,
+  subtitle: string,
+  selected: boolean,
+  badges: { text: string; color: string }[],
+  colors: RenderColors,
+  actionHint?: string,
+): Renderable | VNode<any, any[]> {
   return Box(
     { width: "100%", paddingX: 1, backgroundColor: selected ? colors.selectedBg : undefined, flexDirection: "column" },
     Box(
@@ -48,6 +55,7 @@ function renderCatalogRow(label: string, subtitle: string, selected: boolean, ba
       Box(
         { flexDirection: "row", gap: 1 },
         ...badges.map((badge) => Text({ content: badge.text, fg: badge.color === "error" ? colors.error : colors.warning, attributes: TextAttributes.BOLD })),
+        ...(selected && actionHint ? [Text({ content: actionHint, fg: colors.selectedFg, attributes: TextAttributes.BOLD })] : []),
       ),
     ),
     Text({ content: subtitle, fg: selected ? colors.selectedFg : colors.muted }),
@@ -209,6 +217,7 @@ export function renderArchonPrimaryPane(state: ArchonRenderState, colors: Render
             entry.path === selectedPath,
             badgeText(entry, state.dirtyPaths),
             colors,
+            "[E]dit  [D]elete",
           )),
         ),
     ...(isWorkflowMode && selectedWorkflowEntry?.workflow

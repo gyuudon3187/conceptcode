@@ -140,7 +140,7 @@ describe("feature metadata and save planning", () => {
     expect(state.catalog.workflows[0]?.workflow?.tags).toEqual(["prod", "release"])
   })
 
-  test("does not type into the selected field until an editor is opened", () => {
+  test("typing an alphanumeric character opens a text editor seeded with that input", () => {
     const state = createState()
 
     openCreateItemModal(state)
@@ -149,7 +149,7 @@ describe("feature metadata and save planning", () => {
     handleModalKey(state, { name: "a", sequence: "a" } as never)
 
     expect(state.metadataModal.values.name).toBe("")
-    expect(state.metadataModal.editor).toBeNull()
+    expect(state.metadataModal.editor).toEqual({ kind: "text", field: "name", draft: "a" })
   })
 
   test("opens a text editor for free-text fields and commits on enter", () => {
@@ -285,7 +285,7 @@ describe("feature metadata and save planning", () => {
     expect(state.metadataModal.editor).toBeNull()
   })
 
-  test("does not type into a node field until a node editor is opened", () => {
+  test("typing an alphanumeric character opens a node text editor seeded with that input", () => {
     const state = createState()
 
     openCreateNodeModal(state)
@@ -294,7 +294,7 @@ describe("feature metadata and save planning", () => {
     handleModalKey(state, { name: "a", sequence: "a" } as never)
 
     expect(state.nodeModal.values.id).toBe("")
-    expect(state.nodeModal.editor).toBeNull()
+    expect(state.nodeModal.editor).toEqual({ kind: "text", field: "id", draft: "a" })
   })
 
   test("opens a text editor for node fields and commits on enter", () => {

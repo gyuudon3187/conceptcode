@@ -102,4 +102,20 @@ describe("archon browser workflow nodes", () => {
     expect(state.archon.nodeModal).toBeNull()
     expect(drawCalls.count).toBe(1)
   })
+
+  test("d prompts before deleting a selected workflow", async () => {
+    const state = createState()
+    const drawCalls = { count: 0 }
+
+    const handled = await handleArchonBrowserKey(state, { name: "d" } as never, createDeps(drawCalls) as never)
+
+    expect(handled).toBe(true)
+    expect(state.confirmModal).toMatchObject({
+      kind: "archon-delete",
+      title: "Delete Workflow",
+      targetType: "workflow",
+      targetPath: "/workspace/.archon/workflows/release.yaml",
+    })
+    expect(drawCalls.count).toBe(1)
+  })
 })

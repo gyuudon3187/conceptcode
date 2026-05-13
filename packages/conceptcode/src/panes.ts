@@ -105,7 +105,7 @@ export function renderDetailsPane<TState extends ConceptCodePaneState>(state: TS
 export function renderPromptPreviewPane<TState extends ConceptCodePaneState>(state: TState, deps: PaneDeps<TState>): Renderable | VNode<any, any[]> {
   const preview = latestConversationPreview(state, deps)
   const statusLabel = preview.status === "streaming" ? "thinking" : preview.status === "error" ? "error" : "idle"
-  const hint = "Tab -> Prompt"
+  const hint = "Shift+Tab focus"
   const width = Math.max(16, deps.promptPreviewWidth(state) - hint.length - 12)
   const lines = deps.promptPreviewLines(preview.text, width, 1)
   const leftLabel = preview.role === "assistant" ? "Live reply" : preview.role === "user" ? "Draft" : ""

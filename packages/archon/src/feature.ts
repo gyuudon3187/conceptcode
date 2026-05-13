@@ -431,6 +431,15 @@ export function openMetadataFieldEditor(state: ArchonState): boolean {
   return true
 }
 
+function openMetadataFieldEditorWithInput(state: ArchonState, input: string): boolean {
+  const modal = state.metadataModal
+  if (!modal) return false
+  const field = currentMetadataField(state)
+  if (!field || !metadataFieldIsText(field)) return false
+  modal.editor = { kind: "text", field, draft: input }
+  return true
+}
+
 function closeMetadataFieldEditor(state: ArchonState): boolean {
   const modal = state.metadataModal
   if (!modal?.editor) return false
@@ -692,6 +701,15 @@ function openNodeFieldEditor(state: ArchonState): boolean {
   return true
 }
 
+function openNodeFieldEditorWithInput(state: ArchonState, input: string): boolean {
+  const modal = state.nodeModal
+  if (!modal) return false
+  const field = currentNodeField(state)
+  if (!field || !isNodeTextField(field)) return false
+  modal.editor = { kind: "text", field, draft: input }
+  return true
+}
+
 function applyNodeFieldEditor(state: ArchonState): boolean {
   const modal = state.nodeModal
   const editor = modal?.editor
@@ -945,6 +963,9 @@ export function handleModalKey(state: ArchonState, key: KeyEvent): boolean {
       cycleMetadataValue(state, key.name === "j" ? 1 : -1)
       return true
     }
+    if (typeof key.sequence === "string" && /^[a-z0-9]$/i.test(key.sequence) && !key.ctrl && !key.meta) {
+      return openMetadataFieldEditorWithInput(state, key.sequence)
+    }
     return true
   }
   if (state.nodeModal) {
@@ -997,6 +1018,9 @@ export function handleModalKey(state: ArchonState, key: KeyEvent): boolean {
     }
     if (key.ctrl && (key.name === "j" || key.name === "k")) {
       return cycleNodeValue(state, key.name === "j" ? 1 : -1)
+    }
+    if (typeof key.sequence === "string" && /^[a-z0-9]$/i.test(key.sequence) && !key.ctrl && !key.meta) {
+      return openNodeFieldEditorWithInput(state, key.sequence)
     }
     if (key.name === "space") {
       return true
