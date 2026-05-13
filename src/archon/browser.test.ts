@@ -3,14 +3,15 @@ import { describe, expect, test } from "bun:test"
 import { handleArchonBrowserKey } from "./browser"
 import type { AppState } from "../core/types"
 
-function createState(nodeIds: string[] = []): AppState {
+function createState(options: { nodeIds?: string[]; workflows?: boolean; commands?: boolean; submode?: "workflows" | "commands" } = {}): AppState {
+  const { nodeIds = [], workflows = true, commands = false, submode = "workflows" } = options
   return {
     layoutMode: "wide",
     mainScrollTop: 7,
     archon: {
       workspaceRoot: "/workspace",
       catalog: {
-        workflows: [{
+        workflows: workflows ? [{
           path: "/workspace/.archon/workflows/release.yaml",
           relativePath: ".archon/workflows/release.yaml",
           workflow: {
@@ -31,12 +32,26 @@ function createState(nodeIds: string[] = []): AppState {
           readOnlyReason: null,
           parseError: null,
           referencedCommandNames: [],
-        }],
-        commands: [],
+        }] : [],
+        commands: commands ? [{
+          path: "/workspace/.archon/commands/review.md",
+          relativePath: ".archon/commands/review.md",
+          command: {
+            path: "/workspace/.archon/commands/review.md",
+            relativePath: ".archon/commands/review.md",
+            name: "review",
+            description: null,
+            argumentHint: null,
+            body: "# Review\n",
+          },
+          findings: [],
+          parseError: null,
+          referencedByWorkflowPaths: [],
+        }] : [],
       },
-      submode: "workflows",
-      selectedWorkflowPath: "/workspace/.archon/workflows/release.yaml",
-      selectedCommandPath: null,
+      submode,
+      selectedWorkflowPath: workflows ? "/workspace/.archon/workflows/release.yaml" : null,
+      selectedCommandPath: commands ? "/workspace/.archon/commands/review.md" : null,
       selectedWorkflowNodeId: null,
       dirtyPaths: [],
       pendingDeletePaths: [],
@@ -67,8 +82,30 @@ function createDeps(drawCalls: { count: number }) {
 }
 
 describe("archon browser workflow nodes", () => {
+  test("enter opens create-workflow modal when no workflows exist", async () => {
+    const state = createState({ workflows: false })
+    const drawCalls = { count: 0 }
+
+    const handled = await handleArchonBrowserKey(state, { name: "return" } as never, createDeps(drawCalls) as never)
+
+    expect(handled).toBe(true)
+    expect(state.archon.metadataModal?.kind).toBe("create-workflow")
+    expect(drawCalls.count).toBe(1)
+  })
+
+  test("enter opens create-command modal when no commands exist", async () => {
+    const state = createState({ workflows: false, submode: "commands" })
+    const drawCalls = { count: 0 }
+
+    const handled = await handleArchonBrowserKey(state, { name: "return" } as never, createDeps(drawCalls) as never)
+
+    expect(handled).toBe(true)
+    expect(state.archon.metadataModal?.kind).toBe("create-command")
+    expect(drawCalls.count).toBe(1)
+  })
+
   test("enter opens create-node modal for an empty workflow", async () => {
-    const state = createState()
+    const state = createState({})
     const drawCalls = { count: 0 }
 
     const handled = await handleArchonBrowserKey(state, { name: "return" } as never, createDeps(drawCalls) as never)
@@ -80,7 +117,7 @@ describe("archon browser workflow nodes", () => {
   })
 
   test("right opens create-node modal for an empty workflow", async () => {
-    const state = createState()
+    const state = createState({})
     const drawCalls = { count: 0 }
 
     const handled = await handleArchonBrowserKey(state, { name: "right" } as never, createDeps(drawCalls) as never)
@@ -92,7 +129,7 @@ describe("archon browser workflow nodes", () => {
   })
 
   test("enter still selects the first node when the workflow already has nodes", async () => {
-    const state = createState(["plan"])
+    const state = createState({ nodeIds: ["plan"] })
     const drawCalls = { count: 0 }
 
     const handled = await handleArchonBrowserKey(state, { name: "return" } as never, createDeps(drawCalls) as never)
@@ -104,7 +141,7 @@ describe("archon browser workflow nodes", () => {
   })
 
   test("d prompts before deleting a selected workflow", async () => {
-    const state = createState()
+    const state = createState({})
     const drawCalls = { count: 0 }
 
     const handled = await handleArchonBrowserKey(state, { name: "d" } as never, createDeps(drawCalls) as never)

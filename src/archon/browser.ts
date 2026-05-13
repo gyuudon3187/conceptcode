@@ -40,6 +40,11 @@ export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, dep
     return true
   }
   if (key.name === "return" && state.archon.submode === "commands") {
+    if (state.archon.catalog.commands.length === 0) {
+      openCreateItemModal(state.archon)
+      deps.draw()
+      return true
+    }
     const editor = openCommandBodyEditor(state.archon)
     if (editor) {
       deps.openBufferEditor(editor.target, editor.initialText)
@@ -49,7 +54,11 @@ export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, dep
   }
   if (key.name === "return" && state.archon.submode === "workflows") {
     const workflow = selectedWorkflow(state.archon)?.workflow
-    if (!workflow) return true
+    if (!workflow) {
+      openCreateItemModal(state.archon)
+      deps.draw()
+      return true
+    }
     if (state.archon.selectedWorkflowNodeId) {
       openEditNodeModal(state.archon)
     } else if (workflow.nodes.length === 0) {
