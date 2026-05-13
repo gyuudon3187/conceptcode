@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { applyMetadataModal, buildSavePlan, handleModalKey, openCreateItemModal, openEditItemModal } from "./feature"
+import { applyMetadataModal, buildSavePlan, handleModalKey, openCreateItemModal, openCreateNodeModal, openEditItemModal } from "./feature"
 import type { ArchonState } from "./types"
 
 function createState(): ArchonState {
@@ -62,6 +62,8 @@ describe("feature metadata and save planning", () => {
 
     openCreateItemModal(state)
     if (!state.metadataModal) throw new Error("metadata modal was not opened")
+    expect(state.metadataModal.values.interactive).toBe("default")
+    expect(state.metadataModal.values.worktreeEnabled).toBe("default")
     state.metadataModal.values.name = "Release Checks"
 
     applyMetadataModal(state)
@@ -93,6 +95,21 @@ describe("feature metadata and save planning", () => {
       worktreeEnabledUsesDefault: false,
     })
     expect(state.dirtyPaths).toEqual(["/workspace/.archon/workflows/release.yaml"])
+  })
+
+  test("resets an incompatible model when the provider changes", () => {
+    const state = createState()
+
+    openEditItemModal(state)
+    if (!state.metadataModal) throw new Error("metadata modal was not opened")
+    state.metadataModal.values.provider = "google"
+    state.metadataModal.values.model = "gemini-2.5-pro"
+    state.metadataModal.fieldIndex = 2
+
+    handleModalKey(state, { name: "right" } as never)
+
+    expect(state.metadataModal.values.provider).toBe("openai")
+    expect(state.metadataModal.values.model).toBe("")
   })
 
   test("creates commands from a body template", () => {
@@ -165,6 +182,20 @@ describe("feature metadata and save planning", () => {
     expect(state.metadataModal.values.interactive).toBe("default")
   })
 
+  test("cycles enum fields from the outer modal with left and right arrows", () => {
+    const state = createState()
+
+    openEditItemModal(state)
+    if (!state.metadataModal) throw new Error("metadata modal was not opened")
+    state.metadataModal.fieldIndex = 4
+
+    handleModalKey(state, { name: "right" } as never)
+    expect(state.metadataModal.values.interactive).toBe("true")
+
+    handleModalKey(state, { name: "left" } as never)
+    expect(state.metadataModal.values.interactive).toBe("default")
+  })
+
   test("moves metadata field selection with j and k", () => {
     const state = createState()
 
@@ -208,6 +239,21 @@ describe("feature metadata and save planning", () => {
     expect(state.metadataModal.actionIndex).toBe(0)
   })
 
+  test("switches between save and cancel with left and right arrows when actions are focused", () => {
+    const state = createState()
+
+    openCreateItemModal(state)
+    if (!state.metadataModal) throw new Error("metadata modal was not opened")
+    state.metadataModal.fieldIndex = 6
+    handleModalKey(state, { name: "j", sequence: "j" } as never)
+
+    handleModalKey(state, { name: "right" } as never)
+    expect(state.metadataModal.actionIndex).toBe(1)
+
+    handleModalKey(state, { name: "left" } as never)
+    expect(state.metadataModal.actionIndex).toBe(0)
+  })
+
   test("enter on cancel closes the create modal", () => {
     const state = createState()
 
@@ -237,6 +283,92 @@ describe("feature metadata and save planning", () => {
 
     expect(state.metadataModal.values.provider).toBe("openai")
     expect(state.metadataModal.editor).toBeNull()
+  })
+
+  test("does not type into a node field until a node editor is opened", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+
+    handleModalKey(state, { name: "a", sequence: "a" } as never)
+
+    expect(state.nodeModal.values.id).toBe("")
+    expect(state.nodeModal.editor).toBeNull()
+  })
+
+  test("opens a text editor for node fields and commits on enter", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+
+    handleModalKey(state, { name: "return" } as never)
+    handleModalKey(state, { name: "p", sequence: "p" } as never)
+    handleModalKey(state, { name: "l", sequence: "l" } as never)
+    handleModalKey(state, { name: "a", sequence: "a" } as never)
+    handleModalKey(state, { name: "n", sequence: "n" } as never)
+    handleModalKey(state, { name: "return" } as never)
+
+    expect(state.nodeModal.values.id).toBe("plan")
+    expect(state.nodeModal.editor).toBeNull()
+  })
+
+  test("cycles node kind from the outer modal with left and right arrows", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.fieldIndex = 1
+
+    handleModalKey(state, { name: "right" } as never)
+    expect(state.nodeModal.values.kind).toBe("prompt")
+
+    handleModalKey(state, { name: "left" } as never)
+    expect(state.nodeModal.values.kind).toBe("command")
+  })
+
+  test("moves from the last node field into action buttons and wraps back to the top field", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.fieldIndex = 6
+
+    handleModalKey(state, { name: "j", sequence: "j" } as never)
+    expect(state.nodeModal.actionIndex).toBe(0)
+
+    handleModalKey(state, { name: "j", sequence: "j" } as never)
+    expect(state.nodeModal.actionIndex).toBeNull()
+    expect(state.nodeModal.fieldIndex).toBe(0)
+  })
+
+  test("switches between node save and cancel with left and right arrows when actions are focused", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.fieldIndex = 6
+    handleModalKey(state, { name: "j", sequence: "j" } as never)
+
+    handleModalKey(state, { name: "right" } as never)
+    expect(state.nodeModal.actionIndex).toBe(1)
+
+    handleModalKey(state, { name: "left" } as never)
+    expect(state.nodeModal.actionIndex).toBe(0)
+  })
+
+  test("enter on node cancel closes the modal", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.fieldIndex = 6
+    handleModalKey(state, { name: "j", sequence: "j" } as never)
+    handleModalKey(state, { name: "right" } as never)
+
+    handleModalKey(state, { name: "return" } as never)
+    expect(state.nodeModal).toBeNull()
   })
 
   test("builds save plans for writes and deletes", () => {

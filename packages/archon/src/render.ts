@@ -5,6 +5,19 @@ import { ARCHON_DEFAULT_WORKFLOW_INTERACTIVE, ARCHON_DEFAULT_WORKTREE_ENABLED } 
 
 type RenderColors = ArchonRenderColors
 
+type ModalFieldRow = {
+  label: string
+  value: string
+  selected: boolean
+}
+
+type ModalFrameOptions = {
+  topWide: number
+  topNarrow: number
+  widthWide: number
+  widthNarrow: string
+}
+
 type ArchonRenderState = {
   submode: ArchonSubmode
   selectedWorkflowPath: string | null
@@ -49,11 +62,136 @@ function selectedCommand(state: ArchonRenderState): ArchonCommandEntry | null {
   return state.catalog.commands.find((entry) => entry.path === state.selectedCommandPath) ?? state.catalog.commands[0] ?? null
 }
 
+function renderModalBackdrop() {
+  return Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" })
+}
+
+function renderModalFrame(
+  layoutMode: "wide" | "narrow",
+  colors: RenderColors,
+  title: string,
+  options: ModalFrameOptions,
+  children: Array<Renderable | VNode<any, any[]>>,
+) {
+  return Box(
+    {
+      position: "absolute",
+      top: layoutMode === "wide" ? options.topWide : options.topNarrow,
+      left: layoutMode === "wide" ? "50%" : 2,
+      width: layoutMode === "wide" ? options.widthWide : options.widthNarrow,
+      marginLeft: layoutMode === "wide" ? -(options.widthWide / 2) : undefined,
+      padding: 1,
+      backgroundColor: colors.panelSoft ?? colors.muted,
+      borderStyle: "rounded",
+      borderColor: colors.border,
+      flexDirection: "column",
+      gap: 0,
+    },
+    Text({ content: title, fg: colors.accent, attributes: TextAttributes.BOLD }),
+    ...children,
+  )
+}
+
+function renderModalFieldRows(fields: ModalFieldRow[], colors: RenderColors) {
+  const labelWidth = 12
+  return fields.map(({ label, value, selected }) => Box(
+    {
+      width: "100%",
+      paddingX: 1,
+      paddingY: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 1,
+    },
+    Text({ content: selected ? ">" : " ", fg: selected ? colors.warning : colors.muted, attributes: selected ? TextAttributes.BOLD : 0 }),
+    Text({ content: `${label.padEnd(labelWidth)}:`, fg: selected ? colors.accentSoft : colors.text, attributes: selected ? TextAttributes.BOLD : 0 }),
+    Box(
+      { flexGrow: 1, minWidth: 0, paddingX: 1, backgroundColor: selected ? colors.selectedBg : colors.panel },
+      Text({ content: value || " ", fg: selected ? colors.selectedFg : colors.text, attributes: selected ? TextAttributes.BOLD : 0 }),
+    ),
+  ))
+}
+
+function renderModalActions(actionIndex: 0 | 1 | null, colors: RenderColors) {
+  return Box(
+    { width: "100%", flexDirection: "row", justifyContent: "flex-end", gap: 1, paddingTop: 1 },
+    Box(
+      { paddingX: 2, backgroundColor: actionIndex === 0 ? colors.selectedBg : colors.panel },
+      Text({ content: "Save", fg: actionIndex === 0 ? colors.selectedFg : colors.text, attributes: actionIndex === 0 ? TextAttributes.BOLD : 0 }),
+    ),
+    Box(
+      { paddingX: 2, backgroundColor: actionIndex === 1 ? colors.selectedBg : colors.panel },
+      Text({ content: "Cancel", fg: actionIndex === 1 ? colors.selectedFg : colors.text, attributes: actionIndex === 1 ? TextAttributes.BOLD : 0 }),
+    ),
+  )
+}
+
+function renderTextEditorOverlay(layoutMode: "wide" | "narrow", colors: RenderColors, draft: string) {
+  return Box(
+    {
+      position: "absolute",
+      top: layoutMode === "wide" ? 9 : 7,
+      left: layoutMode === "wide" ? "50%" : 4,
+      width: layoutMode === "wide" ? 60 : "86%",
+      marginLeft: layoutMode === "wide" ? -30 : undefined,
+      padding: 1,
+      backgroundColor: colors.panelSoft ?? colors.muted,
+      borderStyle: "rounded",
+      borderColor: colors.warning,
+      flexDirection: "column",
+      gap: 1,
+    },
+    Text({ content: "Edit Field", fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
+    Box(
+      { width: "100%", paddingX: 1, backgroundColor: colors.panel ?? colors.muted },
+      Text({ content: draft || " ", fg: colors.text }),
+    ),
+    Text({ content: "Type text  Enter save field  Esc cancel", fg: colors.muted }),
+  )
+}
+
+function renderEnumOverlay(
+  layoutMode: "wide" | "narrow",
+  colors: RenderColors,
+  options: Array<{ label: string; description?: string; selected: boolean }>,
+  helpText: string,
+  searchText?: string,
+  widthWide: number = 62,
+  widthNarrow: string = "88%",
+) {
+  return Box(
+    {
+      position: "absolute",
+      top: layoutMode === "wide" ? 8 : 6,
+      left: layoutMode === "wide" ? "50%" : 4,
+      width: layoutMode === "wide" ? widthWide : widthNarrow,
+      marginLeft: layoutMode === "wide" ? -(widthWide / 2) : undefined,
+      padding: 1,
+      backgroundColor: colors.panelSoft ?? colors.muted,
+      borderStyle: "rounded",
+      borderColor: colors.warning,
+      flexDirection: "column",
+      gap: 0,
+    },
+    Text({ content: "Choose Option", fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
+    ...(searchText === undefined
+      ? []
+      : [Box({ width: "100%", paddingX: 1, backgroundColor: colors.panel ?? colors.muted }, Text({ content: `Search: ${searchText}`, fg: colors.text }))]),
+    ...options.map((option) => Box(
+      { width: "100%", paddingX: 1, backgroundColor: option.selected ? colors.selectedBg : undefined, flexDirection: "row", justifyContent: "space-between" },
+      Text({ content: option.label, fg: option.selected ? colors.selectedFg : colors.text, attributes: option.selected ? TextAttributes.BOLD : 0 }),
+      Text({ content: option.description ?? "", fg: option.selected ? colors.selectedFg : colors.muted }),
+    )),
+    Text({ content: helpText, fg: colors.muted }),
+  )
+}
+
 export function renderArchonPrimaryPane(state: ArchonRenderState, colors: RenderColors): Renderable | VNode<any, any[]> {
   const isWorkflowMode = state.submode === "workflows"
   const selectedPath = isWorkflowMode ? state.selectedWorkflowPath : state.selectedCommandPath
   const entries = isWorkflowMode ? state.catalog.workflows : state.catalog.commands
   const selectedWorkflowEntry = isWorkflowMode ? state.catalog.workflows.find((entry) => entry.path === state.selectedWorkflowPath) ?? state.catalog.workflows[0] : null
+  const showEmptyWorkflowHint = isWorkflowMode && !!selectedWorkflowEntry?.workflow && selectedWorkflowEntry.workflow.nodes.length === 0 && !state.selectedWorkflowNodeId
   return Box(
     { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
     Box(
@@ -83,6 +221,9 @@ export function renderArchonPrimaryPane(state: ArchonRenderState, colors: Render
           )
         })
       : []),
+    ...(showEmptyWorkflowHint
+      ? [Text({ content: "  No nodes yet. Press Right or Enter to add the first node.", fg: colors.muted })]
+      : []),
   )
 }
 
@@ -106,6 +247,9 @@ export function renderArchonSupportTopPane(state: ArchonRenderState, colors: Ren
     ? [
         `Nodes: ${workflowSelection.workflow?.nodes.length ?? 0}`,
         `Command refs: ${workflowSelection.referencedCommandNames.length === 0 ? "none" : workflowSelection.referencedCommandNames.join(", ")}`,
+        ...(workflowSelection.workflow && workflowSelection.workflow.nodes.length === 0 && !state.selectedWorkflowNodeId
+          ? ["Hint: Press Right or Enter to create the first node."]
+          : []),
         ...(state.selectedWorkflowNodeId
           ? (() => {
               const node = workflowSelection.workflow?.nodes.find((item) => item.id === state.selectedWorkflowNodeId)
@@ -173,62 +317,16 @@ export function renderArchonMetadataModal(
   const editor = modal.editor
   const visibleEnumOptions = enumOptions.slice(0, layoutMode === "wide" ? 6 : 4)
   const showActionButtons = modal.kind === "create-workflow" || modal.kind === "create-command"
+  const fieldRows = fields.map(([label, value], index) => ({
+    label: String(label),
+    value: String(value),
+    selected: modal.actionIndex === null && index === modal.fieldIndex,
+  }))
   return [
-    Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
-    Box(
-      {
-        position: "absolute",
-        top: layoutMode === "wide" ? 6 : 4,
-        left: layoutMode === "wide" ? "50%" : 2,
-        width: layoutMode === "wide" ? 78 : "92%",
-        marginLeft: layoutMode === "wide" ? -39 : undefined,
-        padding: 1,
-        backgroundColor: colors.panelSoft ?? colors.muted,
-        borderStyle: "rounded",
-        borderColor: colors.border,
-        flexDirection: "column",
-        gap: 0,
-      },
-      Text({ content: titleByKind[modal.kind], fg: colors.accent, attributes: TextAttributes.BOLD }),
-      ...fields.map(([label, value], index) => {
-        const fieldSelected = modal.actionIndex === null && index === modal.fieldIndex
-        return Box(
-          {
-            width: "100%",
-            paddingX: 1,
-            paddingY: 0,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 1,
-          },
-          Text({ content: fieldSelected ? ">" : " ", fg: fieldSelected ? colors.warning : colors.muted, attributes: fieldSelected ? TextAttributes.BOLD : 0 }),
-          Text({ content: `${String(label).padEnd(labelWidth)}:`, fg: fieldSelected ? colors.accentSoft : colors.text, attributes: fieldSelected ? TextAttributes.BOLD : 0 }),
-          Box(
-            {
-              flexGrow: 1,
-              minWidth: 0,
-              paddingX: 1,
-              backgroundColor: fieldSelected ? colors.selectedBg : colors.panel,
-            },
-            Text({ content: String(value) || " ", fg: fieldSelected ? colors.selectedFg : colors.text, attributes: fieldSelected ? TextAttributes.BOLD : 0 }),
-          ),
-        )
-      }),
-      ...(showActionButtons
-        ? [
-            Box(
-              { width: "100%", flexDirection: "row", justifyContent: "flex-end", gap: 1, paddingTop: 1 },
-              Box(
-                { paddingX: 2, backgroundColor: modal.actionIndex === 0 ? colors.selectedBg : colors.panel },
-                Text({ content: "Save", fg: modal.actionIndex === 0 ? colors.selectedFg : colors.text, attributes: modal.actionIndex === 0 ? TextAttributes.BOLD : 0 }),
-              ),
-              Box(
-                { paddingX: 2, backgroundColor: modal.actionIndex === 1 ? colors.selectedBg : colors.panel },
-                Text({ content: "Cancel", fg: modal.actionIndex === 1 ? colors.selectedFg : colors.text, attributes: modal.actionIndex === 1 ? TextAttributes.BOLD : 0 }),
-              ),
-            ),
-          ]
-        : []),
+    renderModalBackdrop(),
+    renderModalFrame(layoutMode, colors, titleByKind[modal.kind], { topWide: 6, topNarrow: 4, widthWide: 78, widthNarrow: "92%" }, [
+      ...renderModalFieldRows(fieldRows, colors),
+      ...(showActionButtons ? [renderModalActions(modal.actionIndex, colors)] : []),
       Text({ content: "j/k move  Tab next  Shift+Tab prev  Enter edit field  h/l cycle enum  Ctrl+S save  Esc close", fg: colors.muted }),
       ...(editor?.kind === "tags"
         ? [
@@ -260,61 +358,18 @@ export function renderArchonMetadataModal(
           ]
         : []),
       ...(editor?.kind === "text"
-        ? [
-            Box(
-              {
-                position: "absolute",
-                top: layoutMode === "wide" ? 9 : 7,
-                left: layoutMode === "wide" ? "50%" : 4,
-                width: layoutMode === "wide" ? 60 : "86%",
-                marginLeft: layoutMode === "wide" ? -30 : undefined,
-                padding: 1,
-                backgroundColor: colors.panelSoft ?? colors.muted,
-                borderStyle: "rounded",
-                borderColor: colors.warning,
-                flexDirection: "column",
-                gap: 1,
-              },
-              Text({ content: "Edit Field", fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
-              Box(
-                { width: "100%", paddingX: 1, backgroundColor: colors.panel ?? colors.muted },
-                Text({ content: editor.draft || " ", fg: colors.text }),
-              ),
-              Text({ content: "Type text  Enter save field  Esc cancel", fg: colors.muted }),
-            ),
-          ]
+        ? [renderTextEditorOverlay(layoutMode, colors, editor.draft)]
         : []),
       ...(editor?.kind === "enum"
-        ? [
-            Box(
-              {
-                position: "absolute",
-                top: layoutMode === "wide" ? 8 : 6,
-                left: layoutMode === "wide" ? "50%" : 4,
-                width: layoutMode === "wide" ? 62 : "88%",
-                marginLeft: layoutMode === "wide" ? -31 : undefined,
-                padding: 1,
-                backgroundColor: colors.panelSoft ?? colors.muted,
-                borderStyle: "rounded",
-                borderColor: colors.warning,
-                flexDirection: "column",
-                gap: 0,
-              },
-              Text({ content: "Choose Option", fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
-              Box(
-                { width: "100%", paddingX: 1, backgroundColor: colors.panel ?? colors.muted },
-                Text({ content: `Search: ${editor.query || ""}`, fg: colors.text }),
-              ),
-              ...visibleEnumOptions.map((option, index) => Box(
-                { width: "100%", paddingX: 1, backgroundColor: index === editor.selectedIndex ? colors.selectedBg : undefined, flexDirection: "row", justifyContent: "space-between" },
-                Text({ content: option.label, fg: index === editor.selectedIndex ? colors.selectedFg : colors.text, attributes: index === editor.selectedIndex ? TextAttributes.BOLD : 0 }),
-                Text({ content: option.description ?? "", fg: index === editor.selectedIndex ? colors.selectedFg : colors.muted }),
-              )),
-              Text({ content: "Ctrl+N/P move  Type filter  Enter choose  Esc cancel", fg: colors.muted }),
-            ),
-          ]
+        ? [renderEnumOverlay(
+            layoutMode,
+            colors,
+            visibleEnumOptions.map((option, index) => ({ ...option, selected: index === editor.selectedIndex })),
+            "Ctrl+N/P move  Type filter  Enter choose  Esc cancel",
+            editor.query || "",
+          )]
         : []),
-    ),
+    ]),
   ]
 }
 
@@ -326,48 +381,56 @@ export function renderArchonNodeModal(
 ): Array<Renderable | VNode<any, any[]>> {
   const workflow = state.catalog.workflows.find((entry) => entry.path === state.selectedWorkflowPath)?.workflow ?? state.catalog.workflows[0]?.workflow ?? null
   const dependencyIds = workflow ? workflow.nodes.map((node) => node.id).filter((id) => id !== (modal.kind === "edit-node" ? state.selectedWorkflowNodeId : undefined)) : []
-  const fields: string[] = [
-    `Id: ${modal.values.id}`,
-    `Type: ${modal.values.kind}`,
-    `Body: ${modal.values.body}`,
-    `Depends On: ${modal.values.dependsOn.length === 0 ? "none" : modal.values.dependsOn.join(", ")}`,
-    `When: ${modal.values.when}`,
-    `Trigger Rule: ${modal.values.triggerRule}`,
-    `Context: ${modal.values.context}`,
+  const fields: Array<[string, string]> = [
+    ["Id", modal.values.id],
+    ["Type", modal.values.kind],
+    ["Body", modal.values.body],
+    ["Depends On", modal.values.dependsOn.length === 0 ? "none" : modal.values.dependsOn.join(", ")],
+    ["When", modal.values.when],
+    ["Trigger Rule", modal.values.triggerRule],
+    ["Context", modal.values.context],
   ]
+  const editor = modal.editor
+  const fieldRows = fields.map(([label, value], index) => ({
+    label,
+    value,
+    selected: modal.actionIndex === null && index === modal.fieldIndex,
+  }))
   return [
-    Box({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "#111417cc" }),
-    Box(
-      {
-        position: "absolute",
-        top: layoutMode === "wide" ? 5 : 3,
-        left: layoutMode === "wide" ? "50%" : 2,
-        width: layoutMode === "wide" ? 92 : "94%",
-        marginLeft: layoutMode === "wide" ? -46 : undefined,
-        padding: 1,
-        backgroundColor: colors.panelSoft ?? colors.muted,
-        borderStyle: "rounded",
-        borderColor: colors.border,
-        flexDirection: "column",
-        gap: 1,
-      },
-      Text({ content: modal.kind === "create-node" ? "Create Workflow Node" : "Edit Workflow Node", fg: colors.accent, attributes: TextAttributes.BOLD }),
-      ...fields.map((line, index) => Text({ content: line, fg: index === modal.fieldIndex ? colors.selectedBg : colors.text })),
-      ...(modal.fieldIndex === 3
+    renderModalBackdrop(),
+    renderModalFrame(layoutMode, colors, modal.kind === "create-node" ? "Create Workflow Node" : "Edit Workflow Node", { topWide: 5, topNarrow: 3, widthWide: 92, widthNarrow: "94%" }, [
+      ...renderModalFieldRows(fieldRows, colors),
+      renderModalActions(modal.actionIndex, colors),
+      Text({ content: "j/k move  Tab next  Shift+Tab prev  Enter edit field  h/l cycle enum  Ctrl+S save  Esc close", fg: colors.muted }),
+      ...(editor?.kind === "dependsOn"
         ? [
             Box(
               { width: "100%", paddingX: 1, backgroundColor: colors.panel ?? colors.muted, borderStyle: "rounded", borderColor: colors.warning, flexDirection: "column" },
               ...(dependencyIds.length === 0
                 ? [Text({ content: "No available dependencies", fg: colors.muted })]
                 : dependencyIds.map((id, index) => {
-                    const selected = index === modal.dependencyCursor
+                    const selected = index === editor.selectedIndex
                     const checked = modal.values.dependsOn.includes(id)
                     return Text({ content: `${checked ? "[x]" : "[ ]"} ${id}`, fg: selected ? colors.selectedBg : colors.text, attributes: selected ? TextAttributes.BOLD : 0 })
                   })),
+              Text({ content: "Ctrl+N/P move  Space toggle  Enter close  Esc cancel", fg: colors.muted }),
             ),
           ]
         : []),
-      Text({ content: modal.fieldIndex === 3 ? "Up/Down move  Space toggle  Tab next  Enter save  Esc close" : "Type text  Tab next  Shift+Tab prev  Ctrl+J cycle type  Enter save  Esc close", fg: colors.muted }),
-    ),
+      ...(editor?.kind === "text"
+        ? [renderTextEditorOverlay(layoutMode, colors, editor.draft)]
+        : []),
+      ...(editor?.kind === "enum"
+        ? [renderEnumOverlay(
+            layoutMode,
+            colors,
+            (["command", "prompt", "bash"] as const).map((option, index) => ({ label: option, selected: index === editor.selectedIndex })),
+            "Ctrl+N/P move  Enter choose  Esc cancel",
+            undefined,
+            48,
+            "80%",
+          )]
+        : []),
+    ]),
   ]
 }

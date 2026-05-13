@@ -116,12 +116,19 @@ function createEmptyMetadataValues() {
     description: "",
     provider: "",
     model: "",
-    interactive: "",
+    interactive: "default",
     tags: [],
-    worktreeEnabled: "",
+    worktreeEnabled: "default",
     argumentHint: "",
     bodyTemplate: "basic",
   }
+}
+
+function defaultableBooleanEnumOptions(field: "interactive" | "worktreeEnabled"): MetadataEnumOption[] {
+  const defaultValue = defaultBooleanValue(field)
+  return defaultValue
+    ? [{ value: "default", label: "true (default)" }, { value: "false", label: "false" }]
+    : [{ value: "default", label: "false (default)" }, { value: "true", label: "true" }]
 }
 
 function availableWorkflowTags(state: Pick<ArchonState, "catalog">): string[] {
@@ -166,18 +173,10 @@ function metadataEnumOptions(state: Pick<ArchonState, "catalog" | "metadataModal
   const modal = state.metadataModal
   const provider = modal?.values.provider.trim().toLowerCase() ?? ""
   if (field === "interactive") {
-    return [
-      { value: "default", label: "default", description: `${ARCHON_DEFAULT_WORKFLOW_INTERACTIVE}` },
-      { value: "true", label: "true" },
-      { value: "false", label: "false" },
-    ]
+    return defaultableBooleanEnumOptions("interactive")
   }
   if (field === "worktreeEnabled") {
-    return [
-      { value: "default", label: "default", description: `${ARCHON_DEFAULT_WORKTREE_ENABLED}` },
-      { value: "true", label: "true" },
-      { value: "false", label: "false" },
-    ]
+    return defaultableBooleanEnumOptions("worktreeEnabled")
   }
   if (field === "bodyTemplate") {
     return COMMAND_BODY_TEMPLATE_IDS.map((value) => ({ value, label: value, description: `${value} template` }))
@@ -186,13 +185,27 @@ function metadataEnumOptions(state: Pick<ArchonState, "catalog" | "metadataModal
     const discoveredProviders = state.catalog.workflows.flatMap((entry) => entry.workflow?.provider ? [entry.workflow.provider] : [])
     return normalizeTags([...KNOWN_PROVIDERS, ...discoveredProviders]).map((value) => ({ value, label: value || "none" }))
   }
+  if (field === "model") {
+    return compatibleModelValues(state).map((value) => ({ value, label: value || "none" }))
+  }
+  return []
+}
+
+function compatibleModelValues(state: Pick<ArchonState, "catalog" | "metadataModal">): string[] {
+  const provider = state.metadataModal?.values.provider.trim().toLowerCase() ?? ""
   const discoveredModels = state.catalog.workflows.flatMap((entry) => {
     if (!entry.workflow?.model) return []
     if (!provider) return [entry.workflow.model]
     return (entry.workflow.provider ?? "").trim().toLowerCase() === provider ? [entry.workflow.model] : []
   })
   const providerModels = provider ? (KNOWN_MODELS_BY_PROVIDER[provider] ?? []) : Object.values(KNOWN_MODELS_BY_PROVIDER).flatMap((models) => models)
-  return normalizeTags(["", ...providerModels, ...discoveredModels, ...(modal?.values.model ? [modal.values.model] : [])]).map((value) => ({ value, label: value || "none" }))
+  return normalizeTags(["", ...providerModels, ...discoveredModels])
+}
+
+function resetIncompatibleDependentMetadataValues(state: ArchonState, field: ArchonMetadataFieldKey): void {
+  const modal = state.metadataModal
+  if (!modal || field !== "provider") return
+  if (!compatibleModelValues(state).includes(modal.values.model)) modal.values.model = ""
 }
 
 function filteredMetadataEnumOptions(state: Pick<ArchonState, "catalog" | "metadataModal">, editor: Extract<ArchonMetadataEditorState, { kind: "enum" }>): MetadataEnumOption[] {
@@ -226,8 +239,8 @@ function clampMetadataEditorSelection(state: ArchonState): void {
   }
 }
 
-function formatDefaultableBoolean(value: boolean, usesDefault: boolean): string {
-  if (usesDefault) return "default"
+function formatModalDefaultableBoolean(field: "interactive" | "worktreeEnabled", value: boolean, usesDefault: boolean): string {
+  if (usesDefault || value === defaultBooleanValue(field)) return "default"
   return String(value)
 }
 
@@ -293,9 +306,7 @@ function cycleMetadataValue(state: ArchonState, delta: number): boolean {
   const currentIndex = Math.max(0, options.findIndex((option) => option.value === currentValue))
   const nextIndex = (currentIndex + delta % options.length + options.length) % options.length
   modal.values[field] = options[nextIndex]?.value ?? options[0]?.value ?? ""
-  if (field === "provider" && !metadataEnumOptions(state, "model").some((option) => option.value === modal.values.model)) {
-    modal.values.model = ""
-  }
+  resetIncompatibleDependentMetadataValues(state, field)
   return true
 }
 
@@ -325,6 +336,27 @@ function isNodeTextField(field: keyof NonNullable<ArchonState["nodeModal"]>["val
   return field === "id" || field === "body" || field === "when" || field === "triggerRule" || field === "context"
 }
 
+function nodeFieldIsEnum(field: keyof NonNullable<ArchonState["nodeModal"]>["values"]): field is "kind" {
+  return field === "kind"
+}
+
+function currentNodeField(state: Pick<ArchonState, "nodeModal">): keyof NonNullable<ArchonState["nodeModal"]>["values"] | null {
+  const modal = state.nodeModal
+  if (!modal || modal.actionIndex !== null) return null
+  return nodeFieldOrder()[modal.fieldIndex] ?? null
+}
+
+function nodeKindOptions(): ArchonWorkflowNodeKind[] {
+  return ["command", "prompt", "bash"]
+}
+
+function availableNodeDependencyIds(state: ArchonState): string[] {
+  const modal = state.nodeModal
+  const workflow = selectedWorkflow(state)?.workflow
+  if (!modal || !workflow) return []
+  return availableWorkflowDependencyIds(workflow, modal.kind === "edit-node" ? selectedWorkflowNode(state)?.id : undefined)
+}
+
 export function openCreateItemModal(state: ArchonState): void {
   state.metadataModal = state.submode === "workflows"
     ? { kind: "create-workflow", fieldIndex: 0, actionIndex: null, editor: null, values: createEmptyMetadataValues() }
@@ -346,9 +378,9 @@ export function openEditItemModal(state: ArchonState): void {
         description: selected.workflow.description,
         provider: selected.workflow.provider ?? "",
         model: selected.workflow.model ?? "",
-        interactive: formatDefaultableBoolean(selected.workflow.interactive, selected.workflow.interactiveUsesDefault),
+        interactive: formatModalDefaultableBoolean("interactive", selected.workflow.interactive, selected.workflow.interactiveUsesDefault),
         tags: [...selected.workflow.tags],
-        worktreeEnabled: formatDefaultableBoolean(selected.workflow.worktreeEnabled, selected.workflow.worktreeEnabledUsesDefault),
+        worktreeEnabled: formatModalDefaultableBoolean("worktreeEnabled", selected.workflow.worktreeEnabled, selected.workflow.worktreeEnabledUsesDefault),
       },
     }
     return
@@ -374,9 +406,7 @@ function updateMetadataValue(state: ArchonState, field: ArchonMetadataFieldKey, 
   const modal = state.metadataModal
   if (!modal) return false
   modal.values[field] = value as MetadataValues[typeof field]
-  if (field === "provider" && !metadataEnumOptions(state, "model").some((option) => option.value === modal.values.model)) {
-    modal.values.model = ""
-  }
+  resetIncompatibleDependentMetadataValues(state, field)
   return true
 }
 
@@ -586,62 +616,172 @@ export function applyMetadataModal(state: ArchonState): void {
 export function openCreateNodeModal(state: ArchonState): void {
   const workflow = selectedWorkflow(state)?.workflow
   if (!workflow) return
-  state.nodeModal = { kind: "create-node", fieldIndex: 0, dependencyCursor: 0, values: { id: "", kind: "command", body: "", when: "", triggerRule: "", context: "", dependsOn: [] } }
+  state.nodeModal = { kind: "create-node", fieldIndex: 0, actionIndex: null, editor: null, values: { id: "", kind: "command", body: "", when: "", triggerRule: "", context: "", dependsOn: [] } }
 }
 
 export function openEditNodeModal(state: ArchonState): void {
   const node = selectedWorkflowNode(state)
   if (!node) return
-  state.nodeModal = { kind: "edit-node", fieldIndex: 0, dependencyCursor: 0, values: { id: node.id, kind: node.kind, body: node.body, when: node.when ?? "", triggerRule: node.triggerRule ?? "", context: node.context ?? "", dependsOn: [...node.dependsOn] } }
+  state.nodeModal = { kind: "edit-node", fieldIndex: 0, actionIndex: null, editor: null, values: { id: node.id, kind: node.kind, body: node.body, when: node.when ?? "", triggerRule: node.triggerRule ?? "", context: node.context ?? "", dependsOn: [...node.dependsOn] } }
 }
 
 export function moveNodeField(state: ArchonState, delta: number): void {
   const modal = state.nodeModal
   if (!modal) return
+  modal.actionIndex = null
   const count = nodeFieldOrder().length
   modal.fieldIndex = (modal.fieldIndex + delta + count) % count
 }
 
-export function moveNodeDependencyCursor(state: ArchonState, delta: number): void {
+function moveNodeSelection(state: ArchonState, delta: number): void {
   const modal = state.nodeModal
-  const workflow = selectedWorkflow(state)?.workflow
-  if (!modal || !workflow) return
-  const ids = availableWorkflowDependencyIds(workflow, modal.kind === "edit-node" ? selectedWorkflowNode(state)?.id : undefined)
-  if (ids.length === 0) {
-    modal.dependencyCursor = 0
+  if (!modal) return
+  const fieldCount = nodeFieldOrder().length
+  const totalCount = fieldCount + 1
+  const currentIndex = modal.actionIndex === null ? modal.fieldIndex : fieldCount
+  const nextIndex = (currentIndex + delta + totalCount) % totalCount
+  if (nextIndex === fieldCount) {
+    modal.actionIndex = delta > 0 ? 0 : 1
     return
   }
-  modal.dependencyCursor = (modal.dependencyCursor + delta % ids.length + ids.length) % ids.length
+  modal.fieldIndex = nextIndex
+  modal.actionIndex = null
+}
+
+function moveNodeAction(state: ArchonState, delta: number): boolean {
+  const modal = state.nodeModal
+  if (!modal || modal.actionIndex === null) return false
+  modal.actionIndex = (((modal.actionIndex + delta) % 2) + 2) % 2 as 0 | 1
+  return true
+}
+
+function applyNodeAction(state: ArchonState): boolean {
+  const modal = state.nodeModal
+  if (!modal || modal.actionIndex === null) return false
+  if (modal.actionIndex === 0) {
+    applyNodeModal(state)
+    return true
+  }
+  state.nodeModal = null
+  return true
+}
+
+function closeNodeFieldEditor(state: ArchonState): boolean {
+  const modal = state.nodeModal
+  if (!modal?.editor) return false
+  modal.editor = null
+  return true
+}
+
+function openNodeFieldEditor(state: ArchonState): boolean {
+  const modal = state.nodeModal
+  if (!modal) return false
+  const field = nodeFieldOrder()[modal.fieldIndex]
+  if (!field) return false
+  if (field === "dependsOn") {
+    modal.editor = { kind: "dependsOn", selectedIndex: 0 }
+    clampNodeEditorSelection(state)
+    return true
+  }
+  if (nodeFieldIsEnum(field)) {
+    modal.editor = { kind: "enum", field, selectedIndex: Math.max(0, nodeKindOptions().findIndex((option) => option === modal.values.kind)) }
+    return true
+  }
+  if (!isNodeTextField(field)) return false
+  modal.editor = { kind: "text", field, draft: modal.values[field] }
+  return true
+}
+
+function applyNodeFieldEditor(state: ArchonState): boolean {
+  const modal = state.nodeModal
+  const editor = modal?.editor
+  if (!modal || !editor) return false
+  if (editor.kind === "text") {
+    modal.values[editor.field] = editor.draft
+    modal.editor = null
+    return true
+  }
+  if (editor.kind === "enum") {
+    modal.values.kind = nodeKindOptions()[editor.selectedIndex] ?? "command"
+    modal.editor = null
+    return true
+  }
+  modal.editor = null
+  return true
+}
+
+function clampNodeEditorSelection(state: ArchonState): void {
+  const editor = state.nodeModal?.editor
+  if (!editor) return
+  if (editor.kind === "enum") {
+    editor.selectedIndex = Math.max(0, Math.min(editor.selectedIndex, nodeKindOptions().length - 1))
+    return
+  }
+  if (editor.kind === "dependsOn") {
+    const maxIndex = Math.max(0, availableNodeDependencyIds(state).length - 1)
+    editor.selectedIndex = Math.max(0, Math.min(editor.selectedIndex, maxIndex))
+  }
+}
+
+function moveNodeEditorSelection(state: ArchonState, delta: number): boolean {
+  const editor = state.nodeModal?.editor
+  if (!editor) return false
+  if (editor.kind === "enum") {
+    const options = nodeKindOptions()
+    editor.selectedIndex = (editor.selectedIndex + delta % options.length + options.length) % options.length
+    return true
+  }
+  if (editor.kind === "dependsOn") {
+    const ids = availableNodeDependencyIds(state)
+    if (ids.length === 0) return false
+    editor.selectedIndex = (editor.selectedIndex + delta % ids.length + ids.length) % ids.length
+    return true
+  }
+  return false
+}
+
+function cycleNodeValue(state: ArchonState, delta: number): boolean {
+  const modal = state.nodeModal
+  if (!modal) return false
+  const field = nodeFieldOrder()[modal.fieldIndex]
+  if (!field || !nodeFieldIsEnum(field)) return false
+  const options = nodeKindOptions()
+  const currentIndex = Math.max(0, options.findIndex((option) => option === modal.values.kind))
+  modal.values.kind = options[(currentIndex + delta % options.length + options.length) % options.length] ?? "command"
+  return true
+}
+
+export function moveNodeDependencyCursor(state: ArchonState, delta: number): void {
+  const modal = state.nodeModal
+  const ids = availableNodeDependencyIds(state)
+  if (!modal) return
+  if (ids.length === 0) {
+    if (modal.editor?.kind === "dependsOn") modal.editor.selectedIndex = 0
+    return
+  }
+  if (modal.editor?.kind === "dependsOn") {
+    modal.editor.selectedIndex = (modal.editor.selectedIndex + delta % ids.length + ids.length) % ids.length
+  }
 }
 
 export function appendNodeInput(state: ArchonState, input: string): boolean {
   const modal = state.nodeModal
-  if (!modal) return false
-  const field = nodeFieldOrder()[modal.fieldIndex]
-  if (!field || field === "dependsOn") return false
-  if (field === "kind") {
-    if (input === "cycle") {
-      modal.values.kind = modal.values.kind === "command" ? "prompt" : modal.values.kind === "prompt" ? "bash" : "command"
-      return true
-    }
-    return false
-  }
-  if (!isNodeTextField(field)) return false
-  const current = modal.values[field]
+  const editor = modal?.editor
+  if (!modal || !editor || editor.kind !== "text") return false
+  const current = editor.draft
   if (input === "backspace") {
-    modal.values[field] = current.slice(0, -1)
+    editor.draft = current.slice(0, -1)
     return true
   }
-  modal.values[field] = `${current}${input}`
+  editor.draft = `${current}${input}`
   return true
 }
 
 export function toggleNodeDependency(state: ArchonState): boolean {
   const modal = state.nodeModal
-  const workflow = selectedWorkflow(state)?.workflow
-  if (!modal || !workflow) return false
-  const dependencyIds = availableWorkflowDependencyIds(workflow, modal.kind === "edit-node" ? selectedWorkflowNode(state)?.id : undefined)
-  const dependencyId = dependencyIds[modal.dependencyCursor]
+  const dependencyIds = availableNodeDependencyIds(state)
+  if (!modal || modal.editor?.kind !== "dependsOn") return false
+  const dependencyId = dependencyIds[modal.editor.selectedIndex]
   if (!dependencyId) return false
   modal.values.dependsOn = modal.values.dependsOn.includes(dependencyId)
     ? modal.values.dependsOn.filter((id) => id !== dependencyId)
@@ -791,14 +931,14 @@ export function handleModalKey(state: ArchonState, key: KeyEvent): boolean {
       moveMetadataSelection(state, -1)
       return true
     }
-    if (state.metadataModal.actionIndex !== null && (key.name === "h" || key.name === "l")) {
-      moveMetadataAction(state, key.name === "l" ? 1 : -1)
+    if (state.metadataModal.actionIndex !== null && (key.name === "h" || key.name === "left" || key.name === "l" || key.name === "right")) {
+      moveMetadataAction(state, key.name === "l" || key.name === "right" ? 1 : -1)
       return true
     }
     if (state.metadataModal.actionIndex !== null && key.name === "return") return applyMetadataAction(state)
     if (key.name === "return") return openMetadataFieldEditor(state)
-    if (currentMetadataField(state) && (key.name === "h" || key.name === "l")) {
-      cycleMetadataValue(state, key.name === "l" ? 1 : -1)
+    if (currentMetadataField(state) && (key.name === "h" || key.name === "left" || key.name === "l" || key.name === "right")) {
+      cycleMetadataValue(state, key.name === "l" || key.name === "right" ? 1 : -1)
       return true
     }
     if (key.ctrl && (key.name === "j" || key.name === "k")) {
@@ -808,31 +948,59 @@ export function handleModalKey(state: ArchonState, key: KeyEvent): boolean {
     return true
   }
   if (state.nodeModal) {
+    const editor = state.nodeModal.editor
+    if (editor) {
+      if (key.name === "escape") return closeNodeFieldEditor(state)
+      if (key.name === "return") return applyNodeFieldEditor(state)
+      if ((editor.kind === "enum" || editor.kind === "dependsOn") && (key.name === "down" || key.name === "j" || (key.ctrl && key.name === "n"))) {
+        return moveNodeEditorSelection(state, 1)
+      }
+      if ((editor.kind === "enum" || editor.kind === "dependsOn") && (key.name === "up" || key.name === "k" || (key.ctrl && key.name === "p"))) {
+        return moveNodeEditorSelection(state, -1)
+      }
+      if (editor.kind === "dependsOn" && key.name === "space") return toggleNodeDependency(state)
+      if (key.name === "backspace") return appendNodeInput(state, "backspace")
+      if (key.name === "space") return appendNodeInput(state, " ")
+      if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) return appendNodeInput(state, key.sequence)
+      return true
+    }
     if (key.name === "escape") {
       state.nodeModal = null
+      return true
+    }
+    if (key.ctrl && key.name === "s") {
+      applyNodeModal(state)
       return true
     }
     if (key.name === "tab") {
       moveNodeField(state, key.shift ? -1 : 1)
       return true
     }
+    if (key.name === "j" || key.name === "down") {
+      moveNodeSelection(state, 1)
+      return true
+    }
+    if (key.name === "k" || key.name === "up") {
+      moveNodeSelection(state, -1)
+      return true
+    }
+    if (state.nodeModal.actionIndex !== null && (key.name === "h" || key.name === "left" || key.name === "l" || key.name === "right")) {
+      moveNodeAction(state, key.name === "l" || key.name === "right" ? 1 : -1)
+      return true
+    }
+    if (state.nodeModal.actionIndex !== null && key.name === "return") return applyNodeAction(state)
     if (key.name === "return") {
-      applyNodeModal(state)
+      return openNodeFieldEditor(state)
+    }
+    if (currentNodeField(state) && (key.name === "h" || key.name === "left" || key.name === "l" || key.name === "right")) {
+      return cycleNodeValue(state, key.name === "l" || key.name === "right" ? 1 : -1)
+    }
+    if (key.ctrl && (key.name === "j" || key.name === "k")) {
+      return cycleNodeValue(state, key.name === "j" ? 1 : -1)
+    }
+    if (key.name === "space") {
       return true
     }
-    if (state.nodeModal.fieldIndex === 3 && (key.name === "j" || key.name === "down")) {
-      moveNodeDependencyCursor(state, 1)
-      return true
-    }
-    if (state.nodeModal.fieldIndex === 3 && (key.name === "k" || key.name === "up")) {
-      moveNodeDependencyCursor(state, -1)
-      return true
-    }
-    if (state.nodeModal.fieldIndex === 3 && key.name === "space") return toggleNodeDependency(state)
-    if (key.ctrl && key.name === "j") return appendNodeInput(state, "cycle")
-    if (key.name === "backspace") return appendNodeInput(state, "backspace")
-    if (key.name === "space") return appendNodeInput(state, " ")
-    if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) return appendNodeInput(state, key.sequence)
     return true
   }
   return false

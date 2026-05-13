@@ -110,7 +110,23 @@ export type ArchonMetadataModalState = {
 export type ArchonNodeModalState = {
   kind: "create-node" | "edit-node"
   fieldIndex: number
-  dependencyCursor: number
+  actionIndex: 0 | 1 | null
+  editor:
+    | {
+        kind: "text"
+        field: "id" | "body" | "when" | "triggerRule" | "context"
+        draft: string
+      }
+    | {
+        kind: "enum"
+        field: "kind"
+        selectedIndex: number
+      }
+    | {
+        kind: "dependsOn"
+        selectedIndex: number
+      }
+    | null
   values: {
     id: string
     kind: ArchonWorkflowNodeKind

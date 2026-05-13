@@ -58,7 +58,11 @@ export function moveSelection(state: ArchonState, delta: number): boolean {
   if (entries.length === 0) return false
   const selectedPath = state.submode === "workflows" ? state.selectedWorkflowPath : state.selectedCommandPath
   const currentIndex = Math.max(0, entries.findIndex((entry) => entry.path === selectedPath))
-  const nextIndex = Math.max(0, Math.min(entries.length - 1, currentIndex + delta))
+  const nextIndex = delta === Number.MIN_SAFE_INTEGER
+    ? 0
+    : delta === Number.MAX_SAFE_INTEGER
+      ? entries.length - 1
+      : ((currentIndex + delta) % entries.length + entries.length) % entries.length
   if (nextIndex === currentIndex) return false
   if (state.submode === "workflows") {
     state.selectedWorkflowPath = entries[nextIndex]?.path ?? null

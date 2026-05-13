@@ -52,6 +52,8 @@ export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, dep
     if (!workflow) return true
     if (state.archon.selectedWorkflowNodeId) {
       openEditNodeModal(state.archon)
+    } else if (workflow.nodes.length === 0) {
+      openCreateNodeModal(state.archon)
     } else if (workflow.nodes.length > 0) {
       state.archon.selectedWorkflowNodeId = workflow.nodes[0]?.id ?? null
     }
@@ -65,7 +67,8 @@ export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, dep
       }
       if ((key.name === "l" || key.name === "right") && !state.archon.selectedWorkflowNodeId) {
         const workflow = selectedWorkflow(state.archon)?.workflow
-        state.archon.selectedWorkflowNodeId = workflow?.nodes[0]?.id ?? null
+        if (workflow?.nodes.length === 0) openCreateNodeModal(state.archon)
+        else state.archon.selectedWorkflowNodeId = workflow?.nodes[0]?.id ?? null
       }
     }
     applyArchonSelectionChange(state)
