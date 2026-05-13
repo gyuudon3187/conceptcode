@@ -48,6 +48,7 @@ function createState(): ArchonState {
     submode: "workflows",
     selectedWorkflowPath: "/workspace/.archon/workflows/release.yaml",
     selectedCommandPath: "/workspace/.archon/commands/review.md",
+    workflowNodesOpen: false,
     selectedWorkflowNodeId: null,
     dirtyPaths: [],
     pendingDeletePaths: [],

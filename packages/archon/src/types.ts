@@ -144,6 +144,7 @@ export type ArchonState = {
   submode: ArchonSubmode
   selectedWorkflowPath: string | null
   selectedCommandPath: string | null
+  workflowNodesOpen: boolean
   selectedWorkflowNodeId: string | null
   dirtyPaths: string[]
   pendingDeletePaths: string[]

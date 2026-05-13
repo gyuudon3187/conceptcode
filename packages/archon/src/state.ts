@@ -10,8 +10,8 @@ export function selectedCommand(state: Pick<ArchonState, "catalog" | "selectedCo
 
 export function selectedWorkflowNode(state: Pick<ArchonState, "catalog" | "selectedWorkflowPath" | "selectedWorkflowNodeId">): ArchonWorkflowNode | null {
   const workflow = selectedWorkflow(state)?.workflow
-  if (!workflow) return null
-  return workflow.nodes.find((node) => node.id === state.selectedWorkflowNodeId) ?? workflow.nodes[0] ?? null
+  if (!workflow || !state.selectedWorkflowNodeId) return null
+  return workflow.nodes.find((node) => node.id === state.selectedWorkflowNodeId) ?? null
 }
 
 export function isPathDirty(state: Pick<ArchonState, "dirtyPaths">, path: string | null | undefined): boolean {
@@ -45,11 +45,15 @@ export function clearPendingDeletes(state: ArchonState, paths?: string[]): void 
 }
 
 export function moveSelection(state: ArchonState, delta: number): boolean {
-  if (state.submode === "workflows" && state.selectedWorkflowNodeId) {
+  if (state.submode === "workflows" && state.workflowNodesOpen) {
     const workflow = selectedWorkflow(state)?.workflow
     if (!workflow || workflow.nodes.length === 0) return false
-    const currentIndex = Math.max(0, workflow.nodes.findIndex((node) => node.id === state.selectedWorkflowNodeId))
-    const nextIndex = Math.max(0, Math.min(workflow.nodes.length - 1, currentIndex + delta))
+    const currentIndex = state.selectedWorkflowNodeId
+      ? Math.max(0, workflow.nodes.findIndex((node) => node.id === state.selectedWorkflowNodeId))
+      : -1
+    const nextIndex = currentIndex === -1
+      ? (delta < 0 || delta === Number.MAX_SAFE_INTEGER ? workflow.nodes.length - 1 : 0)
+      : Math.max(0, Math.min(workflow.nodes.length - 1, currentIndex + delta))
     if (nextIndex === currentIndex) return false
     state.selectedWorkflowNodeId = workflow.nodes[nextIndex]?.id ?? null
     return true
@@ -66,7 +70,8 @@ export function moveSelection(state: ArchonState, delta: number): boolean {
   if (nextIndex === currentIndex) return false
   if (state.submode === "workflows") {
     state.selectedWorkflowPath = entries[nextIndex]?.path ?? null
-    state.selectedWorkflowNodeId = selectedWorkflow(state)?.workflow?.nodes[0]?.id ?? null
+    state.workflowNodesOpen = false
+    state.selectedWorkflowNodeId = null
   } else {
     state.selectedCommandPath = entries[nextIndex]?.path ?? null
   }
@@ -87,5 +92,6 @@ export function replaceCatalog(state: ArchonState, nextCatalog: ArchonCatalog, s
   state.selectedWorkflowPath = selection?.workflowPath ?? nextCatalog.workflows.find((entry) => entry.path === state.selectedWorkflowPath)?.path ?? nextCatalog.workflows[0]?.path ?? null
   state.selectedCommandPath = selection?.commandPath ?? nextCatalog.commands.find((entry) => entry.path === state.selectedCommandPath)?.path ?? nextCatalog.commands[0]?.path ?? null
   const workflow = state.catalog.workflows.find((entry) => entry.path === state.selectedWorkflowPath)?.workflow
-  state.selectedWorkflowNodeId = workflow?.nodes.find((node) => node.id === state.selectedWorkflowNodeId)?.id ?? workflow?.nodes[0]?.id ?? null
+  state.selectedWorkflowNodeId = workflow?.nodes.find((node) => node.id === state.selectedWorkflowNodeId)?.id ?? null
+  if (!workflow) state.workflowNodesOpen = false
 }

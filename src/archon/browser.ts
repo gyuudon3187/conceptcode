@@ -61,8 +61,8 @@ export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, dep
     }
     if (state.archon.selectedWorkflowNodeId) {
       openEditNodeModal(state.archon)
-    } else if (workflow.nodes.length === 0) {
-      openCreateNodeModal(state.archon)
+    } else if (!state.archon.workflowNodesOpen) {
+      state.archon.workflowNodesOpen = true
     } else if (workflow.nodes.length > 0) {
       state.archon.selectedWorkflowNodeId = workflow.nodes[0]?.id ?? null
     }
@@ -72,12 +72,13 @@ export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, dep
   if (key.name === "h" || key.name === "left" || key.name === "l" || key.name === "right" || key.name === "return") {
     if (state.archon.submode === "workflows") {
       if (key.name === "h" || key.name === "left") {
-        state.archon.selectedWorkflowNodeId = null
+        if (state.archon.selectedWorkflowNodeId) state.archon.selectedWorkflowNodeId = null
+        else state.archon.workflowNodesOpen = false
       }
-      if ((key.name === "l" || key.name === "right") && !state.archon.selectedWorkflowNodeId) {
+      if (key.name === "l" || key.name === "right") {
         const workflow = selectedWorkflow(state.archon)?.workflow
-        if (workflow?.nodes.length === 0) openCreateNodeModal(state.archon)
-        else state.archon.selectedWorkflowNodeId = workflow?.nodes[0]?.id ?? null
+        if (!state.archon.workflowNodesOpen) state.archon.workflowNodesOpen = !!workflow
+        else if (!state.archon.selectedWorkflowNodeId) state.archon.selectedWorkflowNodeId = workflow?.nodes[0]?.id ?? null
       }
     }
     applyArchonSelectionChange(state)

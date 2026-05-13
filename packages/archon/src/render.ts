@@ -15,13 +15,14 @@ type ModalFrameOptions = {
   topWide: number
   topNarrow: number
   widthWide: number
-  widthNarrow: string
+  widthNarrow: `${number}%`
 }
 
 type ArchonRenderState = {
   submode: ArchonSubmode
   selectedWorkflowPath: string | null
   selectedCommandPath: string | null
+  workflowNodesOpen?: boolean
   selectedWorkflowNodeId?: string | null
   catalog: ArchonCatalog
   dirtyPaths?: string[]
@@ -165,7 +166,7 @@ function renderEnumOverlay(
   helpText: string,
   searchText?: string,
   widthWide: number = 62,
-  widthNarrow: string = "88%",
+  widthNarrow: `${number}%` = "88%",
 ) {
   return Box(
     {
@@ -199,7 +200,9 @@ export function renderArchonPrimaryPane(state: ArchonRenderState, colors: Render
   const selectedPath = isWorkflowMode ? state.selectedWorkflowPath : state.selectedCommandPath
   const entries = isWorkflowMode ? state.catalog.workflows : state.catalog.commands
   const selectedWorkflowEntry = isWorkflowMode ? state.catalog.workflows.find((entry) => entry.path === state.selectedWorkflowPath) ?? state.catalog.workflows[0] : null
-  const showEmptyWorkflowHint = isWorkflowMode && !!selectedWorkflowEntry?.workflow && selectedWorkflowEntry.workflow.nodes.length === 0 && !state.selectedWorkflowNodeId
+  const selectedWorkflow = selectedWorkflowEntry?.workflow ?? null
+  const showWorkflowNodes = isWorkflowMode && !!state.workflowNodesOpen && !!selectedWorkflow
+  const showEmptyWorkflowHint = showWorkflowNodes && selectedWorkflow.nodes.length === 0
   return Box(
     { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
     Box(
@@ -209,30 +212,35 @@ export function renderArchonPrimaryPane(state: ArchonRenderState, colors: Render
     ),
     entries.length === 0
       ? Box({ width: "100%", flexDirection: "column", gap: 1 }, Text({ content: `No ${state.submode} found under .archon/.`, fg: colors.muted }))
+      : showWorkflowNodes && selectedWorkflowEntry && selectedWorkflow
+        ? Box(
+            { width: "100%", flexDirection: "column", gap: 0 },
+            Text({ content: selectedWorkflow.name || selectedWorkflowEntry.relativePath, fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
+            ...selectedWorkflow.nodes.map((node) => {
+              const selected = node.id === state.selectedWorkflowNodeId
+              return Box(
+                { width: "100%", paddingLeft: 1, paddingRight: 1, backgroundColor: selected ? colors.selectedBg : undefined, flexDirection: "row", justifyContent: "space-between" },
+                Text({ content: `${selected ? ">" : "-"} ${node.id} (${node.kind})`, fg: selected ? colors.selectedFg : colors.text, attributes: selected ? TextAttributes.BOLD : 0 }),
+                Text({ content: node.dependsOn.length > 0 ? `deps ${node.dependsOn.length}` : "", fg: selected ? colors.selectedFg : colors.muted }),
+              )
+            }),
+            ...(showEmptyWorkflowHint
+              ? [Text({ content: "No nodes yet. Press n to create the first node.", fg: colors.muted })]
+              : []),
+          )
       : Box(
           { width: "100%", flexDirection: "column", gap: 0 },
           ...entries.map((entry) => renderCatalogRow(
             isWorkflowMode ? ((entry as ArchonWorkflowEntry).workflow?.name ?? entry.relativePath) : ((entry as ArchonCommandEntry).command?.name ?? entry.relativePath),
-            entry.relativePath,
+            isWorkflowMode
+              ? `${(entry as ArchonWorkflowEntry).workflow?.nodes.length ?? 0} node${((entry as ArchonWorkflowEntry).workflow?.nodes.length ?? 0) === 1 ? "" : "s"}`
+              : entry.relativePath,
             entry.path === selectedPath,
             badgeText(entry, state.dirtyPaths),
             colors,
             "[E]dit  [D]elete",
           )),
         ),
-    ...(isWorkflowMode && selectedWorkflowEntry?.workflow
-      ? selectedWorkflowEntry.workflow.nodes.map((node) => {
-          const selected = node.id === state.selectedWorkflowNodeId
-          return Box(
-            { width: "100%", paddingLeft: 3, paddingRight: 1, backgroundColor: selected ? colors.selectedBg : undefined, flexDirection: "row", justifyContent: "space-between" },
-            Text({ content: `${selected ? ">" : "-"} ${node.id} (${node.kind})`, fg: selected ? colors.selectedFg : colors.muted, attributes: selected ? TextAttributes.BOLD : 0 }),
-            Text({ content: node.dependsOn.length > 0 ? `deps ${node.dependsOn.length}` : "", fg: selected ? colors.selectedFg : colors.muted }),
-          )
-        })
-      : []),
-    ...(showEmptyWorkflowHint
-      ? [Text({ content: "  No nodes yet. Press Right or Enter to add the first node.", fg: colors.muted })]
-      : []),
   )
 }
 
@@ -256,8 +264,8 @@ export function renderArchonSupportTopPane(state: ArchonRenderState, colors: Ren
     ? [
         `Nodes: ${workflowSelection.workflow?.nodes.length ?? 0}`,
         `Command refs: ${workflowSelection.referencedCommandNames.length === 0 ? "none" : workflowSelection.referencedCommandNames.join(", ")}`,
-        ...(workflowSelection.workflow && workflowSelection.workflow.nodes.length === 0 && !state.selectedWorkflowNodeId
-          ? ["Hint: Press Right or Enter to create the first node."]
+        ...(workflowSelection.workflow && workflowSelection.workflow.nodes.length === 0 && state.workflowNodesOpen
+          ? ["Hint: Press n to create the first node."]
           : []),
         ...(state.selectedWorkflowNodeId
           ? (() => {

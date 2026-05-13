@@ -83,6 +83,7 @@ function createState(): ArchonState {
     submode: "workflows",
     selectedWorkflowPath: "/workspace/.archon/workflows/alpha.yaml",
     selectedCommandPath: "/workspace/.archon/commands/review.md",
+    workflowNodesOpen: false,
     selectedWorkflowNodeId: null,
     dirtyPaths: [],
     pendingDeletePaths: [],
@@ -113,5 +114,36 @@ describe("archon selection", () => {
 
     expect(moveSelection(state, -1)).toBe(true)
     expect(state.selectedCommandPath).toBe("/workspace/.archon/commands/ship.md")
+  })
+
+  test("moving workflow selection after closing node view clears node selection", () => {
+    const state = createState()
+    state.workflowNodesOpen = true
+    state.selectedWorkflowNodeId = "build"
+    state.catalog.workflows[0]!.workflow!.nodes = [
+      { id: "build", kind: "command", body: "", dependsOn: [], when: null, triggerRule: null, context: null },
+    ]
+    state.workflowNodesOpen = false
+    state.selectedWorkflowNodeId = null
+
+    expect(moveSelection(state, 1)).toBe(true)
+    expect(state.selectedWorkflowPath).toBe("/workspace/.archon/workflows/beta.yaml")
+    expect(state.workflowNodesOpen).toBe(false)
+    expect(state.selectedWorkflowNodeId).toBeNull()
+  })
+
+  test("moving in an open node view selects the first node before advancing", () => {
+    const state = createState()
+    state.workflowNodesOpen = true
+    state.catalog.workflows[0]!.workflow!.nodes = [
+      { id: "build", kind: "command", body: "", dependsOn: [], when: null, triggerRule: null, context: null },
+      { id: "ship", kind: "command", body: "", dependsOn: [], when: null, triggerRule: null, context: null },
+    ]
+
+    expect(moveSelection(state, 1)).toBe(true)
+    expect(state.selectedWorkflowNodeId).toBe("build")
+
+    expect(moveSelection(state, 1)).toBe(true)
+    expect(state.selectedWorkflowNodeId).toBe("ship")
   })
 })

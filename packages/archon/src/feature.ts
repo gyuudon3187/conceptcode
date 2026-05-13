@@ -4,7 +4,7 @@ import { serializeCommandFile } from "./commands"
 import { renderArchonMetadataModal, renderArchonNodeModal } from "./render"
 import { applyCatalogValidation } from "./validate"
 import { ARCHON_DEFAULT_WORKFLOW_INTERACTIVE, ARCHON_DEFAULT_WORKTREE_ENABLED, serializeWorkflowFile } from "./workflows"
-import type { ArchonMetadataEditorState, ArchonMetadataFieldKey, ArchonMetadataModalState, ArchonRenderColors, ArchonState, ArchonWorkflow, ArchonWorkflowNode } from "./types"
+import type { ArchonMetadataEditorState, ArchonMetadataFieldKey, ArchonMetadataModalState, ArchonRenderColors, ArchonState, ArchonWorkflow, ArchonWorkflowNode, ArchonWorkflowNodeKind } from "./types"
 import { clearDirtyPaths, clearPendingDeletes, markPathDirty, markPendingDelete, selectedCommand, selectedWorkflow, selectedWorkflowNode } from "./state"
 
 export type ArchonBufferTarget = {
@@ -402,7 +402,7 @@ export function openEditItemModal(state: ArchonState): void {
   }
 }
 
-function updateMetadataValue(state: ArchonState, field: ArchonMetadataFieldKey, value: string): boolean {
+function updateMetadataValue(state: ArchonState, field: Exclude<ArchonMetadataFieldKey, "tags">, value: string): boolean {
   const modal = state.metadataModal
   if (!modal) return false
   modal.values[field] = value as MetadataValues[typeof field]
