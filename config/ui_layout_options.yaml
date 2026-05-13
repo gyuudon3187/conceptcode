@@ -5,6 +5,7 @@ features:
   enabled_primary_features:
     - conceptcode
     - symphony
+    - archon
   initial_primary_feature: conceptcode
 
 ui_layout:

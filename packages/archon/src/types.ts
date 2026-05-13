@@ -23,9 +23,11 @@ export type ArchonWorkflow = {
   description: string
   provider: string | null
   model: string | null
-  interactive: boolean | null
+  interactive: boolean
+  interactiveUsesDefault: boolean
   tags: string[]
-  worktreeEnabled: boolean | null
+  worktreeEnabled: boolean
+  worktreeEnabledUsesDefault: boolean
   nodes: ArchonWorkflowNode[]
 }
 
@@ -66,14 +68,42 @@ export type ArchonSubmode = "workflows" | "commands"
 
 export type ArchonMetadataModalKind = "create-workflow" | "edit-workflow" | "create-command" | "edit-command"
 
+export type ArchonMetadataFieldKey = "fileName" | "name" | "description" | "provider" | "model" | "interactive" | "tags" | "worktreeEnabled" | "argumentHint" | "bodyTemplate"
+
+export type ArchonMetadataEditorState =
+  | {
+      kind: "text"
+      field: Exclude<ArchonMetadataFieldKey, "interactive" | "tags" | "worktreeEnabled" | "bodyTemplate" | "provider" | "model">
+      draft: string
+    }
+  | {
+      kind: "enum"
+      field: Extract<ArchonMetadataFieldKey, "provider" | "model" | "interactive" | "worktreeEnabled" | "bodyTemplate">
+      query: string
+      selectedIndex: number
+    }
+  | {
+      kind: "tags"
+      query: string
+      selectedIndex: number
+    }
+
 export type ArchonMetadataModalState = {
   kind: ArchonMetadataModalKind
   fieldIndex: number
+  actionIndex: 0 | 1 | null
+  editor: ArchonMetadataEditorState | null
   values: {
     fileName: string
     name: string
     description: string
+    provider: string
+    model: string
+    interactive: string
+    tags: string[]
+    worktreeEnabled: string
     argumentHint: string
+    bodyTemplate: string
   }
 }
 

@@ -3,8 +3,8 @@ import type { KeyEvent } from "@opentui/core"
 import { serializeCommandFile } from "./commands"
 import { renderArchonMetadataModal, renderArchonNodeModal } from "./render"
 import { applyCatalogValidation } from "./validate"
-import { serializeWorkflowFile } from "./workflows"
-import type { ArchonRenderColors, ArchonState, ArchonWorkflow, ArchonWorkflowNode } from "./types"
+import { ARCHON_DEFAULT_WORKFLOW_INTERACTIVE, ARCHON_DEFAULT_WORKTREE_ENABLED, serializeWorkflowFile } from "./workflows"
+import type { ArchonMetadataEditorState, ArchonMetadataFieldKey, ArchonMetadataModalState, ArchonRenderColors, ArchonState, ArchonWorkflow, ArchonWorkflowNode } from "./types"
 import { clearDirtyPaths, clearPendingDeletes, markPathDirty, markPendingDelete, selectedCommand, selectedWorkflow, selectedWorkflowNode } from "./state"
 
 export type ArchonBufferTarget = {
@@ -18,6 +18,40 @@ export type ArchonSavePlan = {
   writes: Array<{ path: string; contents: string }>
   deletes: string[]
 }
+
+const COMMAND_BODY_TEMPLATES = {
+  basic: "# Command\n\n## Goal\n- Describe the task clearly.\n\n## Inputs\n- $ARGUMENTS\n\n## Output\n- Return the requested result.\n",
+  investigation: "# Investigation Command\n\n## Goal\n- Investigate the reported behavior and identify the root cause.\n\n## Steps\n1. Reproduce the issue.\n2. Inspect the relevant implementation.\n3. Summarize likely causes and evidence.\n\n## Inputs\n- $ARGUMENTS\n",
+  implementation: "# Implementation Command\n\n## Goal\n- Implement the requested change safely and minimally.\n\n## Steps\n1. Inspect the relevant code paths.\n2. Apply the smallest correct change.\n3. Run focused verification and summarize outcomes.\n\n## Inputs\n- $ARGUMENTS\n",
+  review: "# Review Command\n\n## Goal\n- Review the changes for correctness, regressions, and missing coverage.\n\n## Focus\n- Bugs\n- Behavioral risks\n- Missing tests\n\n## Inputs\n- $ARGUMENTS\n",
+  handoff: "# Handoff Command\n\n## Goal\n- Package the current state for the next engineer or agent.\n\n## Include\n- What changed\n- What remains open\n- Relevant files and commands\n- Risks or follow-up checks\n\n## Inputs\n- $ARGUMENTS\n",
+} as const
+
+type CommandBodyTemplateId = keyof typeof COMMAND_BODY_TEMPLATES
+
+const COMMAND_BODY_TEMPLATE_IDS = Object.keys(COMMAND_BODY_TEMPLATES) as CommandBodyTemplateId[]
+
+const KNOWN_PROVIDERS = ["", "openai", "anthropic", "google", "openrouter", "xai"]
+
+const KNOWN_MODELS_BY_PROVIDER: Record<string, string[]> = {
+  openai: ["gpt-5.4", "gpt-5", "gpt-5-mini", "gpt-4.1"],
+  anthropic: ["claude-opus-4.1", "claude-sonnet-4", "claude-3.7-sonnet"],
+  google: ["gemini-2.5-pro", "gemini-2.5-flash"],
+  openrouter: ["openai/gpt-5", "anthropic/claude-sonnet-4", "google/gemini-2.5-pro"],
+  xai: ["grok-4", "grok-3"],
+}
+
+type MetadataValues = ReturnType<typeof createEmptyMetadataValues>
+
+type MetadataEnumOption = {
+  value: string
+  label: string
+  description?: string
+}
+
+type MetadataEnumField = "provider" | "model" | "interactive" | "worktreeEnabled" | "bodyTemplate"
+
+type MetadataTextField = "fileName" | "name" | "description" | "argumentHint"
 
 function sanitizeFileName(value: string, fallback: string): string {
   const trimmed = value.trim().toLowerCase().replace(/[^a-z0-9._/-]+/g, "-").replace(/-+/g, "-").replace(/^[-/]+|[-/]+$/g, "")
@@ -75,8 +109,212 @@ function availableWorkflowDependencyIds(workflow: ArchonWorkflow, excludingId?: 
   return workflow.nodes.map((node) => node.id).filter((id) => id !== excludingId)
 }
 
-function metadataFieldOrder(state: NonNullable<ArchonState["metadataModal"]>): Array<keyof NonNullable<ArchonState["metadataModal"]>["values"]> {
-  return state.kind.includes("workflow") ? ["fileName", "name", "description"] : ["fileName", "name", "description", "argumentHint"]
+function createEmptyMetadataValues() {
+  return {
+    fileName: "",
+    name: "",
+    description: "",
+    provider: "",
+    model: "",
+    interactive: "",
+    tags: [],
+    worktreeEnabled: "",
+    argumentHint: "",
+    bodyTemplate: "basic",
+  }
+}
+
+function availableWorkflowTags(state: Pick<ArchonState, "catalog">): string[] {
+  return [...new Set(
+    state.catalog.workflows.flatMap((entry) => entry.workflow?.tags ?? []),
+  )].sort((left, right) => left.localeCompare(right))
+}
+
+function availableWorkflowTagsForModal(state: ArchonState): string[] {
+  return normalizeTags([
+    ...availableWorkflowTags(state),
+    ...(state.metadataModal?.kind.includes("workflow") ? state.metadataModal.values.tags : []),
+  ])
+}
+
+function fuzzyOptionScore(candidate: string, query: string): number {
+  if (!query) return 1
+  const normalizedCandidate = candidate.toLowerCase()
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return 1
+  if (normalizedCandidate.includes(normalizedQuery)) return 100 - normalizedCandidate.indexOf(normalizedQuery)
+  let queryIndex = 0
+  let score = 0
+  for (let index = 0; index < normalizedCandidate.length && queryIndex < normalizedQuery.length; index += 1) {
+    if (normalizedCandidate[index] === normalizedQuery[queryIndex]) {
+      score += 2
+      queryIndex += 1
+    }
+  }
+  return queryIndex === normalizedQuery.length ? score : 0
+}
+
+function metadataFieldIsEnum(field: ArchonMetadataFieldKey): field is MetadataEnumField {
+  return field === "provider" || field === "model" || field === "interactive" || field === "worktreeEnabled" || field === "bodyTemplate"
+}
+
+function metadataFieldIsText(field: ArchonMetadataFieldKey): field is MetadataTextField {
+  return field === "fileName" || field === "name" || field === "description" || field === "argumentHint"
+}
+
+function metadataEnumOptions(state: Pick<ArchonState, "catalog" | "metadataModal">, field: MetadataEnumField): MetadataEnumOption[] {
+  const modal = state.metadataModal
+  const provider = modal?.values.provider.trim().toLowerCase() ?? ""
+  if (field === "interactive") {
+    return [
+      { value: "default", label: "default", description: `${ARCHON_DEFAULT_WORKFLOW_INTERACTIVE}` },
+      { value: "true", label: "true" },
+      { value: "false", label: "false" },
+    ]
+  }
+  if (field === "worktreeEnabled") {
+    return [
+      { value: "default", label: "default", description: `${ARCHON_DEFAULT_WORKTREE_ENABLED}` },
+      { value: "true", label: "true" },
+      { value: "false", label: "false" },
+    ]
+  }
+  if (field === "bodyTemplate") {
+    return COMMAND_BODY_TEMPLATE_IDS.map((value) => ({ value, label: value, description: `${value} template` }))
+  }
+  if (field === "provider") {
+    const discoveredProviders = state.catalog.workflows.flatMap((entry) => entry.workflow?.provider ? [entry.workflow.provider] : [])
+    return normalizeTags([...KNOWN_PROVIDERS, ...discoveredProviders]).map((value) => ({ value, label: value || "none" }))
+  }
+  const discoveredModels = state.catalog.workflows.flatMap((entry) => {
+    if (!entry.workflow?.model) return []
+    if (!provider) return [entry.workflow.model]
+    return (entry.workflow.provider ?? "").trim().toLowerCase() === provider ? [entry.workflow.model] : []
+  })
+  const providerModels = provider ? (KNOWN_MODELS_BY_PROVIDER[provider] ?? []) : Object.values(KNOWN_MODELS_BY_PROVIDER).flatMap((models) => models)
+  return normalizeTags(["", ...providerModels, ...discoveredModels, ...(modal?.values.model ? [modal.values.model] : [])]).map((value) => ({ value, label: value || "none" }))
+}
+
+function filteredMetadataEnumOptions(state: Pick<ArchonState, "catalog" | "metadataModal">, editor: Extract<ArchonMetadataEditorState, { kind: "enum" }>): MetadataEnumOption[] {
+  const normalizedQuery = editor.query.trim().toLowerCase()
+  const options = metadataEnumOptions(state, editor.field)
+    .map((option) => ({ option, score: Math.max(fuzzyOptionScore(option.label, normalizedQuery), fuzzyOptionScore(option.description ?? "", normalizedQuery)) }))
+    .filter(({ score }) => normalizedQuery.length === 0 || score > 0)
+    .sort((left, right) => right.score - left.score || left.option.label.localeCompare(right.option.label))
+    .map(({ option }) => option)
+  return options.length > 0 ? options : metadataEnumOptions(state, editor.field)
+}
+
+function selectedMetadataEnumOption(state: Pick<ArchonState, "catalog" | "metadataModal">, editor: Extract<ArchonMetadataEditorState, { kind: "enum" }>): MetadataEnumOption | null {
+  const options = filteredMetadataEnumOptions(state, editor)
+  if (options.length === 0) return null
+  const index = Math.max(0, Math.min(editor.selectedIndex, options.length - 1))
+  return options[index] ?? null
+}
+
+function clampMetadataEditorSelection(state: ArchonState): void {
+  const editor = state.metadataModal?.editor
+  if (!editor) return
+  if (editor.kind === "enum") {
+    const maxIndex = Math.max(0, filteredMetadataEnumOptions(state, editor).length - 1)
+    editor.selectedIndex = Math.max(0, Math.min(editor.selectedIndex, maxIndex))
+    return
+  }
+  if (editor.kind === "tags") {
+    const maxIndex = availableWorkflowTagsForModal(state).length
+    editor.selectedIndex = Math.max(0, Math.min(editor.selectedIndex, maxIndex))
+  }
+}
+
+function formatDefaultableBoolean(value: boolean, usesDefault: boolean): string {
+  if (usesDefault) return "default"
+  return String(value)
+}
+
+function defaultBooleanValue(field: "interactive" | "worktreeEnabled"): boolean {
+  return field === "interactive" ? ARCHON_DEFAULT_WORKFLOW_INTERACTIVE : ARCHON_DEFAULT_WORKTREE_ENABLED
+}
+
+function parseDefaultableBoolean(field: "interactive" | "worktreeEnabled", value: string): { value: boolean; usesDefault: boolean } {
+  const normalized = value.trim().toLowerCase()
+  const defaultValue = defaultBooleanValue(field)
+  if (normalized === "" || normalized === "default") {
+    return { value: defaultValue, usesDefault: true }
+  }
+  if (normalized === "true") {
+    return { value: true, usesDefault: defaultValue === true }
+  }
+  if (normalized === "false") {
+    return { value: false, usesDefault: defaultValue === false }
+  }
+  return { value: defaultValue, usesDefault: true }
+}
+
+function currentMetadataField(state: Pick<ArchonState, "metadataModal">): ArchonMetadataFieldKey | null {
+  const modal = state.metadataModal
+  if (!modal || modal.actionIndex !== null) return null
+  return metadataFieldOrder(modal)[modal.fieldIndex] ?? null
+}
+
+function normalizeTags(tags: string[]): string[] {
+  return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0))].sort((left, right) => left.localeCompare(right))
+}
+
+function toggleMetadataTag(state: ArchonState): boolean {
+  const modal = state.metadataModal
+  const editor = modal?.editor
+  if (!modal || !editor || editor.kind !== "tags") return false
+  const existingTags = availableWorkflowTagsForModal(state)
+  if (editor.selectedIndex < existingTags.length) {
+    const tag = existingTags[editor.selectedIndex]
+    if (!tag) return false
+    modal.values.tags = normalizeTags(
+      modal.values.tags.includes(tag)
+        ? modal.values.tags.filter((item) => item !== tag)
+        : [...modal.values.tags, tag],
+    )
+    return true
+  }
+  const draft = editor.query.trim()
+  if (!draft) return false
+  modal.values.tags = normalizeTags([...modal.values.tags, draft])
+  editor.query = ""
+  return true
+}
+
+function cycleMetadataValue(state: ArchonState, delta: number): boolean {
+  const modal = state.metadataModal
+  if (!modal) return false
+  const field = metadataFieldOrder(modal)[modal.fieldIndex]
+  if (!field || !metadataFieldIsEnum(field)) return false
+  const options = metadataEnumOptions(state, field)
+  if (options.length === 0) return false
+  const currentValue = modal.values[field]
+  const currentIndex = Math.max(0, options.findIndex((option) => option.value === currentValue))
+  const nextIndex = (currentIndex + delta % options.length + options.length) % options.length
+  modal.values[field] = options[nextIndex]?.value ?? options[0]?.value ?? ""
+  if (field === "provider" && !metadataEnumOptions(state, "model").some((option) => option.value === modal.values.model)) {
+    modal.values.model = ""
+  }
+  return true
+}
+
+function commandBodyTemplate(templateId: string): string {
+  return COMMAND_BODY_TEMPLATES[(COMMAND_BODY_TEMPLATE_IDS.includes(templateId as CommandBodyTemplateId) ? templateId : "basic") as CommandBodyTemplateId]
+}
+
+function metadataFieldOrder(state: ArchonMetadataModalState): ArchonMetadataFieldKey[] {
+  if (state.kind === "create-workflow" || state.kind === "edit-workflow") {
+    return ["name", "description", "provider", "model", "interactive", "tags", "worktreeEnabled"]
+  }
+  if (state.kind === "create-command") {
+    return ["fileName", "name", "description", "argumentHint", "bodyTemplate"]
+  }
+  return ["fileName", "name", "description", "argumentHint"]
+}
+
+function metadataHasActions(modal: ArchonMetadataModalState): boolean {
+  return modal.kind === "create-workflow" || modal.kind === "create-command"
 }
 
 function nodeFieldOrder(): Array<keyof NonNullable<ArchonState["nodeModal"]>["values"]> {
@@ -89,8 +327,8 @@ function isNodeTextField(field: keyof NonNullable<ArchonState["nodeModal"]>["val
 
 export function openCreateItemModal(state: ArchonState): void {
   state.metadataModal = state.submode === "workflows"
-    ? { kind: "create-workflow", fieldIndex: 0, values: { fileName: "", name: "", description: "", argumentHint: "" } }
-    : { kind: "create-command", fieldIndex: 0, values: { fileName: "", name: "", description: "", argumentHint: "" } }
+    ? { kind: "create-workflow", fieldIndex: 0, actionIndex: null, editor: null, values: createEmptyMetadataValues() }
+    : { kind: "create-command", fieldIndex: 0, actionIndex: null, editor: null, values: createEmptyMetadataValues() }
 }
 
 export function openEditItemModal(state: ArchonState): void {
@@ -99,12 +337,18 @@ export function openEditItemModal(state: ArchonState): void {
     if (!selected?.workflow) return
     state.metadataModal = {
       kind: "edit-workflow",
-      fieldIndex: 1,
+      fieldIndex: 0,
+      actionIndex: null,
+      editor: null,
       values: {
-        fileName: selected.relativePath.replace(/^\.archon\/workflows\//, "").replace(/\.yaml$/, ""),
+        ...createEmptyMetadataValues(),
         name: selected.workflow.name,
         description: selected.workflow.description,
-        argumentHint: "",
+        provider: selected.workflow.provider ?? "",
+        model: selected.workflow.model ?? "",
+        interactive: formatDefaultableBoolean(selected.workflow.interactive, selected.workflow.interactiveUsesDefault),
+        tags: [...selected.workflow.tags],
+        worktreeEnabled: formatDefaultableBoolean(selected.workflow.worktreeEnabled, selected.workflow.worktreeEnabledUsesDefault),
       },
     }
     return
@@ -114,7 +358,10 @@ export function openEditItemModal(state: ArchonState): void {
   state.metadataModal = {
     kind: "edit-command",
     fieldIndex: 1,
+    actionIndex: null,
+    editor: null,
     values: {
+      ...createEmptyMetadataValues(),
       fileName: selected.relativePath.replace(/^\.archon\/commands\//, "").replace(/\.md$/, ""),
       name: selected.command.name,
       description: selected.command.description ?? "",
@@ -123,41 +370,169 @@ export function openEditItemModal(state: ArchonState): void {
   }
 }
 
-export function appendMetadataInput(state: ArchonState, input: string): boolean {
+function updateMetadataValue(state: ArchonState, field: ArchonMetadataFieldKey, value: string): boolean {
+  const modal = state.metadataModal
+  if (!modal) return false
+  modal.values[field] = value as MetadataValues[typeof field]
+  if (field === "provider" && !metadataEnumOptions(state, "model").some((option) => option.value === modal.values.model)) {
+    modal.values.model = ""
+  }
+  return true
+}
+
+export function openMetadataFieldEditor(state: ArchonState): boolean {
   const modal = state.metadataModal
   if (!modal) return false
   const field = metadataFieldOrder(modal)[modal.fieldIndex]
   if (!field) return false
-  if (input === "backspace") {
-    modal.values[field] = modal.values[field].slice(0, -1)
+  if (field === "tags") {
+    modal.editor = { kind: "tags", query: "", selectedIndex: 0 }
     return true
   }
-  modal.values[field] += input
+  if (metadataFieldIsEnum(field)) {
+    const options = metadataEnumOptions(state, field)
+    const selectedIndex = Math.max(0, options.findIndex((option) => option.value === modal.values[field]))
+    modal.editor = { kind: "enum", field, query: "", selectedIndex }
+    clampMetadataEditorSelection(state)
+    return true
+  }
+  if (!metadataFieldIsText(field)) return false
+  modal.editor = { kind: "text", field, draft: modal.values[field] }
+  return true
+}
+
+function closeMetadataFieldEditor(state: ArchonState): boolean {
+  const modal = state.metadataModal
+  if (!modal?.editor) return false
+  modal.editor = null
+  return true
+}
+
+function applyMetadataFieldEditor(state: ArchonState): boolean {
+  const modal = state.metadataModal
+  const editor = modal?.editor
+  if (!modal || !editor) return false
+  if (editor.kind === "text") {
+    updateMetadataValue(state, editor.field, editor.draft)
+    modal.editor = null
+    return true
+  }
+  if (editor.kind === "enum") {
+    const selected = selectedMetadataEnumOption(state, editor)
+    if (!selected) return false
+    updateMetadataValue(state, editor.field, selected.value)
+    modal.editor = null
+    return true
+  }
+  modal.editor = null
+  return true
+}
+
+export function appendMetadataInput(state: ArchonState, input: string): boolean {
+  const modal = state.metadataModal
+  const editor = modal?.editor
+  if (!modal || !editor) return false
+  if (editor.kind === "text") {
+    editor.draft = input === "backspace" ? editor.draft.slice(0, -1) : `${editor.draft}${input}`
+    return true
+  }
+  if (editor.kind === "tags") {
+    if (input === "backspace") {
+      editor.query = editor.query.slice(0, -1)
+      return true
+    }
+    editor.query += input
+    return true
+  }
+  editor.query = input === "backspace" ? editor.query.slice(0, -1) : `${editor.query}${input}`
+  editor.selectedIndex = 0
+  clampMetadataEditorSelection(state)
   return true
 }
 
 export function moveMetadataField(state: ArchonState, delta: number): void {
   const modal = state.metadataModal
   if (!modal) return
+  modal.actionIndex = null
   const count = metadataFieldOrder(modal).length
   modal.fieldIndex = (modal.fieldIndex + delta + count) % count
+}
+
+function moveMetadataSelection(state: ArchonState, delta: number): void {
+  const modal = state.metadataModal
+  if (!modal) return
+  const fieldCount = metadataFieldOrder(modal).length
+  if (!metadataHasActions(modal)) {
+    modal.actionIndex = null
+    modal.fieldIndex = (modal.fieldIndex + delta + fieldCount) % fieldCount
+    return
+  }
+  const totalCount = fieldCount + 1
+  const currentIndex = modal.actionIndex === null ? modal.fieldIndex : fieldCount
+  const nextIndex = (currentIndex + delta + totalCount) % totalCount
+  if (nextIndex === fieldCount) {
+    modal.actionIndex = delta > 0 ? 0 : 1
+    return
+  }
+  modal.fieldIndex = nextIndex
+  modal.actionIndex = null
+}
+
+function moveMetadataAction(state: ArchonState, delta: number): boolean {
+  const modal = state.metadataModal
+  if (!modal || modal.actionIndex === null) return false
+  modal.actionIndex = (((modal.actionIndex + delta) % 2) + 2) % 2 as 0 | 1
+  return true
+}
+
+function applyMetadataAction(state: ArchonState): boolean {
+  const modal = state.metadataModal
+  if (!modal || modal.actionIndex === null) return false
+  if (modal.actionIndex === 0) {
+    applyMetadataModal(state)
+    return true
+  }
+  state.metadataModal = null
+  return true
+}
+
+function moveMetadataEditorSelection(state: ArchonState, delta: number): boolean {
+  const editor = state.metadataModal?.editor
+  if (!editor) return false
+  if (editor.kind === "enum") {
+    const options = filteredMetadataEnumOptions(state, editor)
+    if (options.length === 0) return false
+    editor.selectedIndex = (editor.selectedIndex + delta % options.length + options.length) % options.length
+    return true
+  }
+  if (editor.kind === "tags") {
+    const count = availableWorkflowTagsForModal(state).length + 1
+    if (count <= 0) return false
+    editor.selectedIndex = (editor.selectedIndex + delta % count + count) % count
+    return true
+  }
+  return false
 }
 
 export function applyMetadataModal(state: ArchonState): void {
   const modal = state.metadataModal
   if (!modal) return
   if (modal.kind === "create-workflow") {
-    const path = workflowPathFor(state, modal.values.fileName || modal.values.name)
+    const interactive = parseDefaultableBoolean("interactive", modal.values.interactive)
+    const worktreeEnabled = parseDefaultableBoolean("worktreeEnabled", modal.values.worktreeEnabled)
+    const path = workflowPathFor(state, modal.values.name)
     const workflow = {
       path,
       relativePath: relativePathFromAbsolute(state, path),
       name: modal.values.name || "New workflow",
       description: modal.values.description,
-      provider: null,
-      model: null,
-      interactive: null,
-      tags: [],
-      worktreeEnabled: null,
+      provider: modal.values.provider.trim() || null,
+      model: modal.values.model.trim() || null,
+      interactive: interactive.value,
+      interactiveUsesDefault: interactive.usesDefault,
+      tags: normalizeTags(modal.values.tags),
+      worktreeEnabled: worktreeEnabled.value,
+      worktreeEnabledUsesDefault: worktreeEnabled.usesDefault,
       nodes: [],
     }
     state.catalog.workflows = [...state.catalog.workflows, { path, relativePath: workflow.relativePath, workflow, findings: [], readOnlyReason: null, parseError: null, referencedCommandNames: [] }].sort((l, r) => l.relativePath.localeCompare(r.relativePath))
@@ -167,11 +542,18 @@ export function applyMetadataModal(state: ArchonState): void {
   } else if (modal.kind === "edit-workflow") {
     const selected = selectedWorkflow(state)
     if (selected?.workflow) {
-      const nextPath = workflowPathFor(state, modal.values.fileName || modal.values.name || selected.workflow.name)
-      renameWorkflowEntry(state, selected.path, nextPath)
+      const interactive = parseDefaultableBoolean("interactive", modal.values.interactive)
+      const worktreeEnabled = parseDefaultableBoolean("worktreeEnabled", modal.values.worktreeEnabled)
       selected.workflow.name = modal.values.name || selected.workflow.name
       selected.workflow.description = modal.values.description
-      markPathDirty(state, nextPath)
+      selected.workflow.provider = modal.values.provider.trim() || null
+      selected.workflow.model = modal.values.model.trim() || null
+      selected.workflow.interactive = interactive.value
+      selected.workflow.interactiveUsesDefault = interactive.usesDefault
+      selected.workflow.tags = normalizeTags(modal.values.tags)
+      selected.workflow.worktreeEnabled = worktreeEnabled.value
+      selected.workflow.worktreeEnabledUsesDefault = worktreeEnabled.usesDefault
+      markPathDirty(state, selected.path)
     }
   } else if (modal.kind === "create-command") {
     const path = commandPathFor(state, modal.values.fileName || modal.values.name)
@@ -181,7 +563,7 @@ export function applyMetadataModal(state: ArchonState): void {
       name: modal.values.name || sanitizeFileName(modal.values.fileName, "command"),
       description: modal.values.description || null,
       argumentHint: modal.values.argumentHint || null,
-      body: "# Command\n",
+      body: commandBodyTemplate(modal.values.bodyTemplate),
     }
     state.catalog.commands = [...state.catalog.commands, { path, relativePath: command.relativePath, command, findings: [], parseError: null, referencedByWorkflowPaths: [] }].sort((l, r) => l.relativePath.localeCompare(r.relativePath))
     state.selectedCommandPath = path
@@ -360,29 +742,69 @@ export function buildSavePlan(state: ArchonState): ArchonSavePlan {
 }
 
 export function renderFeatureOverlays(state: ArchonState, layoutMode: "wide" | "narrow", colors: ArchonRenderColors) {
+  const metadataEnumOptionsForRender = state.metadataModal?.editor?.kind === "enum"
+    ? filteredMetadataEnumOptions(state, state.metadataModal.editor).map((option) => ({ label: option.label, description: option.description }))
+    : []
   return [
-    ...(state.metadataModal ? renderArchonMetadataModal(layoutMode, state.metadataModal, colors) : []),
+    ...(state.metadataModal ? renderArchonMetadataModal(layoutMode, state.metadataModal, colors, availableWorkflowTagsForModal(state), metadataEnumOptionsForRender) : []),
     ...(state.nodeModal ? renderArchonNodeModal(layoutMode, state.nodeModal, colors, state) : []),
   ]
 }
 
 export function handleModalKey(state: ArchonState, key: KeyEvent): boolean {
   if (state.metadataModal) {
+    const editor = state.metadataModal.editor
+    if (editor) {
+      if (key.name === "escape") return closeMetadataFieldEditor(state)
+      if (key.name === "return") return applyMetadataFieldEditor(state)
+      if ((editor.kind === "enum" || editor.kind === "tags") && (key.name === "down" || key.name === "j" || (key.ctrl && key.name === "n"))) {
+        moveMetadataEditorSelection(state, 1)
+        return true
+      }
+      if ((editor.kind === "enum" || editor.kind === "tags") && (key.name === "up" || key.name === "k" || (key.ctrl && key.name === "p"))) {
+        moveMetadataEditorSelection(state, -1)
+        return true
+      }
+      if (editor.kind === "tags" && key.name === "space") return toggleMetadataTag(state)
+      if (key.name === "backspace") return appendMetadataInput(state, "backspace")
+      if (key.name === "space") return appendMetadataInput(state, " ")
+      if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) return appendMetadataInput(state, key.sequence)
+      return true
+    }
     if (key.name === "escape") {
       state.metadataModal = null
+      return true
+    }
+    if (key.ctrl && key.name === "s") {
+      applyMetadataModal(state)
       return true
     }
     if (key.name === "tab") {
       moveMetadataField(state, key.shift ? -1 : 1)
       return true
     }
-    if (key.name === "return") {
-      applyMetadataModal(state)
+    if (key.name === "j" || key.name === "down") {
+      moveMetadataSelection(state, 1)
       return true
     }
-    if (key.name === "backspace") return appendMetadataInput(state, "backspace")
-    if (key.name === "space") return appendMetadataInput(state, " ")
-    if (typeof key.sequence === "string" && key.sequence.length === 1 && !key.ctrl && !key.meta) return appendMetadataInput(state, key.sequence)
+    if (key.name === "k" || key.name === "up") {
+      moveMetadataSelection(state, -1)
+      return true
+    }
+    if (state.metadataModal.actionIndex !== null && (key.name === "h" || key.name === "l")) {
+      moveMetadataAction(state, key.name === "l" ? 1 : -1)
+      return true
+    }
+    if (state.metadataModal.actionIndex !== null && key.name === "return") return applyMetadataAction(state)
+    if (key.name === "return") return openMetadataFieldEditor(state)
+    if (currentMetadataField(state) && (key.name === "h" || key.name === "l")) {
+      cycleMetadataValue(state, key.name === "l" ? 1 : -1)
+      return true
+    }
+    if (key.ctrl && (key.name === "j" || key.name === "k")) {
+      cycleMetadataValue(state, key.name === "j" ? 1 : -1)
+      return true
+    }
     return true
   }
   if (state.nodeModal) {

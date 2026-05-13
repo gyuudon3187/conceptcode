@@ -1,6 +1,9 @@
 import { basename, relative } from "node:path"
 
-import type { ArchonWorkflow, ArchonWorkflowEntry, ArchonWorkflowNode } from "./types"
+import type { ArchonValidationFinding, ArchonWorkflow, ArchonWorkflowEntry, ArchonWorkflowNode } from "./types"
+
+export const ARCHON_DEFAULT_WORKFLOW_INTERACTIVE = false
+export const ARCHON_DEFAULT_WORKTREE_ENABLED = true
 
 type YamlScalar = null | boolean | number | string
 type YamlValue = YamlScalar | YamlValue[] | { [key: string]: YamlValue }
@@ -105,6 +108,10 @@ function asStringList(value: YamlValue | undefined): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
 
+function isStringList(value: YamlValue | undefined): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+}
+
 function unsupportedKeys(keys: string[], allowed: Set<string>): string[] {
   return keys.filter((key) => !allowed.has(key)).sort((left, right) => left.localeCompare(right))
 }
@@ -145,6 +152,26 @@ function parseWorkflowNodes(value: YamlValue | undefined): { nodes: ArchonWorkfl
   return { nodes, readOnlyReason: null, parseError: null }
 }
 
+function metadataShapeFindings(payload: YamlObject, worktree: YamlObject): ArchonValidationFinding[] {
+  const findings: ArchonValidationFinding[] = []
+  if (payload.provider !== undefined && typeof payload.provider !== "string") {
+    findings.push({ severity: "warning", message: "Workflow field provider should be a string." })
+  }
+  if (payload.model !== undefined && typeof payload.model !== "string") {
+    findings.push({ severity: "warning", message: "Workflow field model should be a string." })
+  }
+  if (payload.interactive !== undefined && typeof payload.interactive !== "boolean") {
+    findings.push({ severity: "warning", message: "Workflow field interactive should be a boolean." })
+  }
+  if (payload.tags !== undefined && !isStringList(payload.tags)) {
+    findings.push({ severity: "warning", message: "Workflow field tags should be a list of strings." })
+  }
+  if (worktree.enabled !== undefined && typeof worktree.enabled !== "boolean") {
+    findings.push({ severity: "warning", message: "Workflow field worktree.enabled should be a boolean." })
+  }
+  return findings
+}
+
 export function parseWorkflowFile(workspaceRoot: string, path: string, text: string): ArchonWorkflowEntry {
   const relativePath = relative(workspaceRoot, path)
   try {
@@ -176,6 +203,9 @@ export function parseWorkflowFile(workspaceRoot: string, path: string, text: str
     }
     const worktree = asObject(payload.worktree)
     const worktreeKeys = unsupportedKeys(Object.keys(worktree), new Set(["enabled"]))
+    const findings = metadataShapeFindings(payload, worktree)
+    const parsedInteractive = asBoolean(payload.interactive)
+    const parsedWorktreeEnabled = asBoolean(worktree.enabled)
     const workflow: ArchonWorkflow = {
       path,
       relativePath,
@@ -183,9 +213,11 @@ export function parseWorkflowFile(workspaceRoot: string, path: string, text: str
       description: asString(payload.description) ?? "",
       provider: asString(payload.provider),
       model: asString(payload.model),
-      interactive: asBoolean(payload.interactive),
+      interactive: parsedInteractive ?? ARCHON_DEFAULT_WORKFLOW_INTERACTIVE,
+      interactiveUsesDefault: parsedInteractive === null || parsedInteractive === ARCHON_DEFAULT_WORKFLOW_INTERACTIVE,
       tags: asStringList(payload.tags),
-      worktreeEnabled: asBoolean(worktree.enabled),
+      worktreeEnabled: parsedWorktreeEnabled ?? ARCHON_DEFAULT_WORKTREE_ENABLED,
+      worktreeEnabledUsesDefault: parsedWorktreeEnabled === null || parsedWorktreeEnabled === ARCHON_DEFAULT_WORKTREE_ENABLED,
       nodes,
     }
     const nextReadOnlyReason = readOnlyReason ?? (worktreeKeys.length > 0 ? `Unsupported worktree fields: ${worktreeKeys.join(", ")}` : null)
@@ -193,7 +225,7 @@ export function parseWorkflowFile(workspaceRoot: string, path: string, text: str
       path,
       relativePath,
       workflow,
-      findings: [],
+      findings,
       readOnlyReason: nextReadOnlyReason,
       parseError: null,
       referencedCommandNames: workflow.nodes.filter((node) => node.kind === "command").map((node) => node.body),
@@ -225,12 +257,12 @@ export function serializeWorkflowFile(workflow: ArchonWorkflow): string {
   ]
   if (workflow.provider) lines.push(`provider: ${yamlScalar(workflow.provider)}`)
   if (workflow.model) lines.push(`model: ${yamlScalar(workflow.model)}`)
-  if (typeof workflow.interactive === "boolean") lines.push(`interactive: ${yamlScalar(workflow.interactive)}`)
+  if (!workflow.interactiveUsesDefault) lines.push(`interactive: ${yamlScalar(workflow.interactive)}`)
   if (workflow.tags.length > 0) {
     lines.push("tags:")
     for (const tag of workflow.tags) lines.push(`  - ${yamlScalar(tag)}`)
   }
-  if (typeof workflow.worktreeEnabled === "boolean") {
+  if (!workflow.worktreeEnabledUsesDefault) {
     lines.push("worktree:")
     lines.push(`  enabled: ${yamlScalar(workflow.worktreeEnabled)}`)
   }
