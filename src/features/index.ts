@@ -54,7 +54,7 @@ export const ACTIVE_FEATURES: AppFeature[] = [
     renderPrimaryPaneContent: (_state, listScroll) => listScroll,
     renderConceptsWorkspaceSupportTop: (state) => renderArchonSupportTopPane(archonState(state), COLORS),
     renderFeatureOverlays: (state) => renderFeatureOverlays(state.archon, state.layoutMode, COLORS),
-    browseHelpText: "Browse: j/k move  l enter workflow nodes  h back  n create item or node  e edit item or node  Enter edit command body or workflow node  Shift+J/K move node  d delete  s save  [/] feature  Shift+Tab focus  q quit",
+    browseHelpText: "Browse: j/k move  l enter workflow nodes  h back  n create item or node  e edit item or node  Enter edit command body or workflow node  Ctrl+Enter save  Shift+J/K move node  d delete  [/] feature  Shift+Tab focus  q quit",
     browseFooterHint: (state) => {
       const createHint = state.archon.submode === "commands"
         ? "n new command"

@@ -114,12 +114,13 @@ export type ArchonNodeModalState = {
   editor:
     | {
         kind: "text"
-        field: "id" | "body" | "when" | "triggerRule" | "context"
+        field: "id" | "body" | "when"
         draft: string
       }
     | {
         kind: "enum"
-        field: "kind"
+        field: "kind" | "body" | "triggerRule" | "context"
+        query: string
         selectedIndex: number
       }
     | {

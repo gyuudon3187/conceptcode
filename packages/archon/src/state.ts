@@ -53,7 +53,11 @@ export function moveSelection(state: ArchonState, delta: number): boolean {
       : -1
     const nextIndex = currentIndex === -1
       ? (delta < 0 || delta === Number.MAX_SAFE_INTEGER ? workflow.nodes.length - 1 : 0)
-      : Math.max(0, Math.min(workflow.nodes.length - 1, currentIndex + delta))
+      : delta === Number.MIN_SAFE_INTEGER
+        ? 0
+        : delta === Number.MAX_SAFE_INTEGER
+          ? workflow.nodes.length - 1
+          : ((currentIndex + delta) % workflow.nodes.length + workflow.nodes.length) % workflow.nodes.length
     if (nextIndex === currentIndex) return false
     state.selectedWorkflowNodeId = workflow.nodes[nextIndex]?.id ?? null
     return true

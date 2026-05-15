@@ -9,6 +9,7 @@ type ModalFieldRow = {
   label: string
   value: string
   selected: boolean
+  disabled?: boolean
 }
 
 type ModalFrameOptions = {
@@ -63,6 +64,39 @@ function renderCatalogRow(
   )
 }
 
+function renderWorkflowTree(state: ArchonRenderState, entry: ArchonWorkflowEntry, colors: RenderColors): Array<Renderable | VNode<any, any[]>> {
+  const workflow = entry.workflow
+  if (!workflow) return []
+  const showEmptyWorkflowHint = workflow.nodes.length === 0
+  return [
+    Text({ content: workflow.name || entry.relativePath, fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
+    ...workflow.nodes.map((node, index) => {
+      const selected = node.id === state.selectedWorkflowNodeId
+      const branch = index === workflow.nodes.length - 1 ? "└─" : "├─"
+      return Box(
+        { width: "100%", paddingRight: 1, flexDirection: "row", justifyContent: "space-between" },
+        Box(
+          { flexDirection: "row" },
+          Text({ content: `${branch} `, fg: colors.muted }),
+          ...(selected
+            ? [Box(
+                { paddingX: 1, backgroundColor: colors.selectedBg },
+                Text({ content: `${node.id} (${node.kind})`, fg: colors.selectedFg, attributes: TextAttributes.BOLD }),
+              )]
+            : [Text({ content: `${node.id} (${node.kind})`, fg: colors.text })]),
+        ),
+        Text({ content: node.dependsOn.length > 0 ? `deps ${node.dependsOn.length}` : "", fg: colors.muted }),
+      )
+    }),
+    ...(showEmptyWorkflowHint
+      ? [
+          Text({ content: "└─ No nodes yet. Press n to create the first node.", fg: colors.muted }),
+        ]
+      : []),
+    Text({ content: "Esc/h back to workflows", fg: colors.muted }),
+  ]
+}
+
 function selectedWorkflow(state: ArchonRenderState): ArchonWorkflowEntry | null {
   return state.catalog.workflows.find((entry) => entry.path === state.selectedWorkflowPath) ?? state.catalog.workflows[0] ?? null
 }
@@ -103,7 +137,7 @@ function renderModalFrame(
 
 function renderModalFieldRows(fields: ModalFieldRow[], colors: RenderColors) {
   const labelWidth = 12
-  return fields.map(({ label, value, selected }) => Box(
+  return fields.map(({ label, value, selected, disabled = false }) => Box(
     {
       width: "100%",
       paddingX: 1,
@@ -113,20 +147,20 @@ function renderModalFieldRows(fields: ModalFieldRow[], colors: RenderColors) {
       gap: 1,
     },
     Text({ content: selected ? ">" : " ", fg: selected ? colors.warning : colors.muted, attributes: selected ? TextAttributes.BOLD : 0 }),
-    Text({ content: `${label.padEnd(labelWidth)}:`, fg: selected ? colors.accentSoft : colors.text, attributes: selected ? TextAttributes.BOLD : 0 }),
+    Text({ content: `${label.padEnd(labelWidth)}:`, fg: disabled ? colors.muted : selected ? colors.accentSoft : colors.text, attributes: selected ? TextAttributes.BOLD : 0 }),
     Box(
-      { flexGrow: 1, minWidth: 0, paddingX: 1, backgroundColor: selected ? colors.selectedBg : colors.panel },
-      Text({ content: value || " ", fg: selected ? colors.selectedFg : colors.text, attributes: selected ? TextAttributes.BOLD : 0 }),
+      { flexGrow: 1, minWidth: 0, paddingX: 1, backgroundColor: selected && !disabled ? colors.selectedBg : colors.panel },
+      Text({ content: value || " ", fg: disabled ? colors.muted : selected ? colors.selectedFg : colors.text, attributes: selected && !disabled ? TextAttributes.BOLD : 0 }),
     ),
   ))
 }
 
-function renderModalActions(actionIndex: 0 | 1 | null, colors: RenderColors) {
+function renderModalActions(actionIndex: 0 | 1 | null, colors: RenderColors, saveDisabled: boolean = false) {
   return Box(
     { width: "100%", flexDirection: "row", justifyContent: "flex-end", gap: 1, paddingTop: 1 },
     Box(
-      { paddingX: 2, backgroundColor: actionIndex === 0 ? colors.selectedBg : colors.panel },
-      Text({ content: "Save", fg: actionIndex === 0 ? colors.selectedFg : colors.text, attributes: actionIndex === 0 ? TextAttributes.BOLD : 0 }),
+      { paddingX: 2, backgroundColor: !saveDisabled && actionIndex === 0 ? colors.selectedBg : colors.panel },
+      Text({ content: "Save", fg: saveDisabled ? colors.muted : actionIndex === 0 ? colors.selectedFg : colors.text, attributes: !saveDisabled && actionIndex === 0 ? TextAttributes.BOLD : 0 }),
     ),
     Box(
       { paddingX: 2, backgroundColor: actionIndex === 1 ? colors.selectedBg : colors.panel },
@@ -195,6 +229,25 @@ function renderEnumOverlay(
   )
 }
 
+function renderSupportBodyPreview(body: string, colors: RenderColors): Renderable | VNode<any, any[]> {
+  const normalized = body.trim()
+  const lines = normalized ? normalized.split("\n") : ["(empty)"]
+  const visibleLines = lines.slice(0, 6)
+  const wasTrimmed = lines.length > visibleLines.length
+  const preview = visibleLines.map((line) => line.length > 88 ? `${line.slice(0, 85)}...` : line).join("\n")
+  return Box(
+    {
+      width: "100%",
+      paddingX: 1,
+      paddingY: 0,
+      backgroundColor: colors.panel ?? colors.selectedBg,
+      borderStyle: "rounded",
+      borderColor: colors.border,
+    },
+    Text({ content: wasTrimmed ? `${preview}\n...` : preview, fg: colors.text }),
+  )
+}
+
 export function renderArchonPrimaryPane(state: ArchonRenderState, colors: RenderColors): Renderable | VNode<any, any[]> {
   const isWorkflowMode = state.submode === "workflows"
   const selectedPath = isWorkflowMode ? state.selectedWorkflowPath : state.selectedCommandPath
@@ -202,7 +255,6 @@ export function renderArchonPrimaryPane(state: ArchonRenderState, colors: Render
   const selectedWorkflowEntry = isWorkflowMode ? state.catalog.workflows.find((entry) => entry.path === state.selectedWorkflowPath) ?? state.catalog.workflows[0] : null
   const selectedWorkflow = selectedWorkflowEntry?.workflow ?? null
   const showWorkflowNodes = isWorkflowMode && !!state.workflowNodesOpen && !!selectedWorkflow
-  const showEmptyWorkflowHint = showWorkflowNodes && selectedWorkflow.nodes.length === 0
   return Box(
     { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
     Box(
@@ -215,18 +267,7 @@ export function renderArchonPrimaryPane(state: ArchonRenderState, colors: Render
       : showWorkflowNodes && selectedWorkflowEntry && selectedWorkflow
         ? Box(
             { width: "100%", flexDirection: "column", gap: 0 },
-            Text({ content: selectedWorkflow.name || selectedWorkflowEntry.relativePath, fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
-            ...selectedWorkflow.nodes.map((node) => {
-              const selected = node.id === state.selectedWorkflowNodeId
-              return Box(
-                { width: "100%", paddingLeft: 1, paddingRight: 1, backgroundColor: selected ? colors.selectedBg : undefined, flexDirection: "row", justifyContent: "space-between" },
-                Text({ content: `${selected ? ">" : "-"} ${node.id} (${node.kind})`, fg: selected ? colors.selectedFg : colors.text, attributes: selected ? TextAttributes.BOLD : 0 }),
-                Text({ content: node.dependsOn.length > 0 ? `deps ${node.dependsOn.length}` : "", fg: selected ? colors.selectedFg : colors.muted }),
-              )
-            }),
-            ...(showEmptyWorkflowHint
-              ? [Text({ content: "No nodes yet. Press n to create the first node.", fg: colors.muted })]
-              : []),
+            ...renderWorkflowTree(state, selectedWorkflowEntry, colors),
           )
       : Box(
           { width: "100%", flexDirection: "column", gap: 0 },
@@ -256,25 +297,31 @@ export function renderArchonSupportTopPane(state: ArchonRenderState, colors: Ren
   }
   const workflowSelection = isWorkflowMode ? selection as ArchonWorkflowEntry : null
   const commandSelection = isWorkflowMode ? null : selection as ArchonCommandEntry
-  const title = workflowSelection ? (workflowSelection.workflow?.name ?? workflowSelection.relativePath) : (commandSelection?.command?.name ?? commandSelection?.relativePath ?? "")
-  const description = workflowSelection
-    ? (workflowSelection.workflow?.description || "No workflow description.")
-    : (commandSelection?.command?.description || "No command description.")
+  const selectedNode = workflowSelection && state.selectedWorkflowNodeId
+    ? workflowSelection.workflow?.nodes.find((item) => item.id === state.selectedWorkflowNodeId) ?? null
+    : null
+  const title = selectedNode
+    ? selectedNode.id
+    : workflowSelection
+      ? (workflowSelection.workflow?.name ?? workflowSelection.relativePath)
+      : (commandSelection?.command?.name ?? commandSelection?.relativePath ?? "")
+  const description = selectedNode
+    ? ""
+    : workflowSelection
+      ? (workflowSelection.workflow?.description || "No workflow description.")
+      : (commandSelection?.command?.description || "No command description.")
+  const nodeMetadataLines = selectedNode
+    ? [
+        `Runs: ${selectedNode.kind}`,
+        `Depends on: ${selectedNode.dependsOn.length === 0 ? "none" : selectedNode.dependsOn.join(", ")}`,
+        ...(selectedNode.when ? [`When: ${selectedNode.when}`] : []),
+        ...(selectedNode.triggerRule ? [`Trigger rule: ${selectedNode.triggerRule}`] : []),
+        ...(selectedNode.context ? [`Context: ${selectedNode.context}`] : []),
+      ]
+    : []
   const extraLines = workflowSelection
     ? [
         `Nodes: ${workflowSelection.workflow?.nodes.length ?? 0}`,
-        `Command refs: ${workflowSelection.referencedCommandNames.length === 0 ? "none" : workflowSelection.referencedCommandNames.join(", ")}`,
-        ...(workflowSelection.workflow && workflowSelection.workflow.nodes.length === 0 && state.workflowNodesOpen
-          ? ["Hint: Press n to create the first node."]
-          : []),
-        ...(state.selectedWorkflowNodeId
-          ? (() => {
-              const node = workflowSelection.workflow?.nodes.find((item) => item.id === state.selectedWorkflowNodeId)
-              return node
-                ? [`Selected node: ${node.id} (${node.kind})`, `Node deps: ${node.dependsOn.length === 0 ? "none" : node.dependsOn.join(", ")}`, `Node body: ${node.body || "(empty)"}`]
-                : []
-            })()
-          : []),
       ]
     : [
         `Argument hint: ${commandSelection?.command?.argumentHint ?? "none"}`,
@@ -288,17 +335,23 @@ export function renderArchonSupportTopPane(state: ArchonRenderState, colors: Ren
   return Box(
     { width: "100%", height: "100%", flexDirection: "column", gap: 1 },
     Text({ content: title, fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
-    Text({ content: description, fg: colors.text }),
-    ...extraLines.map((line) => Text({ content: line, fg: colors.muted })),
+    ...(description ? [Text({ content: description, fg: colors.text })] : []),
+    ...(selectedNode
+      ? [
+          renderSupportBodyPreview(selectedNode.body, colors),
+          Text({ content: "Behavior", fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
+          ...nodeMetadataLines.map((line) => Text({ content: line, fg: colors.muted })),
+        ]
+      : extraLines.map((line) => Text({ content: line, fg: colors.muted }))),
     ...(statusLines.length > 0
       ? [
           Box(
             { width: "100%", flexDirection: "column", gap: 0 },
-            Text({ content: "Status", fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
-            ...statusLines.map((line) => Text({ content: line, fg: line.startsWith("Error") || line.startsWith("Parse") ? colors.error : colors.warning })),
-          ),
-        ]
-      : [Text({ content: "Status: editable subset detected.", fg: colors.muted })]),
+              Text({ content: "Status", fg: colors.accentSoft, attributes: TextAttributes.BOLD }),
+              ...statusLines.map((line) => Text({ content: line, fg: line.startsWith("Error") || line.startsWith("Parse") ? colors.error : colors.warning })),
+            ),
+          ]
+      : []),
   )
 }
 
@@ -344,7 +397,7 @@ export function renderArchonMetadataModal(
     renderModalFrame(layoutMode, colors, titleByKind[modal.kind], { topWide: 6, topNarrow: 4, widthWide: 78, widthNarrow: "92%" }, [
       ...renderModalFieldRows(fieldRows, colors),
       ...(showActionButtons ? [renderModalActions(modal.actionIndex, colors)] : []),
-      Text({ content: "j/k move  Tab next  Shift+Tab prev  Enter edit field  h/l cycle enum  Ctrl+S save  Esc close", fg: colors.muted }),
+      Text({ content: "j/k move  Tab next  Shift+Tab prev  Enter edit field  h/l cycle enum  Ctrl+Enter save  Esc close", fg: colors.muted }),
       ...(editor?.kind === "tags"
         ? [
             Box(
@@ -398,27 +451,89 @@ export function renderArchonNodeModal(
 ): Array<Renderable | VNode<any, any[]>> {
   const workflow = state.catalog.workflows.find((entry) => entry.path === state.selectedWorkflowPath)?.workflow ?? state.catalog.workflows[0]?.workflow ?? null
   const dependencyIds = workflow ? workflow.nodes.map((node) => node.id).filter((id) => id !== (modal.kind === "edit-node" ? state.selectedWorkflowNodeId : undefined)) : []
-  const fields: Array<[string, string]> = [
-    ["Id", modal.values.id],
-    ["Type", modal.values.kind],
-    ["Body", modal.values.body],
-    ["Depends On", modal.values.dependsOn.length === 0 ? "none" : modal.values.dependsOn.join(", ")],
-    ["When", modal.values.when],
-    ["Trigger Rule", modal.values.triggerRule],
-    ["Context", modal.values.context],
+  const dependencyCount = modal.values.dependsOn.length
+  const saveErrors: string[] = []
+  const nextId = modal.values.id.trim()
+  const nextBody = modal.values.body.trim()
+  const bodyLabel = modal.values.kind === "command" ? "Command" : modal.values.kind === "prompt" ? "Prompt" : "Bash"
+  const availableCommands = state.catalog.commands
+    .filter((entry) => entry.command)
+    .map((entry) => ({
+      value: entry.command!.name,
+      label: entry.command!.name,
+      description: entry.command!.description || entry.relativePath,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label))
+  if (!nextId) saveErrors.push("ID is required.")
+  if (!nextBody) saveErrors.push(`${bodyLabel} is required.`)
+  const duplicate = workflow?.nodes.find((node) => node.id === nextId)
+  if (nextId && duplicate && duplicate.id !== (modal.kind === "edit-node" ? state.selectedWorkflowNodeId : undefined)) saveErrors.push(`Node ID \"${nextId}\" already exists in this workflow.`)
+  if (modal.values.when.trim() && dependencyCount === 0) saveErrors.push("When requires at least one dependency.")
+  if (modal.values.triggerRule.trim() && dependencyCount <= 1) saveErrors.push("Trigger Rule requires at least two dependencies.")
+  if (modal.values.kind === "command" && nextBody && !availableCommands.some((command) => command.value === nextBody)) saveErrors.push(`Unknown command: ${nextBody}`)
+  const triggerRuleDisabled = dependencyCount <= 1
+  const whenDisabled = dependencyCount === 0
+  const fieldRows = [
+    { label: "Id *", value: modal.values.id || "(required)", selected: modal.actionIndex === null && modal.fieldIndex === 0 },
+    { label: "Type", value: modal.values.kind, selected: modal.actionIndex === null && modal.fieldIndex === 1 },
+    { label: `${bodyLabel} *`, value: modal.values.body || "(required)", selected: modal.actionIndex === null && modal.fieldIndex === 2 },
+    { label: "Depends On", value: modal.values.dependsOn.length === 0 ? "none" : modal.values.dependsOn.join(", "), selected: modal.actionIndex === null && modal.fieldIndex === 3 },
+    { label: "When", value: whenDisabled ? "Add a dependency first" : (modal.values.when || "(optional condition)"), selected: modal.actionIndex === null && modal.fieldIndex === 4, disabled: whenDisabled },
+    { label: "Trigger Rule", value: triggerRuleDisabled ? (dependencyCount === 0 ? "Add two dependencies first" : "Add one more dependency") : (modal.values.triggerRule || "default: all_success"), selected: modal.actionIndex === null && modal.fieldIndex === 5, disabled: triggerRuleDisabled },
+    { label: "Context", value: modal.values.context || "default behavior", selected: modal.actionIndex === null && modal.fieldIndex === 6 },
   ]
   const editor = modal.editor
-  const fieldRows = fields.map(([label, value], index) => ({
-    label,
-    value,
-    selected: modal.actionIndex === null && index === modal.fieldIndex,
-  }))
+  const enumOptions = editor?.kind === "enum"
+    ? (editor.field === "kind"
+        ? [
+            { label: "command", description: "Runs a named Archon command" },
+            { label: "prompt", description: "Runs an inline AI prompt" },
+            { label: "bash", description: "Runs a shell script" },
+          ]
+        : editor.field === "body"
+          ? (() => {
+              const currentValue = modal.values.body
+              const options = availableCommands.some((option) => option.value === currentValue) || currentValue === ""
+                ? availableCommands
+                : [{ value: currentValue, label: `${currentValue} (existing)`, description: "Preserved from the current workflow" }, ...availableCommands]
+              const normalizedQuery = editor.query.trim().toLowerCase()
+              const filtered = options
+                .map((option) => ({ option, score: Math.max(option.label.toLowerCase().includes(normalizedQuery) ? 100 - option.label.toLowerCase().indexOf(normalizedQuery) : 0, (option.description ?? "").toLowerCase().includes(normalizedQuery) ? 100 - (option.description ?? "").toLowerCase().indexOf(normalizedQuery) : 0) }))
+                .filter(({ score }) => normalizedQuery.length === 0 || score > 0)
+                .sort((left, right) => right.score - left.score || left.option.label.localeCompare(right.option.label))
+                .map(({ option }) => option)
+              return (filtered.length > 0 ? filtered : options).map((option) => ({ label: option.label, description: option.description }))
+            })()
+        : (() => {
+            const currentValue = modal.values[editor.field]
+            const baseOptions = editor.field === "triggerRule"
+              ? [
+                  { label: "default", description: "Use the default all_success behavior" },
+                  { label: "all_success", description: "All dependencies must succeed" },
+                  { label: "one_success", description: "Any one dependency may succeed" },
+                  { label: "none_failed_min_one_success", description: "No dependency may fail, and one must succeed" },
+                  { label: "all_done", description: "Run after all dependencies finish" },
+                ]
+              : [
+                  { label: "default", description: "Use Archon's normal context inheritance" },
+                  { label: "fresh", description: "Start a fresh agent session" },
+                  { label: "shared", description: "Reuse context from the prior execution path" },
+                ]
+            const normalizedCurrent = currentValue || "default"
+            return baseOptions.some((option) => option.label === normalizedCurrent)
+              ? baseOptions
+              : [{ label: `${currentValue} (existing)`, description: "Preserved from the current workflow" }, ...baseOptions]
+          })())
+    : []
   return [
     renderModalBackdrop(),
     renderModalFrame(layoutMode, colors, modal.kind === "create-node" ? "Create Workflow Node" : "Edit Workflow Node", { topWide: 5, topNarrow: 3, widthWide: 92, widthNarrow: "94%" }, [
       ...renderModalFieldRows(fieldRows, colors),
-      renderModalActions(modal.actionIndex, colors),
-      Text({ content: "j/k move  Tab next  Shift+Tab prev  Enter edit field  h/l cycle enum  Ctrl+S save  Esc close", fg: colors.muted }),
+      renderModalActions(modal.actionIndex, colors, saveErrors.length > 0),
+      Text({ content: "j/k move  Tab next  Shift+Tab prev  Enter edit field  h/l cycle enum  Ctrl+Enter save  Esc close", fg: colors.muted }),
+      ...(saveErrors.length > 0
+        ? saveErrors.map((message) => Text({ content: message, fg: colors.warning }))
+        : [Text({ content: "Required: ID and node content. Trigger Rule needs 2+ dependencies; When needs 1+ dependency.", fg: colors.muted })]),
       ...(editor?.kind === "dependsOn"
         ? [
             Box(
@@ -439,13 +554,13 @@ export function renderArchonNodeModal(
         : []),
       ...(editor?.kind === "enum"
         ? [renderEnumOverlay(
-            layoutMode,
-            colors,
-            (["command", "prompt", "bash"] as const).map((option, index) => ({ label: option, selected: index === editor.selectedIndex })),
-            "Ctrl+N/P move  Enter choose  Esc cancel",
-            undefined,
-            48,
-            "80%",
+              layoutMode,
+              colors,
+              enumOptions.map((option, index) => ({ ...option, selected: index === editor.selectedIndex })),
+            editor.field === "body" ? "Ctrl+N/P move  Type filter  Enter choose  Esc cancel" : "Ctrl+N/P move  Enter choose  Esc cancel",
+            editor.query,
+            68,
+            "88%",
           )]
         : []),
     ]),

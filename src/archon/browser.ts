@@ -8,6 +8,17 @@ import type { AppState } from "../core/types"
 import type { FeatureBrowserCommandDeps } from "../features/types"
 
 export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, deps: FeatureBrowserCommandDeps): Promise<boolean> {
+  if (key.ctrl && key.name === "return") {
+    try {
+      const dirtyCount = state.archon.dirtyPaths.length
+      await saveArchonChanges(state)
+      showArchonSaveResult(state, dirtyCount)
+    } catch (error) {
+      showArchonError(state, error)
+    }
+    deps.draw()
+    return true
+  }
   if (key.name === "tab") {
     key.preventDefault()
     key.stopPropagation()
@@ -63,22 +74,25 @@ export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, dep
       openEditNodeModal(state.archon)
     } else if (!state.archon.workflowNodesOpen) {
       state.archon.workflowNodesOpen = true
+      state.archon.selectedWorkflowNodeId = workflow.nodes[0]?.id ?? null
     } else if (workflow.nodes.length > 0) {
       state.archon.selectedWorkflowNodeId = workflow.nodes[0]?.id ?? null
     }
     deps.draw()
     return true
   }
-  if (key.name === "h" || key.name === "left" || key.name === "l" || key.name === "right" || key.name === "return") {
+  if (key.name === "h" || key.name === "left" || key.name === "escape" || key.name === "l" || key.name === "right" || key.name === "return") {
     if (state.archon.submode === "workflows") {
-      if (key.name === "h" || key.name === "left") {
-        if (state.archon.selectedWorkflowNodeId) state.archon.selectedWorkflowNodeId = null
-        else state.archon.workflowNodesOpen = false
+      if (key.name === "h" || key.name === "left" || key.name === "escape") {
+        state.archon.selectedWorkflowNodeId = null
+        state.archon.workflowNodesOpen = false
       }
       if (key.name === "l" || key.name === "right") {
         const workflow = selectedWorkflow(state.archon)?.workflow
-        if (!state.archon.workflowNodesOpen) state.archon.workflowNodesOpen = !!workflow
-        else if (!state.archon.selectedWorkflowNodeId) state.archon.selectedWorkflowNodeId = workflow?.nodes[0]?.id ?? null
+        if (!state.archon.workflowNodesOpen) {
+          state.archon.workflowNodesOpen = !!workflow
+          state.archon.selectedWorkflowNodeId = workflow?.nodes[0]?.id ?? null
+        } else if (!state.archon.selectedWorkflowNodeId) state.archon.selectedWorkflowNodeId = workflow?.nodes[0]?.id ?? null
       }
     }
     applyArchonSelectionChange(state)
@@ -86,7 +100,7 @@ export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, dep
     return true
   }
   if (key.name === "n") {
-    if (state.archon.submode === "workflows" && state.archon.selectedWorkflowNodeId) {
+    if (state.archon.submode === "workflows" && state.archon.workflowNodesOpen) {
       openCreateNodeModal(state.archon)
       deps.draw()
       return true
@@ -127,17 +141,6 @@ export async function handleArchonBrowserKey(state: AppState, key: KeyEvent, dep
       }
     } else if (commandEntry) {
       state.confirmModal = { kind: "archon-delete", title: "Delete Command", message: [`Delete command "${commandEntry.command?.name ?? commandEntry.relativePath}"?`], confirmLabel: "deletes this command", targetPath: commandEntry.path, targetType: "command" }
-    }
-    deps.draw()
-    return true
-  }
-  if (key.name === "s") {
-    try {
-      const dirtyCount = state.archon.dirtyPaths.length
-      await saveArchonChanges(state)
-      showArchonSaveResult(state, dirtyCount)
-    } catch (error) {
-      showArchonError(state, error)
     }
     deps.draw()
     return true

@@ -146,4 +146,30 @@ describe("archon selection", () => {
     expect(moveSelection(state, 1)).toBe(true)
     expect(state.selectedWorkflowNodeId).toBe("ship")
   })
+
+  test("moving past the last node wraps to the first node", () => {
+    const state = createState()
+    state.workflowNodesOpen = true
+    state.catalog.workflows[0]!.workflow!.nodes = [
+      { id: "build", kind: "command", body: "", dependsOn: [], when: null, triggerRule: null, context: null },
+      { id: "ship", kind: "command", body: "", dependsOn: [], when: null, triggerRule: null, context: null },
+    ]
+    state.selectedWorkflowNodeId = "ship"
+
+    expect(moveSelection(state, 1)).toBe(true)
+    expect(state.selectedWorkflowNodeId).toBe("build")
+  })
+
+  test("moving before the first node wraps to the last node", () => {
+    const state = createState()
+    state.workflowNodesOpen = true
+    state.catalog.workflows[0]!.workflow!.nodes = [
+      { id: "build", kind: "command", body: "", dependsOn: [], when: null, triggerRule: null, context: null },
+      { id: "ship", kind: "command", body: "", dependsOn: [], when: null, triggerRule: null, context: null },
+    ]
+    state.selectedWorkflowNodeId = "build"
+
+    expect(moveSelection(state, -1)).toBe(true)
+    expect(state.selectedWorkflowNodeId).toBe("ship")
+  })
 })

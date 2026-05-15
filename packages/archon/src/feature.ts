@@ -332,12 +332,115 @@ function nodeFieldOrder(): Array<keyof NonNullable<ArchonState["nodeModal"]>["va
   return ["id", "kind", "body", "dependsOn", "when", "triggerRule", "context"]
 }
 
-function isNodeTextField(field: keyof NonNullable<ArchonState["nodeModal"]>["values"]): field is "id" | "body" | "when" | "triggerRule" | "context" {
-  return field === "id" || field === "body" || field === "when" || field === "triggerRule" || field === "context"
+function isNodeTextField(state: Pick<ArchonState, "nodeModal">, field: keyof NonNullable<ArchonState["nodeModal"]>["values"]): field is "id" | "body" | "when" {
+  if (field === "body") return state.nodeModal?.values.kind !== "command"
+  return field === "id" || field === "when"
 }
 
-function nodeFieldIsEnum(field: keyof NonNullable<ArchonState["nodeModal"]>["values"]): field is "kind" {
-  return field === "kind"
+function nodeFieldIsEnum(state: Pick<ArchonState, "nodeModal">, field: keyof NonNullable<ArchonState["nodeModal"]>["values"]): field is "kind" | "body" | "triggerRule" | "context" {
+  if (field === "body") return state.nodeModal?.values.kind === "command"
+  return field === "kind" || field === "triggerRule" || field === "context"
+}
+
+type NodeEnumField = Extract<keyof NonNullable<ArchonState["nodeModal"]>["values"], "kind" | "body" | "triggerRule" | "context">
+
+const NODE_TRIGGER_RULE_OPTIONS = ["", "all_success", "one_success", "none_failed_min_one_success", "all_done"] as const
+const NODE_CONTEXT_OPTIONS = ["", "fresh", "shared"] as const
+
+function nodeFieldEnabled(state: ArchonState, field: keyof NonNullable<ArchonState["nodeModal"]>["values"]): boolean {
+  const modal = state.nodeModal
+  if (!modal) return false
+  if (field === "when") return modal.values.dependsOn.length > 0
+  if (field === "triggerRule") return modal.values.dependsOn.length > 1
+  return true
+}
+
+function nodeEnumOptions(state: ArchonState, field: NodeEnumField): Array<{ value: string; label: string; description?: string }> {
+  const currentValue = state.nodeModal?.values[field] ?? ""
+  if (field === "kind") {
+    return [
+      { value: "command", label: "command", description: "Runs a named Archon command" },
+      { value: "prompt", label: "prompt", description: "Runs an inline AI prompt" },
+      { value: "bash", label: "bash", description: "Runs a shell script" },
+    ]
+  }
+  if (field === "body") {
+    const options = state.catalog.commands
+      .filter((entry) => entry.command)
+      .map((entry) => ({
+        value: entry.command!.name,
+        label: entry.command!.name,
+        description: entry.command!.description || entry.relativePath,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label))
+    return options.some((option) => option.value === currentValue) || currentValue === ""
+      ? options
+      : [{ value: currentValue, label: `${currentValue} (existing)`, description: "Preserved from the current workflow" }, ...options]
+  }
+  if (field === "triggerRule") {
+    const options = [
+      { value: "", label: "default", description: "Use the default all_success behavior" },
+      { value: "all_success", label: "all_success", description: "All dependencies must succeed" },
+      { value: "one_success", label: "one_success", description: "Any one dependency may succeed" },
+      { value: "none_failed_min_one_success", label: "none_failed_min_one_success", description: "No dependency may fail, and one must succeed" },
+      { value: "all_done", label: "all_done", description: "Run after all dependencies finish" },
+    ]
+    return options.some((option) => option.value === currentValue) || currentValue === ""
+      ? options
+      : [{ value: currentValue, label: `${currentValue} (existing)`, description: "Preserved from the current workflow" }, ...options]
+  }
+  const options = [
+    { value: "", label: "default", description: "Use Archon's normal context inheritance" },
+    { value: "fresh", label: "fresh", description: "Start a fresh agent session for this node" },
+    { value: "shared", label: "shared", description: "Reuse context from the preceding execution path" },
+  ]
+  return options.some((option) => option.value === currentValue) || currentValue === ""
+    ? options
+    : [{ value: currentValue, label: `${currentValue} (existing)`, description: "Preserved from the current workflow" }, ...options]
+}
+
+function filteredNodeEnumOptions(state: ArchonState, editor: Extract<NonNullable<ArchonState["nodeModal"]>["editor"], { kind: "enum" }>): Array<{ value: string; label: string; description?: string }> {
+  const normalizedQuery = editor.query.trim().toLowerCase()
+  const options = nodeEnumOptions(state, editor.field)
+    .map((option) => ({ option, score: Math.max(fuzzyOptionScore(option.label, normalizedQuery), fuzzyOptionScore(option.description ?? "", normalizedQuery)) }))
+    .filter(({ score }) => normalizedQuery.length === 0 || score > 0)
+    .sort((left, right) => right.score - left.score || left.option.label.localeCompare(right.option.label))
+    .map(({ option }) => option)
+  return options.length > 0 ? options : nodeEnumOptions(state, editor.field)
+}
+
+function normalizeDependentNodeValues(state: ArchonState): void {
+  const modal = state.nodeModal
+  if (!modal) return
+  if (modal.values.dependsOn.length === 0) modal.values.when = ""
+  if (modal.values.dependsOn.length <= 1) modal.values.triggerRule = ""
+}
+
+function nodeValidationErrors(state: ArchonState): string[] {
+  const modal = state.nodeModal
+  const workflow = selectedWorkflow(state)?.workflow
+  if (!modal || !workflow) return []
+  const errors: string[] = []
+  const nextId = modal.values.id.trim()
+  const nextBody = modal.values.body.trim()
+  if (!nextId) errors.push("ID is required.")
+  if (!nextBody) errors.push(`${modal.values.kind === "command" ? "Command" : modal.values.kind === "prompt" ? "Prompt" : "Bash script"} is required.`)
+  const duplicate = workflow.nodes.find((node) => node.id === nextId)
+  const editingCurrent = modal.kind === "edit-node" ? selectedWorkflowNode(state)?.id : null
+  if (nextId && duplicate && duplicate.id !== editingCurrent) errors.push(`Node ID \"${nextId}\" already exists in this workflow.`)
+  if (modal.values.when.trim() && modal.values.dependsOn.length === 0) errors.push("When requires at least one dependency.")
+  if (modal.values.triggerRule.trim() && modal.values.dependsOn.length <= 1) errors.push("Trigger Rule requires at least two dependencies.")
+  if (modal.values.kind === "command") {
+    const availableCommands = new Set(nodeEnumOptions(state, "body").map((option) => option.value))
+    if (nextBody && !availableCommands.has(nextBody)) errors.push(`Unknown command: ${nextBody}`)
+  }
+  if (modal.values.context && !NODE_CONTEXT_OPTIONS.includes(modal.values.context as (typeof NODE_CONTEXT_OPTIONS)[number])) errors.push(`Unknown context value: ${modal.values.context}`)
+  if (modal.values.triggerRule && !NODE_TRIGGER_RULE_OPTIONS.includes(modal.values.triggerRule as (typeof NODE_TRIGGER_RULE_OPTIONS)[number])) errors.push(`Unknown trigger rule: ${modal.values.triggerRule}`)
+  return errors
+}
+
+function canSaveNodeModal(state: ArchonState): boolean {
+  return nodeValidationErrors(state).length === 0
 }
 
 function currentNodeField(state: Pick<ArchonState, "nodeModal">): keyof NonNullable<ArchonState["nodeModal"]>["values"] | null {
@@ -687,16 +790,20 @@ function openNodeFieldEditor(state: ArchonState): boolean {
   if (!modal) return false
   const field = nodeFieldOrder()[modal.fieldIndex]
   if (!field) return false
+  if (!nodeFieldEnabled(state, field)) return false
   if (field === "dependsOn") {
     modal.editor = { kind: "dependsOn", selectedIndex: 0 }
     clampNodeEditorSelection(state)
     return true
   }
-  if (nodeFieldIsEnum(field)) {
-    modal.editor = { kind: "enum", field, selectedIndex: Math.max(0, nodeKindOptions().findIndex((option) => option === modal.values.kind)) }
+  if (nodeFieldIsEnum(state, field)) {
+    const options = nodeEnumOptions(state, field)
+    const selectedIndex = Math.max(0, options.findIndex((option) => option.value === modal.values[field]))
+    modal.editor = { kind: "enum", field, query: "", selectedIndex }
+    clampNodeEditorSelection(state)
     return true
   }
-  if (!isNodeTextField(field)) return false
+  if (!isNodeTextField(state, field)) return false
   modal.editor = { kind: "text", field, draft: modal.values[field] }
   return true
 }
@@ -705,7 +812,16 @@ function openNodeFieldEditorWithInput(state: ArchonState, input: string): boolea
   const modal = state.nodeModal
   if (!modal) return false
   const field = currentNodeField(state)
-  if (!field || !isNodeTextField(field)) return false
+  if (!field || !nodeFieldEnabled(state, field)) return false
+  if (nodeFieldIsEnum(state, field)) {
+    const options = nodeEnumOptions(state, field)
+    const currentValue = modal.values[field]
+    const selectedIndex = Math.max(0, options.findIndex((option) => option.value === currentValue))
+    modal.editor = { kind: "enum", field, query: input, selectedIndex }
+    clampNodeEditorSelection(state)
+    return true
+  }
+  if (!isNodeTextField(state, field)) return false
   modal.editor = { kind: "text", field, draft: input }
   return true
 }
@@ -720,7 +836,9 @@ function applyNodeFieldEditor(state: ArchonState): boolean {
     return true
   }
   if (editor.kind === "enum") {
-    modal.values.kind = nodeKindOptions()[editor.selectedIndex] ?? "command"
+    const selected = filteredNodeEnumOptions(state, editor)[editor.selectedIndex]
+    if (!selected) return false
+    modal.values[editor.field] = selected.value as never
     modal.editor = null
     return true
   }
@@ -732,7 +850,7 @@ function clampNodeEditorSelection(state: ArchonState): void {
   const editor = state.nodeModal?.editor
   if (!editor) return
   if (editor.kind === "enum") {
-    editor.selectedIndex = Math.max(0, Math.min(editor.selectedIndex, nodeKindOptions().length - 1))
+    editor.selectedIndex = Math.max(0, Math.min(editor.selectedIndex, filteredNodeEnumOptions(state, editor).length - 1))
     return
   }
   if (editor.kind === "dependsOn") {
@@ -745,7 +863,8 @@ function moveNodeEditorSelection(state: ArchonState, delta: number): boolean {
   const editor = state.nodeModal?.editor
   if (!editor) return false
   if (editor.kind === "enum") {
-    const options = nodeKindOptions()
+    const options = filteredNodeEnumOptions(state, editor)
+    if (options.length === 0) return false
     editor.selectedIndex = (editor.selectedIndex + delta % options.length + options.length) % options.length
     return true
   }
@@ -762,10 +881,11 @@ function cycleNodeValue(state: ArchonState, delta: number): boolean {
   const modal = state.nodeModal
   if (!modal) return false
   const field = nodeFieldOrder()[modal.fieldIndex]
-  if (!field || !nodeFieldIsEnum(field)) return false
-  const options = nodeKindOptions()
-  const currentIndex = Math.max(0, options.findIndex((option) => option === modal.values.kind))
-  modal.values.kind = options[(currentIndex + delta % options.length + options.length) % options.length] ?? "command"
+  if (!field || !nodeFieldIsEnum(state, field) || !nodeFieldEnabled(state, field)) return false
+  const options = nodeEnumOptions(state, field)
+  if (options.length === 0) return false
+  const currentIndex = Math.max(0, options.findIndex((option) => option.value === modal.values[field]))
+  modal.values[field] = (options[(currentIndex + delta % options.length + options.length) % options.length]?.value ?? options[0]?.value ?? "") as never
   return true
 }
 
@@ -785,7 +905,14 @@ export function moveNodeDependencyCursor(state: ArchonState, delta: number): voi
 export function appendNodeInput(state: ArchonState, input: string): boolean {
   const modal = state.nodeModal
   const editor = modal?.editor
-  if (!modal || !editor || editor.kind !== "text") return false
+  if (!modal || !editor) return false
+  if (editor.kind === "enum") {
+    editor.query = input === "backspace" ? editor.query.slice(0, -1) : `${editor.query}${input}`
+    editor.selectedIndex = 0
+    clampNodeEditorSelection(state)
+    return true
+  }
+  if (editor.kind !== "text") return false
   const current = editor.draft
   if (input === "backspace") {
     editor.draft = current.slice(0, -1)
@@ -804,6 +931,7 @@ export function toggleNodeDependency(state: ArchonState): boolean {
   modal.values.dependsOn = modal.values.dependsOn.includes(dependencyId)
     ? modal.values.dependsOn.filter((id) => id !== dependencyId)
     : [...modal.values.dependsOn, dependencyId].sort((l, r) => l.localeCompare(r))
+  normalizeDependentNodeValues(state)
   return true
 }
 
@@ -812,10 +940,11 @@ export function applyNodeModal(state: ArchonState): void {
   const selected = selectedWorkflow(state)
   const workflow = selected?.workflow
   if (!modal || !workflow || !selected) return
+  if (!canSaveNodeModal(state)) return
   const nextNode: ArchonWorkflowNode = {
-    id: modal.values.id.trim() || `node-${workflow.nodes.length + 1}`,
+    id: modal.values.id.trim(),
     kind: modal.values.kind,
-    body: modal.values.body,
+    body: modal.values.body.trim(),
     dependsOn: [...modal.values.dependsOn],
     when: modal.values.when.trim() || null,
     triggerRule: modal.values.triggerRule.trim() || null,
@@ -933,7 +1062,7 @@ export function handleModalKey(state: ArchonState, key: KeyEvent): boolean {
       state.metadataModal = null
       return true
     }
-    if (key.ctrl && key.name === "s") {
+    if (key.ctrl && key.name === "return") {
       applyMetadataModal(state)
       return true
     }
@@ -989,7 +1118,7 @@ export function handleModalKey(state: ArchonState, key: KeyEvent): boolean {
       state.nodeModal = null
       return true
     }
-    if (key.ctrl && key.name === "s") {
+    if (key.ctrl && key.name === "return") {
       applyNodeModal(state)
       return true
     }

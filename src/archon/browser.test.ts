@@ -131,7 +131,7 @@ describe("archon browser workflow nodes", () => {
     expect(drawCalls.count).toBe(1)
   })
 
-  test("enter opens node view before selecting a node", async () => {
+  test("enter opens node view and selects the first node", async () => {
     const state = createState({ nodeIds: ["plan"] })
     const drawCalls = { count: 0 }
 
@@ -139,12 +139,12 @@ describe("archon browser workflow nodes", () => {
 
     expect(handled).toBe(true)
     expect(state.archon.workflowNodesOpen).toBe(true)
-    expect(state.archon.selectedWorkflowNodeId).toBeNull()
+    expect(state.archon.selectedWorkflowNodeId).toBe("plan")
     expect(state.archon.nodeModal).toBeNull()
     expect(drawCalls.count).toBe(1)
   })
 
-  test("pressing enter again in node view selects the first node", async () => {
+  test("pressing enter again in node view opens the selected node", async () => {
     const state = createState({ nodeIds: ["plan"] })
     const drawCalls = { count: 0 }
 
@@ -153,6 +153,56 @@ describe("archon browser workflow nodes", () => {
 
     expect(handled).toBe(true)
     expect(state.archon.selectedWorkflowNodeId).toBe("plan")
+    expect(state.archon.nodeModal?.kind).toBe("edit-node")
+  })
+
+  test("n opens create-node modal after opening a workflow", async () => {
+    const state = createState({ nodeIds: ["plan"] })
+    const drawCalls = { count: 0 }
+
+    await handleArchonBrowserKey(state, { name: "return" } as never, createDeps(drawCalls) as never)
+    const handled = await handleArchonBrowserKey(state, { name: "n" } as never, createDeps(drawCalls) as never)
+
+    expect(handled).toBe(true)
+    expect(state.archon.workflowNodesOpen).toBe(true)
+    expect(state.archon.nodeModal?.kind).toBe("create-node")
+    expect(state.archon.metadataModal).toBeNull()
+  })
+
+  test("escape returns from a selected node to the workflow list", async () => {
+    const state = createState({ nodeIds: ["plan"] })
+    const drawCalls = { count: 0 }
+
+    await handleArchonBrowserKey(state, { name: "return" } as never, createDeps(drawCalls) as never)
+    const handled = await handleArchonBrowserKey(state, { name: "escape" } as never, createDeps(drawCalls) as never)
+
+    expect(handled).toBe(true)
+    expect(state.archon.workflowNodesOpen).toBe(false)
+    expect(state.archon.selectedWorkflowNodeId).toBeNull()
+  })
+
+  test("escape closes the workflow node view", async () => {
+    const state = createState({ nodeIds: ["plan"] })
+    const drawCalls = { count: 0 }
+
+    await handleArchonBrowserKey(state, { name: "return" } as never, createDeps(drawCalls) as never)
+    const handled = await handleArchonBrowserKey(state, { name: "escape" } as never, createDeps(drawCalls) as never)
+
+    expect(handled).toBe(true)
+    expect(state.archon.workflowNodesOpen).toBe(false)
+    expect(state.archon.selectedWorkflowNodeId).toBeNull()
+  })
+
+  test("right opens node view and selects the first node", async () => {
+    const state = createState({ nodeIds: ["plan"] })
+    const drawCalls = { count: 0 }
+
+    const handled = await handleArchonBrowserKey(state, { name: "right" } as never, createDeps(drawCalls) as never)
+
+    expect(handled).toBe(true)
+    expect(state.archon.workflowNodesOpen).toBe(true)
+    expect(state.archon.selectedWorkflowNodeId).toBe("plan")
+    expect(state.mainScrollTop).toBe(0)
   })
 
   test("d prompts before deleting a selected workflow", async () => {

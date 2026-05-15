@@ -255,6 +255,19 @@ describe("feature metadata and save planning", () => {
     expect(state.metadataModal.actionIndex).toBe(0)
   })
 
+  test("ctrl+enter saves the metadata modal", () => {
+    const state = createState()
+
+    openCreateItemModal(state)
+    if (!state.metadataModal) throw new Error("metadata modal was not opened")
+    state.metadataModal.values.name = "Release Checks"
+
+    handleModalKey(state, { name: "return", ctrl: true } as never)
+
+    expect(state.metadataModal).toBeNull()
+    expect(state.selectedWorkflowPath).toBe("/workspace/.archon/workflows/release-checks.yaml")
+  })
+
   test("enter on cancel closes the create modal", () => {
     const state = createState()
 
@@ -315,6 +328,43 @@ describe("feature metadata and save planning", () => {
     expect(state.nodeModal.editor).toBeNull()
   })
 
+  test("opens the command body field as a searchable enum", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.fieldIndex = 2
+
+    handleModalKey(state, { name: "return" } as never)
+
+    expect(state.nodeModal.editor).toEqual({ kind: "enum", field: "body", query: "", selectedIndex: 0 })
+  })
+
+  test("typing on the command body field opens a filtered command picker", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.fieldIndex = 2
+
+    handleModalKey(state, { name: "r", sequence: "r" } as never)
+
+    expect(state.nodeModal.editor).toEqual({ kind: "enum", field: "body", query: "r", selectedIndex: 0 })
+  })
+
+  test("keeps prompt body as free text", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.values.kind = "prompt"
+    state.nodeModal.fieldIndex = 2
+
+    handleModalKey(state, { name: "return" } as never)
+
+    expect(state.nodeModal.editor).toEqual({ kind: "text", field: "body", draft: "" })
+  })
+
   test("cycles node kind from the outer modal with left and right arrows", () => {
     const state = createState()
 
@@ -327,6 +377,59 @@ describe("feature metadata and save planning", () => {
 
     handleModalKey(state, { name: "left" } as never)
     expect(state.nodeModal.values.kind).toBe("command")
+  })
+
+  test("does not open the when editor until a dependency exists", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.fieldIndex = 4
+
+    expect(handleModalKey(state, { name: "return" } as never)).toBe(false)
+    expect(state.nodeModal.editor).toBeNull()
+
+    state.catalog.workflows[0]!.workflow!.nodes = [
+      { id: "prep", kind: "command", body: "review", dependsOn: [], when: null, triggerRule: null, context: null },
+    ]
+    state.nodeModal.values.dependsOn = ["prep"]
+
+    expect(handleModalKey(state, { name: "return" } as never)).toBe(true)
+    expect(state.nodeModal.editor).toEqual({ kind: "text", field: "when", draft: "" })
+  })
+
+  test("does not allow trigger rule until two dependencies exist", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.catalog.workflows[0]!.workflow!.nodes = [
+      { id: "prep", kind: "command", body: "review", dependsOn: [], when: null, triggerRule: null, context: null },
+      { id: "ship", kind: "command", body: "ship", dependsOn: [], when: null, triggerRule: null, context: null },
+    ]
+    state.nodeModal.fieldIndex = 5
+
+    expect(handleModalKey(state, { name: "right" } as never)).toBe(false)
+    expect(state.nodeModal.values.triggerRule).toBe("")
+
+    state.nodeModal.values.dependsOn = ["prep", "ship"]
+
+    expect(handleModalKey(state, { name: "right" } as never)).toBe(true)
+    expect(state.nodeModal.values.triggerRule).toBe("all_success")
+  })
+
+  test("cycles context as an enum from the outer modal", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.fieldIndex = 6
+
+    handleModalKey(state, { name: "right" } as never)
+    expect(state.nodeModal.values.context).toBe("fresh")
+
+    handleModalKey(state, { name: "right" } as never)
+    expect(state.nodeModal.values.context).toBe("shared")
   })
 
   test("moves from the last node field into action buttons and wraps back to the top field", () => {
@@ -357,6 +460,32 @@ describe("feature metadata and save planning", () => {
 
     handleModalKey(state, { name: "left" } as never)
     expect(state.nodeModal.actionIndex).toBe(0)
+  })
+
+  test("ctrl+enter saves the node modal", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+    state.nodeModal.values.id = "plan"
+    state.nodeModal.values.body = "review"
+
+    handleModalKey(state, { name: "return", ctrl: true } as never)
+
+    expect(state.nodeModal).toBeNull()
+    expect(state.catalog.workflows[0]?.workflow?.nodes.map((node) => node.id)).toEqual(["plan"])
+  })
+
+  test("ctrl+enter does not save the node modal when required fields are missing", () => {
+    const state = createState()
+
+    openCreateNodeModal(state)
+    if (!state.nodeModal) throw new Error("node modal was not opened")
+
+    handleModalKey(state, { name: "return", ctrl: true } as never)
+
+    expect(state.nodeModal).not.toBeNull()
+    expect(state.catalog.workflows[0]?.workflow?.nodes).toEqual([])
   })
 
   test("enter on node cancel closes the modal", () => {
